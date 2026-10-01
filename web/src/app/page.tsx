@@ -13,7 +13,9 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
+import Image from 'next/image'
 import Link from 'next/link'
+import bigLogoWithTagline from '@/assets/img/big logo with tag line.png'
 import { LogoMark } from '@/components/logo'
 import { SiteFooter, SiteHeader } from '@/components/site'
 import { IconTile, buttonStyles } from '@/components/ui'
@@ -133,6 +135,14 @@ export default async function Home() {
           <div className="bg-grid pointer-events-none absolute inset-0 -z-10 [mask-image:radial-gradient(ellipse_at_top,black_20%,transparent_70%)]" aria-hidden />
           <div className="mx-auto grid max-w-6xl items-center gap-14 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:pb-28 lg:pt-24">
             <div className="animate-fade-up">
+              <Image
+                src={bigLogoWithTagline}
+                alt="Ansly"
+                width={626}
+                height={297}
+                priority
+                className="mb-6 h-auto w-48 sm:w-56"
+              />
               <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted shadow-xs">
                 <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent-soft">
                   <Sparkles className="h-2.5 w-2.5 text-accent" />

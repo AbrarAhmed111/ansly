@@ -1,17 +1,20 @@
 import { clsx } from 'clsx'
-import { Sparkles } from 'lucide-react'
+import Image from 'next/image'
+import smallLogoLight from '@/assets/img/small logo light.png'
 
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <span
+    <Image
+      src={smallLogoLight}
+      alt=""
+      width={90}
+      height={108}
       className={clsx(
-        'relative inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-accent via-[#8b5cf6] to-[#d946ef] text-white shadow-[0_1px_2px_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.25)]',
+        'h-7 w-7 shrink-0 rounded-lg object-cover shadow-[0_1px_2px_rgb(0_0_0/0.16)]',
         className,
       )}
       aria-hidden
-    >
-      <Sparkles className="h-[15px] w-[15px]" strokeWidth={2.25} />
-    </span>
+    />
   )
 }
 
