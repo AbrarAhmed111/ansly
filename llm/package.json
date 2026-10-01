@@ -1,0 +1,12 @@
+{
+  "name": "@ansly/llm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turborepo wrapper for the FastAPI service — all real work is done by uv",
+  "scripts": {
+    "dev": "uv run python run.py",
+    "lint": "uv run ruff check .",
+    "typecheck": "uv run python -m compileall -q src",
+    "test": "uv run python -m pytest"
+  }
+}
