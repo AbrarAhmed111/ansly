@@ -5,7 +5,7 @@ import { clsx } from 'clsx'
 import { Github, Globe, Link2, Linkedin, MapPin, Palette, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import toast from 'react-hot-toast'
-import { Avatar, Button, Card, ErrorText, Field, Input, Kbd, PageHeader, Select, Skeleton, Textarea } from '@/components/ui'
+import { Avatar, Button, Card, ErrorText, Field, Input, KeyHint, PageHeader, Select, Skeleton, StatusDot, Textarea } from '@/components/ui'
 import { createClient } from '@/lib/supabase/client'
 
 type Form = {
@@ -60,8 +60,8 @@ function Group({ title, description, children }: { title: string; description: R
   return (
     <section className="grid gap-4 border-t border-border pt-8 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:gap-10">
       <div>
-        <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
-        <p className="mt-1 text-sm leading-relaxed text-muted">{description}</p>
+        <h2 className="text-title">{title}</h2>
+        <p className="mt-1 leading-relaxed text-muted">{description}</p>
       </div>
       <Card className="grid gap-5 sm:grid-cols-2">{children}</Card>
     </section>
@@ -180,17 +180,17 @@ export default function PersonalPage() {
 
       {/* Live preview */}
       <Card className="relative mb-8 overflow-hidden">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-r from-accent/15 via-[#b06cff]/10 to-transparent" aria-hidden />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-r from-accent/15 via-orchid-400/10 to-transparent" aria-hidden />
         <div className="relative flex flex-wrap items-center gap-4 pt-4">
-          <Avatar name={form.full_name || form.email || '?'} className="h-14 w-14 text-lg ring-4 ring-surface" />
+          <Avatar name={form.full_name || form.email || '?'} className="h-14 w-14 text-h3 ring-4 ring-surface" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-lg font-semibold tracking-tight">
+            <p className="truncate text-h3">
               {form.full_name || <span className="text-subtle">Your name</span>}
             </p>
-            <p className="truncate text-sm text-muted">{form.headline || 'Add a headline that sums up what you do'}</p>
+            <p className="truncate text-muted">{form.headline || 'Add a headline that sums up what you do'}</p>
           </div>
           {form.location && (
-            <span className="inline-flex items-center gap-1.5 text-sm text-muted">
+            <span className="inline-flex items-center gap-1.5 text-muted">
               <MapPin className="h-3.5 w-3.5" />
               {form.location}
             </span>
@@ -309,12 +309,9 @@ export default function PersonalPage() {
         aria-hidden={!dirty}
       >
         <div className="flex w-full max-w-lg items-center gap-3 rounded-2xl border border-border bg-surface/95 py-2.5 pl-4 pr-2.5 shadow-raised backdrop-blur">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden />
-          <p className="flex-1 text-sm font-medium">Unsaved changes</p>
-          <span className="hidden items-center gap-1 text-xs text-subtle sm:flex">
-            <Kbd>Ctrl</Kbd>
-            <Kbd>S</Kbd>
-          </span>
+          <StatusDot tone="warning" />
+          <p className="flex-1 font-medium">Unsaved changes</p>
+          <KeyHint keys={['Ctrl', 'S']} />
           <Button type="button" variant="ghost" size="sm" onClick={() => saved && setForm(saved)} tabIndex={dirty ? 0 : -1}>
             Discard
           </Button>

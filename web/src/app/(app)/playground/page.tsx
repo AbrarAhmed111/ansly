@@ -2,19 +2,7 @@
 
 import type { AnswerResponse, UsedSource } from '@ansly/types'
 import { clsx } from 'clsx'
-import {
-  BookmarkPlus,
-  Briefcase,
-  Check,
-  ChevronDown,
-  Copy,
-  CornerDownLeft,
-  FileQuestion,
-  RefreshCw,
-  SearchX,
-  Sparkles,
-  Wand2,
-} from 'lucide-react'
+import { BookmarkPlus, Briefcase, Check, ChevronDown, CornerDownLeft, FileQuestion, RefreshCw, SearchX, Sparkles, Wand2 } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import toast from 'react-hot-toast'
@@ -24,16 +12,23 @@ import {
   Badge,
   Button,
   Card,
+  CharCount,
+  Chip,
+  CopyButton,
   EmptyState,
   Field,
+  IconTile,
   Input,
-  Kbd,
+  KeyHint,
+  Overline,
   PageHeader,
-  Skeleton,
+  SkeletonText,
   Textarea,
   buttonStyles,
+  chipStyles,
 } from '@/components/ui'
 import { generateAnswer, regenerateAnswer, saveAnswer } from '@/lib/api'
+import { errorMessage, humanize } from '@/lib/format'
 
 const EXAMPLES = [
   'Tell us about yourself.',
@@ -71,7 +66,6 @@ export default function PlaygroundPage() {
   const [instruction, setInstruction] = useState('')
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [copied, setCopied] = useState(false)
   const questionRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => questionRef.current?.focus(), [])
@@ -102,7 +96,7 @@ export default function PlaygroundPage() {
       show(await generateAnswer(request()))
     } catch (err) {
       setResult(null)
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     } finally {
       setBusy(null)
     }
@@ -123,7 +117,7 @@ export default function PlaygroundPage() {
       )
       setInstruction('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     } finally {
       setBusy(null)
     }
@@ -143,23 +137,11 @@ export default function PlaygroundPage() {
       setSaved(true)
       toast.success('Saved as preferred answer')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(errorMessage(err))
     } finally {
       setSaving(false)
     }
   }
-
-  async function onCopy() {
-    try {
-      await navigator.clipboard.writeText(answer)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      toast.error('Could not copy to clipboard')
-    }
-  }
-
-  const over = limit !== null && answer.length > limit
 
   return (
     <div className="animate-fade-up">
@@ -189,19 +171,9 @@ export default function PlaygroundPage() {
 
             <div className="flex flex-wrap gap-1.5">
               {EXAMPLES.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => setQuestion(q)}
-                  className={clsx(
-                    'rounded-full border px-2.5 py-1 text-xs font-medium transition',
-                    question === q
-                      ? 'border-accent/40 bg-accent-soft text-accent'
-                      : 'border-border text-muted hover:border-border-strong hover:text-fg',
-                  )}
-                >
+                <Chip key={q} selected={question === q} onClick={() => setQuestion(q)}>
                   {q}
-                </button>
+                </Chip>
               ))}
             </div>
 
@@ -210,7 +182,7 @@ export default function PlaygroundPage() {
                 type="button"
                 onClick={() => setShowContext((s) => !s)}
                 aria-expanded={showContext}
-                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium"
+                className="flex w-full items-center gap-2 px-3 py-2.5 font-medium"
               >
                 <Briefcase className="h-4 w-4 text-subtle" />
                 Job context
@@ -237,15 +209,8 @@ export default function PlaygroundPage() {
             </div>
 
             <div className="flex items-center justify-between gap-3">
-              <span className="hidden items-center gap-1 text-xs text-subtle sm:flex">
-                <Kbd>Ctrl</Kbd>
-                <Kbd>
-                  <CornerDownLeft className="h-3 w-3" />
-                </Kbd>
-                to generate
-              </span>
-              <Button type="submit" loading={busy === 'generate'} disabled={question.trim().length < 2} className="ml-auto">
-                {busy !== 'generate' && <Sparkles className="h-4 w-4" />}
+              <KeyHint keys={['Ctrl', <CornerDownLeft key="enter" className="h-3 w-3" />]}>to generate</KeyHint>
+              <Button type="submit" icon={Sparkles} loading={busy === 'generate'} disabled={question.trim().length < 2} className="ml-auto">
                 Generate answer
               </Button>
             </div>
@@ -262,14 +227,11 @@ export default function PlaygroundPage() {
 
           {busy === 'generate' ? (
             <Card className="space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted">
+              <div className="flex items-center gap-2 text-muted">
                 <Sparkles className="h-4 w-4 animate-pulse text-accent" />
                 Reading your profile and drafting an answer…
               </div>
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-11/12" />
-              <Skeleton className="h-4 w-4/5" />
-              <Skeleton className="h-4 w-2/3" />
+              <SkeletonText />
             </Card>
           ) : !result ? (
             !error && (
@@ -281,14 +243,12 @@ export default function PlaygroundPage() {
             )
           ) : result.status === 'insufficient_information' ? (
             <Card className="space-y-4">
-              <p className="text-sm font-medium text-muted">“{asked}”</p>
+              <p className="font-medium text-muted">“{asked}”</p>
               <div className="flex gap-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
-                  <SearchX className="h-5 w-5" />
-                </span>
+                <IconTile icon={SearchX} tone="warning" />
                 <div>
-                  <h2 className="font-semibold tracking-tight">Not enough information in your profile</h2>
-                  <p className="mt-1 text-sm leading-relaxed text-muted">
+                  <h2 className="text-title">Not enough information in your profile</h2>
+                  <p className="mt-1 leading-relaxed text-muted">
                     {result.missingInformation || result.answer || 'Ansly would rather say so than invent an answer.'}
                   </p>
                 </div>
@@ -308,7 +268,7 @@ export default function PlaygroundPage() {
           ) : (
             <Card className="p-0">
               <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
-                <p className="min-w-0 flex-1 truncate text-sm font-medium text-muted" title={asked}>
+                <p className="min-w-0 flex-1 truncate font-medium text-muted" title={asked}>
                   “{asked}”
                 </p>
                 <Badge tone={CONFIDENCE_TONE[result.confidence]} dot>
@@ -326,21 +286,18 @@ export default function PlaygroundPage() {
                   rows={Math.min(16, Math.max(6, Math.ceil(answer.length / 70)))}
                   aria-label="Answer"
                   className={clsx(
-                    'border-transparent bg-surface-muted/50 text-[15px] shadow-none hover:border-border',
+                    'border-transparent bg-surface-muted/50 text-body-lg shadow-none hover:border-border',
                     busy === 'regenerate' && 'animate-pulse',
                   )}
                 />
-                <div className="mt-2 flex items-center justify-between text-xs">
-                  <span className="text-subtle">Edit freely — this is your answer.</span>
-                  <span className={clsx('tabular-nums', over ? 'font-medium text-danger' : 'text-subtle')}>
-                    {answer.length}
-                    {limit ? ` / ${limit}` : ' characters'}
-                  </span>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-caption text-subtle">Edit freely — this is your answer.</span>
+                  <CharCount count={answer.length} limit={limit} />
                 </div>
 
                 {result.usedSources.length > 0 && (
                   <div className="mt-5">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-subtle">Grounded in</p>
+                    <Overline>Grounded in</Overline>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {result.usedSources.map((s) => {
                         const route = SOURCE_ROUTES[s.type]
@@ -349,7 +306,7 @@ export default function PlaygroundPage() {
                           <Link
                             key={`${s.type}-${s.id}`}
                             href={`/profile/${route.slug}`}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-accent"
+                            className={chipStyles({ className: 'rounded-md' })}
                           >
                             <Icon className="h-3 w-3" />
                             {s.label}
@@ -364,15 +321,9 @@ export default function PlaygroundPage() {
               <div className="space-y-3 border-t border-border bg-surface-muted/30 px-5 py-4">
                 <div className="flex flex-wrap gap-1.5">
                   {TWEAKS.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      disabled={Boolean(busy)}
-                      onClick={() => void onRegenerate(t.toLowerCase())}
-                      className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-muted transition hover:border-accent/40 hover:text-accent disabled:opacity-50"
-                    >
+                    <Chip key={t} disabled={Boolean(busy)} onClick={() => void onRegenerate(t.toLowerCase())}>
                       {t}
-                    </button>
+                    </Chip>
                   ))}
                 </div>
                 <form
@@ -390,29 +341,24 @@ export default function PlaygroundPage() {
                     maxLength={500}
                     className="flex-1"
                   />
-                  <Button type="submit" variant="secondary" loading={busy === 'regenerate'}>
-                    {busy !== 'regenerate' && <RefreshCw className="h-4 w-4" />}
+                  <Button type="submit" variant="secondary" icon={RefreshCw} loading={busy === 'regenerate'}>
                     Regenerate
                   </Button>
                 </form>
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <Button onClick={onSave} loading={saving} disabled={saved || !answer.trim()}>
-                    {saved ? <Check className="h-4 w-4" /> : !saving && <BookmarkPlus className="h-4 w-4" />}
+                  <Button onClick={onSave} icon={saved ? Check : BookmarkPlus} loading={saving} disabled={saved || !answer.trim()}>
                     {saved ? 'Saved' : 'Save as preferred answer'}
                   </Button>
-                  <Button variant="secondary" onClick={onCopy}>
-                    {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-                    {copied ? 'Copied' : 'Copy'}
-                  </Button>
+                  <CopyButton text={answer} label="Copy" />
                 </div>
               </div>
             </Card>
           )}
 
           {result && (
-            <p className="mt-3 flex items-center gap-1.5 text-xs text-subtle">
+            <p className="mt-3 flex items-center gap-1.5 text-caption text-subtle">
               <FileQuestion className="h-3.5 w-3.5" />
-              Category: {result.category.replace(/_/g, ' ')}
+              Category: {humanize(result.category)}
               {result.provider && ` · ${result.provider}`}
             </p>
           )}

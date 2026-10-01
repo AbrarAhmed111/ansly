@@ -1,4 +1,5 @@
 import { SiteFooter, SiteHeader } from '@/components/site'
+import { Overline } from '@/components/ui'
 
 export const metadata = { title: 'Privacy policy' }
 
@@ -8,14 +9,12 @@ export default function PrivacyPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-16 text-[15px] leading-7 sm:px-6">
-        <p className="text-sm font-medium text-accent">Legal</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-tight">
-          Privacy policy
-        </h1>
-        <p className="mt-3 text-sm text-muted">Last updated {UPDATED}</p>
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-16 text-body-lg sm:px-6">
+        <Overline tone="accent">Legal</Overline>
+        <h1 className="mt-2 text-h1">Privacy policy</h1>
+        <p className="mt-3 text-body text-muted">Last updated {UPDATED}</p>
 
-        <div className="mt-10 space-y-5 text-fg/85 [&_h2]:!mt-12 [&_h2]:border-t [&_h2]:border-border [&_h2]:pt-8 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h2]:text-fg [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_li]:marker:text-subtle [&_ul]:space-y-2">
+        <div className="mt-10 space-y-5 text-fg/85 [&_h2]:!mt-12 [&_h2]:border-t [&_h2]:border-border [&_h2]:pt-8 [&_h2]:text-h3 [&_h2]:text-fg [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_li]:marker:text-subtle [&_ul]:space-y-2">
           <p>
             Ansly helps you answer job application questions using information
             you put in your Ansly profile. This page explains what the web app

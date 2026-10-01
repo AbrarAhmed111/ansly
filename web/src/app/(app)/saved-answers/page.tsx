@@ -1,14 +1,31 @@
 'use client'
 
 import type { SavedAnswer } from '@ansly/types'
-import { BookmarkCheck, Building2, Check, Copy, Pencil, Plus, Repeat, Search, SearchX, Trash2, X } from 'lucide-react'
+import { BookmarkCheck, Building2, Pencil, Plus, Repeat, Search, SearchX, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import toast from 'react-hot-toast'
 import { Sheet, useConfirm, type ConfirmOptions } from '@/components/dialog'
 import { OnSearchParam } from '@/components/search-param'
-import { Badge, Button, Card, EmptyState, ErrorText, Field, Input, PageHeader, Skeleton, Textarea, buttonStyles } from '@/components/ui'
+import {
+  Badge,
+  Button,
+  Card,
+  CharCount,
+  CopyButton,
+  EmptyState,
+  ErrorText,
+  Field,
+  IconButton,
+  Input,
+  PageHeader,
+  SearchInput,
+  Skeleton,
+  Textarea,
+  buttonStyles,
+} from '@/components/ui'
 import { ApiError, saveAnswer } from '@/lib/api'
+import { errorMessage, humanize } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 
 const LONG = 320
@@ -24,7 +41,6 @@ function SavedAnswerCard({
 }) {
   const [editing, setEditing] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [question, setQuestion] = useState(item.question)
   const [answer, setAnswer] = useState(item.answer)
   const [busy, setBusy] = useState(false)
@@ -56,23 +72,13 @@ function SavedAnswerCard({
     onChanged()
   }
 
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(item.answer)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      toast.error('Could not copy to clipboard')
-    }
-  }
-
   if (editing) {
     return (
       <Card className="space-y-4 border-accent/40 ring-4 ring-accent/10">
         <Field label="Question" htmlFor={`q-${item.id}`}>
           <Input id={`q-${item.id}`} value={question} onChange={(e) => setQuestion(e.target.value)} autoFocus />
         </Field>
-        <Field label="Answer" htmlFor={`a-${item.id}`} hint={`${answer.length} characters`}>
+        <Field label="Answer" htmlFor={`a-${item.id}`} hint={<CharCount count={answer.length} />}>
           <Textarea id={`a-${item.id}`} value={answer} rows={8} onChange={(e) => setAnswer(e.target.value)} />
         </Field>
         <div className="flex justify-end gap-2">
@@ -99,28 +105,15 @@ function SavedAnswerCard({
     <Card className="group p-0 transition hover:border-border-strong">
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
-          <p className="font-semibold leading-snug tracking-tight">{item.question}</p>
+          <p className="text-title">{item.question}</p>
           <div className="-mr-1.5 -mt-1 flex shrink-0 gap-0.5 transition md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
-            <Button variant="ghost" size="icon-sm" onClick={copy} aria-label="Copy answer" title="Copy answer">
-              {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={() => setEditing(true)} aria-label="Edit" title="Edit">
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={remove}
-              aria-label="Delete"
-              title="Delete"
-              className="hover:bg-danger/10 hover:text-danger"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <CopyButton text={item.answer} />
+            <IconButton icon={Pencil} label="Edit" onClick={() => setEditing(true)} />
+            <IconButton icon={Trash2} label="Delete" tone="danger" onClick={remove} />
           </div>
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {item.category && <Badge tone="accent">{item.category.replace(/_/g, ' ')}</Badge>}
+          {item.category && <Badge tone="accent">{humanize(item.category)}</Badge>}
           {(item.company || item.role) && (
             <Badge>
               <Building2 className="h-3 w-3" />
@@ -133,14 +126,14 @@ function SavedAnswerCard({
           </Badge>
         </div>
         <div className="mt-4 rounded-lg border border-border bg-surface-muted/50 px-4 py-3">
-          <p className={`whitespace-pre-wrap text-sm leading-relaxed text-fg/85 ${long && !expanded ? 'line-clamp-4' : ''}`}>
+          <p className={`whitespace-pre-wrap leading-relaxed text-fg/85 ${long && !expanded ? 'line-clamp-4' : ''}`}>
             {item.answer}
           </p>
           {long && (
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}
-              className="mt-2 text-xs font-medium text-accent hover:underline"
+              className="mt-2 text-caption font-medium text-accent hover:underline"
             >
               {expanded ? 'Show less' : 'Show full answer'}
             </button>
@@ -169,7 +162,7 @@ function AddAnswerSheet({ open, onClose, onAdded }: { open: boolean; onClose: ()
     } catch (err) {
       if (!(err instanceof ApiError) || err.status !== 0) {
         setBusy(false)
-        return toast.error(err instanceof Error ? err.message : String(err))
+        return toast.error(errorMessage(err))
       }
       const { error } = await createClient().from('saved_answers').insert(row)
       if (error) {
@@ -207,7 +200,7 @@ function AddAnswerSheet({ open, onClose, onAdded }: { open: boolean; onClose: ()
         <Field label="Question" htmlFor="new-q" required className="sm:col-span-2">
           <Input id="new-q" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Why do you want to work here?" required />
         </Field>
-        <Field label="Answer" htmlFor="new-a" required hint={`${answer.length} characters`} className="sm:col-span-2">
+        <Field label="Answer" htmlFor="new-a" required hint={<CharCount count={answer.length} />} className="sm:col-span-2">
           <Textarea id="new-a" rows={10} value={answer} onChange={(e) => setAnswer(e.target.value)} required />
         </Field>
         <Field label="Company" htmlFor="new-company" help="Optional — only if the answer is company-specific.">
@@ -251,8 +244,7 @@ export default function SavedAnswersPage() {
         title="Saved answers"
         description='Answers you saved with "Save as preferred answer" in the extension or playground. When a similar question comes up, Ansly offers them before generating a new one.'
         actions={
-          <Button onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" />
+          <Button icon={Plus} onClick={() => setAdding(true)}>
             Add answer
           </Button>
         }
@@ -260,26 +252,15 @@ export default function SavedAnswersPage() {
 
       {items && items.length > 0 && (
         <div className="mb-5 flex items-center gap-3">
-          <div className="relative flex-1">
-            <Input
-              icon={Search}
-              placeholder="Search questions, answers, companies…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search saved answers"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-subtle hover:text-fg"
-                aria-label="Clear search"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <span className="shrink-0 text-sm tabular-nums text-muted">
+          <SearchInput
+            icon={Search}
+            placeholder="Search questions, answers, companies…"
+            value={query}
+            onChange={setQuery}
+            aria-label="Search saved answers"
+            className="flex-1"
+          />
+          <span className="shrink-0 tabular-nums text-muted">
             {filtered?.length ?? 0}
             {query && ` of ${items.length}`}
           </span>
@@ -306,8 +287,7 @@ export default function SavedAnswersPage() {
             description='When an answer from ✨ is just right, click "Save as preferred answer". It will show up here and be offered for similar questions.'
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => setAdding(true)}>
-                  <Plus className="h-4 w-4" />
+                <Button icon={Plus} onClick={() => setAdding(true)}>
                   Write one now
                 </Button>
                 <Link href="/playground" className={buttonStyles({ variant: 'secondary' })}>

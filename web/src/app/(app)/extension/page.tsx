@@ -9,11 +9,28 @@ import {
   type WebToExtensionMessage,
 } from '@ansly/types'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { clsx } from 'clsx'
-import { Check, CheckCircle2, CircleDashed, KeyRound, Lock, Mail, PlugZap, Puzzle, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { CheckCircle2, CircleDashed, KeyRound, Mail, PlugZap, Puzzle, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
 import toast from 'react-hot-toast'
-import { Alert, Badge, Button, Card, CardHeader, ErrorText, Field, IconTile, Input, PageHeader, Spinner } from '@/components/ui'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  ErrorText,
+  Field,
+  Glow,
+  IconTile,
+  Input,
+  PageHeader,
+  PasswordInput,
+  Spinner,
+  Step,
+  Steps,
+  type StepState,
+} from '@/components/ui'
+import { errorMessage } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import { supabaseKey, supabaseUrl } from '@/lib/supabase/env'
 
@@ -41,29 +58,7 @@ async function createExtensionSession(email: string, password: string): Promise<
   }
 }
 
-function Step({ n, title, done, active, children }: { n: number; title: string; done: boolean; active: boolean; children: ReactNode }) {
-  return (
-    <li className="relative flex gap-4 pb-8 last:pb-0">
-      <span className="absolute left-[15px] top-9 h-[calc(100%-2.5rem)] w-px bg-border [li:last-child>&]:hidden" aria-hidden />
-      <span
-        className={clsx(
-          'relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold',
-          done
-            ? 'border-success bg-success text-white'
-            : active
-              ? 'border-accent bg-accent-soft text-accent ring-4 ring-accent/10'
-              : 'border-border bg-surface text-subtle',
-        )}
-      >
-        {done ? <Check className="h-4 w-4" strokeWidth={3} /> : n}
-      </span>
-      <div className="min-w-0 flex-1 pt-1">
-        <p className={clsx('font-semibold tracking-tight', !done && !active && 'text-muted')}>{title}</p>
-        <div className="mt-1 text-sm leading-relaxed text-muted">{children}</div>
-      </div>
-    </li>
-  )
-}
+const stepState = (done: boolean, active: boolean): StepState => (done ? 'done' : active ? 'active' : 'idle')
 
 export default function ExtensionPage() {
   const [status, setStatus] = useState<ExtensionStatusPayload | null>(null)
@@ -108,7 +103,7 @@ export default function ExtensionPage() {
       post({ source: BRIDGE_WEB, type: 'ANSLY_CONNECT', session })
     } catch (err) {
       setBusy(false)
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     }
   }
 
@@ -147,7 +142,7 @@ export default function ExtensionPage() {
       />
 
       <Card className="relative mb-6 overflow-hidden">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-accent/10 blur-3xl" aria-hidden />
+        <Glow className="-right-16 -top-16 h-48 w-48" />
         <div className="relative flex flex-wrap items-center gap-4">
           {!checked ? (
             <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface-muted">
@@ -157,13 +152,12 @@ export default function ExtensionPage() {
             <IconTile icon={hero.icon} tone={hero.tone} size="lg" />
           )}
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold tracking-tight">{hero.title}</h2>
-            <p className="mt-0.5 text-sm text-muted">{hero.body}</p>
+            <h2 className="text-h3">{hero.title}</h2>
+            <p className="mt-0.5 text-muted">{hero.body}</p>
           </div>
           {status && <Badge>v{status.version}</Badge>}
           {checked && !status && (
-            <Button variant="secondary" onClick={() => window.location.reload()}>
-              <RefreshCw className="h-4 w-4" />
+            <Button variant="secondary" icon={RefreshCw} onClick={() => window.location.reload()}>
               Check again
             </Button>
           )}
@@ -173,22 +167,22 @@ export default function ExtensionPage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <Card>
           <CardHeader title="Setup" description="Three steps, about a minute." />
-          <ol className="mt-6">
-            <Step n={1} title="Install the extension" done={installed} active={checked && !installed}>
+          <Steps className="mt-6">
+            <Step n={1} title="Install the extension" state={stepState(installed, checked && !installed)}>
               {installed ? (
                 'Installed in this browser.'
               ) : (
                 <>Load it in Chrome (see the extension README for loading it unpacked during development), then reload this page.</>
               )}
             </Step>
-            <Step n={2} title="Connect your account" done={connected} active={installed && !connected}>
+            <Step n={2} title="Connect your account" state={stepState(connected, installed && !connected)}>
               {connected ? 'Signed in with its own secure session.' : 'Confirm your password to give the extension its own sign-in.'}
             </Step>
-            <Step n={3} title="Open any application" done={false} active={connected}>
+            <Step n={3} title="Open any application" state={stepState(false, connected)}>
               Click <span className="font-medium text-fg">✨</span> beside a question, review the draft, then fill. Works on
               LinkedIn, Indeed, Greenhouse, Lever, Workday and company sites.
             </Step>
-          </ol>
+          </Steps>
         </Card>
 
         {status ? (
@@ -203,10 +197,8 @@ export default function ExtensionPage() {
                 <Input id="ext-email" type="email" icon={Mail} required value={email} onChange={(e) => setEmail(e.target.value)} />
               </Field>
               <Field label="Password" htmlFor="ext-password">
-                <Input
+                <PasswordInput
                   id="ext-password"
-                  type="password"
-                  icon={Lock}
                   required
                   autoComplete="current-password"
                   value={password}

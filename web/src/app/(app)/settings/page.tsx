@@ -5,7 +5,8 @@ import { Download, FileJson, LogOut, Palette, Upload, UserRound, X } from 'lucid
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import toast from 'react-hot-toast'
 import { ThemeToggle } from '@/components/theme'
-import { Alert, Avatar, Button, Card, CardHeader, ErrorText, PageHeader } from '@/components/ui'
+import { Alert, Avatar, Badge, Button, Card, CardHeader, ErrorText, IconButton, Overline, PageHeader } from '@/components/ui'
+import { errorMessage, humanize, plural } from '@/lib/format'
 import { exportProfile, planImport, runImport, type ImportPlan } from '@/lib/profile-import'
 import { createClient } from '@/lib/supabase/client'
 
@@ -42,7 +43,7 @@ export default function SettingsPage() {
       URL.revokeObjectURL(url)
       toast.success('Export downloaded')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      toast.error(errorMessage(e))
     } finally {
       setExporting(false)
     }
@@ -78,10 +79,10 @@ export default function SettingsPage() {
     setBusy(true)
     try {
       const count = await runImport(createClient(), userId, plan)
-      toast.success(`Imported ${count} item${count === 1 ? '' : 's'}`)
+      toast.success(`Imported ${plural(count, 'item')}`)
       reset()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -99,12 +100,11 @@ export default function SettingsPage() {
           <div className="mt-5 flex flex-wrap items-center gap-4 rounded-lg border border-border bg-surface-muted/50 p-4">
             <Avatar name={email ?? '?'} className="h-10 w-10" />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium uppercase tracking-wider text-subtle">Signed in as</p>
-              <p className="truncate text-sm font-medium">{email ?? '…'}</p>
+              <Overline>Signed in as</Overline>
+              <p className="truncate font-medium">{email ?? '…'}</p>
             </div>
             <form action="/auth/signout" method="post">
-              <Button variant="secondary">
-                <LogOut className="h-4 w-4" />
+              <Button variant="secondary" icon={LogOut}>
                 Sign out
               </Button>
             </form>
@@ -127,8 +127,7 @@ export default function SettingsPage() {
             title="Export profile"
             description="Download your whole profile and saved answers as JSON."
             actions={
-              <Button variant="secondary" onClick={onExport} loading={exporting}>
-                {!exporting && <Download className="h-4 w-4" />}
+              <Button variant="secondary" icon={Download} onClick={onExport} loading={exporting}>
                 Download JSON
               </Button>
             }
@@ -143,7 +142,7 @@ export default function SettingsPage() {
             description={
               <>
                 Add items from an Ansly JSON export or a filled-in seed file (see{' '}
-                <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-xs">supabase/seed/profile.seed.json</code>
+                <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-caption">supabase/seed/profile.seed.json</code>
                 ). Items are added to your profile; your personal details are overwritten by the file&apos;s values.
               </>
             }
@@ -175,19 +174,17 @@ export default function SettingsPage() {
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-soft text-accent">
                 <FileJson className="h-5 w-5" />
               </span>
-              <p className="mt-3 text-sm font-medium">
+              <p className="mt-3 font-medium">
                 <span className="text-accent">Choose a file</span> or drag it here
               </p>
-              <p className="mt-0.5 text-xs text-muted">JSON only</p>
+              <p className="mt-0.5 text-caption text-muted">JSON only</p>
             </label>
           ) : (
             <div className="mt-5 space-y-4">
               <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted/50 p-3">
                 <FileJson className="h-5 w-5 shrink-0 text-accent" />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{fileName}</span>
-                <Button variant="ghost" size="icon-sm" onClick={reset} aria-label="Remove file">
-                  <X className="h-4 w-4" />
-                </Button>
+                <span className="min-w-0 flex-1 truncate font-medium">{fileName}</span>
+                <IconButton icon={X} label="Remove file" onClick={reset} />
               </div>
 
               <ErrorText>{error}</ErrorText>
@@ -195,16 +192,14 @@ export default function SettingsPage() {
               {plan && (
                 <>
                   <div className="flex flex-wrap gap-2">
-                    {plan.profile && (
-                      <span className="rounded-lg border border-border px-3 py-1.5 text-sm">Personal details</span>
-                    )}
+                    {plan.profile && <Badge>Personal details</Badge>}
                     {plan.rows
                       .filter((r) => r.rows.length)
                       .map((r) => (
-                        <span key={r.table} className="rounded-lg border border-border px-3 py-1.5 text-sm">
-                          <span className="font-semibold tabular-nums">{r.rows.length}</span>{' '}
-                          <span className="text-muted">{r.table.replace(/_/g, ' ')}</span>
-                        </span>
+                        <Badge key={r.table}>
+                          <span className="font-semibold tabular-nums text-fg">{r.rows.length}</span>
+                          {humanize(r.table)}
+                        </Badge>
                       ))}
                   </div>
                   {plan.errors.length > 0 && (
@@ -218,7 +213,7 @@ export default function SettingsPage() {
                   )}
                   <div className="flex gap-2">
                     <Button onClick={onImport} loading={busy} disabled={!plan.profile && total === 0}>
-                      {busy ? 'Importing…' : `Import ${total} item${total === 1 ? '' : 's'}`}
+                      {busy ? 'Importing…' : `Import ${plural(total, 'item')}`}
                     </Button>
                     <Button variant="secondary" onClick={reset}>
                       Cancel
