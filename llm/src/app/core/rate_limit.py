@@ -3,7 +3,7 @@ Per-User Rate Limiting and Usage Limits.
 
 - Burst limit: an in-memory sliding window per user (RATE_LIMIT_PER_MINUTE).
   Per-process; good enough for a single API instance.
-- Daily limit: counts the user's generate/regenerate events in Supabase
+- Daily limit: counts the user's generate/regenerate/prepare events in Supabase
   (DAILY_GENERATION_LIMIT), so it holds across restarts and instances.
 """
 
@@ -45,7 +45,7 @@ async def check_daily_limit(rest: SupabaseRest, limit: int) -> None:
     start_of_day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     used = await rest.count(
         "usage_events",
-        {"kind": "in.(generate,regenerate)", "created_at": f"gte.{start_of_day.isoformat()}"},
+        {"kind": "in.(generate,regenerate,prepare)", "created_at": f"gte.{start_of_day.isoformat()}"},
     )
     if used >= limit:
         raise HTTPException(

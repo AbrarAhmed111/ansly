@@ -94,6 +94,10 @@ class FakeRest:
         self.tables = copy.deepcopy(tables if tables is not None else SAMPLE_PROFILE)
         for name in TABLES:
             self.tables.setdefault(name, [])
+        # Like the column default auth.uid(): owned rows belong to the signed-in user.
+        for name in OWNED:
+            for row in self.tables[name]:
+                row.setdefault("user_id", USER_ID)
 
     @staticmethod
     def _matches(row: Dict[str, Any], params: Dict[str, str]) -> bool:

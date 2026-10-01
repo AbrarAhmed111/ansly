@@ -4,7 +4,7 @@ The system prompt carries the grounding rules; the user message carries the
 question, optional job context, and the retrieved profile.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from src.app.schemas.answers import FieldContext, JobContext
 
@@ -61,6 +61,8 @@ def build_user_message(
     previous_answer: Optional[str] = None,
     instruction: Optional[str] = None,
     job_description_max_chars: int = 6000,
+    requirements: Sequence[str] = (),
+    earlier_answers: Sequence[Tuple[str, str]] = (),
 ) -> str:
     parts: List[str] = [f"QUESTION:\n{analysis.question}"]
     if field and field.label and field.label.strip() and field.label.strip() != analysis.question:
@@ -85,9 +87,18 @@ def build_user_message(
             lines.append(f"Role: {job.role}")
         if job.description:
             lines.append("Job description:\n" + job.description.strip()[:job_description_max_chars])
+        if requirements:
+            lines.append("Skills the posting asks for: " + ", ".join(requirements))
         parts.append("JOB CONTEXT (about the employer, not the candidate):\n" + "\n".join(lines))
 
     parts.append("CANDIDATE PROFILE:\n" + (ctx.text or "(empty)"))
+
+    if earlier_answers:
+        earlier = "\n".join(f"Q: {q}\nA: {a}" for q, a in earlier_answers)
+        parts.append(
+            "EARLIER ANSWERS IN THIS SAME APPLICATION (keep facts, numbers and tone consistent with them; "
+            "don't repeat them word for word; they are not a source of new facts):\n" + earlier
+        )
 
     if previous_answer:
         steer = f" The candidate asked: {instruction.strip()}" if instruction and instruction.strip() else ""

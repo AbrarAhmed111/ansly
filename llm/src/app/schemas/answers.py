@@ -27,6 +27,8 @@ class GenerateAnswerRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     job_context: Optional[JobContext] = None
     field: Optional[FieldContext] = None
+    # A tracked application: its job, requirements and earlier answers shape the answer.
+    application_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class RegenerateAnswerRequest(GenerateAnswerRequest):

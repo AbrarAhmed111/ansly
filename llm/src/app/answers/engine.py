@@ -9,6 +9,7 @@ import logging
 import re
 from typing import List, Optional
 
+from src.app.applications.context import load_application_context
 from src.app.core.config import get_settings
 from src.app.db.rest import SupabaseRest
 from src.app.gateway import LLMGateway
@@ -96,14 +97,24 @@ class AnswerEngine:
             logger.info(f"Answered without LLM: {analysis.category}/{analysis.intent} -> {early.status}")
             return early
 
+        # A tracked application supplies the job details, requirements and earlier answers.
+        job_context, requirements, earlier = request.job_context, [], []
+        if request.application_id:
+            app_ctx = await load_application_context(rest, request.application_id, request.question)
+            if app_ctx:
+                job_context = app_ctx.job_context(request.job_context)
+                requirements, earlier = app_ctx.requirements, app_ctx.earlier_answers
+
         user_message = build_user_message(
             analysis,
             ctx,
-            request.job_context,
+            job_context,
             request.field,
             previous_answer=previous_answer,
             instruction=instruction,
             job_description_max_chars=settings.JOB_DESCRIPTION_MAX_CHARS,
+            requirements=requirements,
+            earlier_answers=earlier,
         )
         if analysis.target_skills:
             missing = missing_skills(ctx, analysis.target_skills)
