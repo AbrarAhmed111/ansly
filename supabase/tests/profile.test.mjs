@@ -1,59 +1,13 @@
-// Applies every migration to an in-process Postgres (PGlite) with a minimal
-// stand-in for Supabase's auth schema, then checks row-level security.
+// V1 schema: profile, sections, saved answers and usage events.
 import { test, before } from 'node:test'
 import assert from 'node:assert/strict'
-import { readdir, readFile } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { PGlite } from '@electric-sql/pglite'
-
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
-
-const ALICE = '00000000-0000-0000-0000-00000000000a'
-const BOB = '00000000-0000-0000-0000-00000000000b'
-
-// The parts of Supabase the migrations rely on.
-const SUPABASE_STUB = `
-  create role anon nologin;
-  create role authenticated nologin;
-  create schema auth;
-  create table auth.users (
-    id uuid primary key,
-    email text,
-    raw_user_meta_data jsonb default '{}'::jsonb
-  );
-  create function auth.uid() returns uuid language sql stable as $$
-    select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
-  $$;
-  grant usage on schema public, auth to anon, authenticated;
-  grant execute on function auth.uid() to anon, authenticated;
-`
+import { ALICE, BOB, asUser as runAs, createDb } from './db.mjs'
 
 let db
-
-/** Runs `fn` as a signed-in user, the way PostgREST does. */
-async function asUser(userId, fn) {
-  return db.transaction(async (tx) => {
-    await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId])
-    await tx.exec('set local role authenticated')
-    return fn(tx)
-  })
-}
+const asUser = (userId, fn) => runAs(db, userId, fn)
 
 before(async () => {
-  db = new PGlite()
-  await db.exec(SUPABASE_STUB)
-  const files = (await readdir(migrationsDir)).filter((f) => f.endsWith('.sql')).sort()
-  assert.ok(files.length > 0, 'no migrations found')
-  for (const file of files) {
-    await db.exec(await readFile(join(migrationsDir, file), 'utf8'))
-  }
-  await db.query(
-    `insert into auth.users (id, email, raw_user_meta_data) values
-       ($1, 'alice@example.com', '{"full_name": "Alice"}'),
-       ($2, 'bob@example.com', '{}')`,
-    [ALICE, BOB],
-  )
+  db = await createDb()
 })
 
 test('signup creates a profile row from auth metadata', async () => {
