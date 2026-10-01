@@ -1,0 +1,25 @@
+{
+  "name": "nextjs-llm-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js frontend (web) + FastAPI LLM/RAG backend (llm) monorepo starter",
+  "scripts": {
+    "dev": "concurrently -k -n web,llm -c cyan,magenta \"npm:dev:web\" \"npm:dev:llm\"",
+    "dev:web": "npm run dev --prefix web",
+    "dev:llm": "uv --directory llm run python run.py",
+    "install:web": "npm ci --prefix web",
+    "install:llm": "uv --directory llm sync --group dev",
+    "install:all": "npm run install:web && npm run install:llm",
+    "test": "npm run test:web && npm run test:llm",
+    "test:web": "npm test --prefix web -- --passWithNoTests",
+    "test:llm": "uv --directory llm run pytest",
+    "build:web": "npm run build --prefix web",
+    "lint:web": "npm run lint --prefix web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

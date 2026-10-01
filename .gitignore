@@ -1,0 +1,17 @@
+# Root tooling
+node_modules/
+
+# Environment files (each app also ignores its own)
+.env
+.env.*
+!.env.example
+
+# Caches
+.pytest_cache/
+__pycache__/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
