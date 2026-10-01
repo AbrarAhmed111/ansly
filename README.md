@@ -54,6 +54,7 @@ ansly/
   extension/        WXT browser extension (Manifest V3) — field detection, ✨ UI, fill
   llm/              FastAPI service — question analysis, retrieval, grounded generation, LLM gateway
   packages/types/   Shared TypeScript types (DB rows, API contracts, bridge protocol, completeness)
+  packages/design/  Design tokens: colour palette, light/dark themes, type scale (see its README)
   supabase/         Migrations, migration tests (PGlite), and a seed profile
   documents/        Product plan and development phases
 ```

@@ -32,3 +32,18 @@ pnpm build
 
 Profile sections are defined once in `src/lib/sections.ts`; the editor in
 `src/components/section-editor.tsx` renders forms from those definitions.
+
+## UI conventions
+
+- Colours and text sizes come from `@ansly/design` (`packages/design/README.md`).
+  Use semantic tokens (`bg-surface`, `text-muted`, `border-border`) and the type
+  scale (`text-h2`, `text-title`, `text-body-sm`, `text-caption`). Tailwind's
+  default `text-sm`/`text-lg` and arbitrary sizes are disabled.
+- Reusable components live in `src/components/ui/` and are imported from
+  `@/components/ui`. Reach for them before writing markup by hand: `Button`
+  (with `icon`/`loading`), `IconButton`, `CopyButton`, `Field` + `Input` /
+  `PasswordInput` / `SearchInput` / `Textarea` / `Select` / `Checkbox`,
+  `CharCount`, `SegmentedControl`, `Chip`, `Card` / `CardHeader` / `PageHeader`,
+  `Overline`, `Badge`, `Alert`, `EmptyState`, `Stat`, `Steps`, `StatusDot`,
+  `KeyHint`, `Skeleton`.
+- Small helpers in `src/lib/format.ts`: `errorMessage`, `plural`, `humanize`.
