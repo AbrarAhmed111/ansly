@@ -1,0 +1,71 @@
+{
+  "_readme": "Starter profile for Abrar Ahmed with only the facts stated in documents/ansly-product-plan.md. Fill in every empty field with real details (Ansly only answers from what is here), then import it from the web app: Settings -> Import profile. Items with an empty required field (title, company, name) are skipped. Keys starting with _ are ignored.",
+  "version": 1,
+  "profile": {
+    "full_name": "Abrar Ahmed",
+    "headline": "",
+    "location": "",
+    "summary": "",
+    "links": {
+      "github": "https://github.com/AbrarAhmed111"
+    }
+  },
+  "experiences": [
+    {
+      "company": "WebWhiz",
+      "title": "",
+      "start_date": "",
+      "end_date": "",
+      "is_current": false,
+      "description": "",
+      "highlights": [],
+      "technologies": []
+    },
+    {
+      "company": "Nizam LLC",
+      "title": "",
+      "start_date": "",
+      "end_date": "",
+      "is_current": false,
+      "description": "",
+      "highlights": [],
+      "technologies": []
+    }
+  ],
+  "projects": [
+    {
+      "name": "OnTask",
+      "role": "",
+      "description": "An open-source work execution and collaboration platform.",
+      "highlights": [],
+      "technologies": []
+    },
+    {
+      "name": "ToPrep",
+      "role": "",
+      "description": "",
+      "highlights": [],
+      "technologies": []
+    },
+    {
+      "name": "Growducts Acquisition Platform",
+      "role": "",
+      "description": "",
+      "highlights": [],
+      "technologies": []
+    }
+  ],
+  "skills": [
+    { "name": "React", "category": "framework" },
+    { "name": "Next.js", "category": "framework" },
+    { "name": "TypeScript", "category": "language" },
+    { "name": "Node.js", "category": "framework" },
+    { "name": "Python", "category": "language" },
+    { "name": "FastAPI", "category": "framework" },
+    { "name": "PostgreSQL", "category": "database" },
+    { "name": "Supabase", "category": "database" },
+    { "name": "AI / LLM", "category": "ai" }
+  ],
+  "education": [],
+  "achievements": []
+}

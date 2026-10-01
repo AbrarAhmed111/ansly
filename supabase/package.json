@@ -1,0 +1,13 @@
+{
+  "name": "@ansly/supabase",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Supabase migrations and their tests (run against PGlite, no Docker needed)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0"
+  }
+}
