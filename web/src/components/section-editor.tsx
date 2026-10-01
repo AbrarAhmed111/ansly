@@ -12,16 +12,21 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   EmptyState,
   ErrorText,
   Field,
+  IconButton,
   IconTile,
   Input,
+  Overline,
   PageHeader,
   Select,
   Skeleton,
   Textarea,
+  buttonStyles,
 } from '@/components/ui'
+import { plural } from '@/lib/format'
 import { sectionBySlug, toFormValues, toRow, type FieldDef, type Row, type SectionDef } from '@/lib/sections'
 import { createClient } from '@/lib/supabase/client'
 
@@ -46,21 +51,7 @@ function FieldInput({
 }) {
   const id = `f-${field.name}`
   if (field.type === 'checkbox') {
-    return (
-      <label
-        htmlFor={id}
-        className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-surface-muted/50 px-3 py-2.5 text-sm font-medium transition hover:border-border-strong"
-      >
-        <input
-          id={id}
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-          className="h-4 w-4 cursor-pointer rounded border-border accent-[rgb(var(--accent))]"
-        />
-        {field.label}
-      </label>
-    )
+    return <Checkbox id={id} label={field.label} checked={Boolean(value)} onChange={onChange} />
   }
   const common = {
     id,
@@ -173,8 +164,7 @@ function ItemSheet({
       footer={
         <div className="flex items-center gap-2">
           {row && (
-            <Button type="button" variant="danger-soft" onClick={() => onDelete(row)} className="-ml-2">
-              <Trash2 className="h-4 w-4" />
+            <Button type="button" variant="danger-soft" icon={Trash2} onClick={() => onDelete(row)} className="-ml-2">
               Delete
             </Button>
           )}
@@ -241,23 +231,23 @@ function ItemCard({
         </div>
         <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left focus-visible:outline-none">
           <span className="absolute inset-0 rounded-xl" aria-hidden />
-          <p className="font-semibold tracking-tight">{section.itemTitle(row)}</p>
-          {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+          <p className="text-title">{section.itemTitle(row)}</p>
+          {subtitle && <p className="mt-0.5 text-muted">{subtitle}</p>}
           {typeof row.description === 'string' && row.description && (
-            <p className="mt-2.5 line-clamp-2 text-sm leading-relaxed text-muted">{row.description}</p>
+            <p className="mt-2.5 line-clamp-2 leading-relaxed text-muted">{row.description}</p>
           )}
           {(tech.length > 0 || highlights > 0) && (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {highlights > 0 && (
                 <Badge tone="accent">
                   <ListChecks className="h-3 w-3" />
-                  {highlights} highlight{highlights === 1 ? '' : 's'}
+                  {plural(highlights, 'highlight')}
                 </Badge>
               )}
               {tech.slice(0, 6).map((t) => (
                 <Badge key={t}>{t}</Badge>
               ))}
-              {tech.length > 6 && <span className="text-xs text-subtle">+{tech.length - 6} more</span>}
+              {tech.length > 6 && <span className="text-caption text-subtle">+{tech.length - 6} more</span>}
             </div>
           )}
         </button>
@@ -267,32 +257,17 @@ function ItemCard({
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-muted hover:text-fg"
+              className={buttonStyles({ variant: 'ghost', size: 'icon-sm' })}
               aria-label="Open link"
               title="Open link"
             >
               <ExternalLink className="h-4 w-4" />
             </a>
           )}
-          <Button variant="ghost" size="icon-sm" aria-label="Move up" title="Move up" disabled={index === 0} onClick={() => onMove(-1)}>
-            <ArrowUp className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Move down"
-            title="Move down"
-            disabled={index === total - 1}
-            onClick={() => onMove(1)}
-          >
-            <ArrowDown className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Edit" title="Edit" onClick={onEdit}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Delete" title="Delete" onClick={onDelete} className="hover:bg-danger/10 hover:text-danger">
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <IconButton icon={ArrowUp} label="Move up" disabled={index === 0} onClick={() => onMove(-1)} />
+          <IconButton icon={ArrowDown} label="Move down" disabled={index === total - 1} onClick={() => onMove(1)} />
+          <IconButton icon={Pencil} label="Edit" onClick={onEdit} />
+          <IconButton icon={Trash2} label="Delete" tone="danger" onClick={onDelete} />
         </div>
       </div>
     </Card>
@@ -379,8 +354,10 @@ function SkillsBoard({
         {groups.map((g) => (
           <Card key={g.value || 'none'}>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted">{g.label}</h3>
-              <span className="text-xs tabular-nums text-subtle">{g.rows.length}</span>
+              <Overline as="h3" tone="muted">
+                {g.label}
+              </Overline>
+              <span className="text-caption tabular-nums text-subtle">{g.rows.length}</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {g.rows.map((row) => {
@@ -391,7 +368,7 @@ function SkillsBoard({
                     type="button"
                     onClick={() => onEdit(row)}
                     title={[row.level, row.years ? `${row.years} yrs` : ''].filter(Boolean).join(' · ') || 'Edit skill'}
-                    className="group inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[13px] font-medium shadow-xs transition hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
+                    className="group inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-body-sm font-medium shadow-xs transition hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
                   >
                     {String(row.name)}
                     {dots > 0 && (
@@ -405,7 +382,7 @@ function SkillsBoard({
                       </span>
                     )}
                     {typeof row.years === 'number' && row.years > 0 && (
-                      <span className="text-xs font-normal text-subtle group-hover:text-accent/70">{row.years}y</span>
+                      <span className="text-caption font-normal text-subtle group-hover:text-accent/70">{row.years}y</span>
                     )}
                   </button>
                 )
@@ -484,8 +461,7 @@ export function SectionEditor({ slug }: { slug: string }) {
   }
 
   const addButton = (
-    <Button onClick={() => setEditing('new')}>
-      <Plus className="h-4 w-4" />
+    <Button icon={Plus} onClick={() => setEditing('new')}>
       Add {section.singular}
     </Button>
   )
@@ -498,7 +474,7 @@ export function SectionEditor({ slug }: { slug: string }) {
           <span className="flex items-center gap-3">
             {section.title}
             {rows && rows.length > 0 && (
-              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-sm font-medium tabular-nums text-muted">
+              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-body font-medium tabular-nums text-muted">
                 {rows.length}
               </span>
             )}
@@ -507,8 +483,7 @@ export function SectionEditor({ slug }: { slug: string }) {
         description={section.description}
         actions={
           isSkills ? (
-            <Button variant="secondary" onClick={() => setEditing('new')}>
-              <Plus className="h-4 w-4" />
+            <Button variant="secondary" icon={Plus} onClick={() => setEditing('new')}>
               Add with details
             </Button>
           ) : rows && rows.length > 0 ? (
@@ -563,7 +538,7 @@ export function SectionEditor({ slug }: { slug: string }) {
           <button
             type="button"
             onClick={() => setEditing('new')}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong py-4 text-sm font-medium text-muted transition hover:border-accent/50 hover:bg-accent-soft/50 hover:text-accent"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong py-4 font-medium text-muted transition hover:border-accent/50 hover:bg-accent-soft/50 hover:text-accent"
           >
             <Plus className="h-4 w-4" />
             Add {section.singular}

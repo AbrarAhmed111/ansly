@@ -70,7 +70,7 @@ export function TagInput({
       {value.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-muted py-0.5 pl-2 pr-1 text-[13px] font-medium"
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-muted py-0.5 pl-2 pr-1 text-body-sm font-medium"
         >
           {tag}
           <button
@@ -92,7 +92,7 @@ export function TagInput({
         onPaste={onPaste}
         onBlur={() => draft.trim() && add(split(draft))}
         placeholder={value.length ? '' : placeholder}
-        className="h-6 min-w-[8rem] flex-1 bg-transparent px-1 text-sm text-fg placeholder:text-subtle focus:outline-none"
+        className="h-6 min-w-[8rem] flex-1 bg-transparent px-1 text-fg placeholder:text-subtle focus:outline-none"
       />
     </div>
   )

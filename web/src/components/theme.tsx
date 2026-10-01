@@ -1,8 +1,8 @@
 'use client'
 
-import { clsx } from 'clsx'
 import { Monitor, Moon, Sun } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { SegmentedControl } from '@/components/ui'
 
 export type Theme = 'system' | 'light' | 'dark'
 
@@ -28,7 +28,7 @@ function applyTheme(theme: Theme) {
     if (theme === 'system') localStorage.removeItem(KEY)
     else localStorage.setItem(KEY, theme)
   } catch {
-    // Storage unavailable — the choice lasts for this page only.
+    // Storage unavailable: the choice lasts for this page only.
   }
 }
 
@@ -43,32 +43,17 @@ export function ThemeToggle({ compact, className }: { compact?: boolean; classNa
   useEffect(() => setTheme(readTheme()), [])
 
   return (
-    <div
-      role="radiogroup"
-      aria-label="Theme"
-      className={clsx('inline-flex rounded-lg border border-border bg-surface-muted p-0.5', className)}
-    >
-      {OPTIONS.map(({ value, label, icon: Icon }) => (
-        <button
-          key={value}
-          type="button"
-          role="radio"
-          aria-checked={theme === value}
-          title={label}
-          onClick={() => {
-            setTheme(value)
-            applyTheme(value)
-          }}
-          className={clsx(
-            'inline-flex items-center justify-center gap-1.5 rounded-md text-[13px] font-medium transition',
-            compact ? 'h-7 flex-1 px-2' : 'h-8 px-3',
-            theme === value ? 'bg-surface text-fg shadow-xs ring-1 ring-border' : 'text-muted hover:text-fg',
-          )}
-        >
-          <Icon className="h-3.5 w-3.5" aria-hidden />
-          {compact ? <span className="sr-only">{label}</span> : label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      label="Theme"
+      options={OPTIONS}
+      value={theme}
+      size={compact ? 'sm' : 'md'}
+      iconOnly={compact}
+      className={className}
+      onChange={(value) => {
+        setTheme(value)
+        applyTheme(value)
+      }}
+    />
   )
 }

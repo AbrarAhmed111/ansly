@@ -1,9 +1,10 @@
 import '../assets/css/globals.css'
+import { light, dark } from '@ansly/design'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { Toaster } from 'react-hot-toast'
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { themeScript } from '@/components/theme'
+import { Toaster } from '@/components/toaster'
 
 const sans = Geist({ subsets: ['latin'], variable: '--font-sans' })
 const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
@@ -15,8 +16,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#fafafb' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a0a0d' },
+    { media: '(prefers-color-scheme: light)', color: light.bg },
+    { media: '(prefers-color-scheme: dark)', color: dark.bg },
   ],
 }
 
@@ -27,25 +28,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body suppressHydrationWarning className="min-h-screen">
-        <>
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: 'rgb(var(--surface))',
-                color: 'rgb(var(--fg))',
-                border: '1px solid rgb(var(--border))',
-                boxShadow: '0 8px 24px -6px rgb(0 0 0 / 0.15)',
-                borderRadius: '12px',
-                fontSize: '14px',
-                padding: '10px 14px',
-              },
-              success: { iconTheme: { primary: 'rgb(var(--success))', secondary: 'rgb(var(--surface))' } },
-              error: { iconTheme: { primary: 'rgb(var(--danger))', secondary: 'rgb(var(--surface))' } },
-            }}
-          />
-          {children}
-        </>
+        <Toaster />
+        {children}
       </body>
     </html>
   )

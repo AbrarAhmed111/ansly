@@ -3,7 +3,7 @@
 import { clsx } from 'clsx'
 import { TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Button, IconTile } from '@/components/ui'
+import { Button, IconButton, IconTile } from '@/components/ui'
 
 /**
  * Native modal <dialog>: focus trapping, Escape and top-layer stacking come
@@ -98,12 +98,10 @@ export function Sheet({
           {title && (
             <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-                {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
+                <h2 className="text-h3">{title}</h2>
+                {description && <p className="mt-0.5 text-muted">{description}</p>}
               </div>
-              <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close" className="-mr-2 -mt-1">
-                <X className="h-4 w-4" />
-              </Button>
+              <IconButton icon={X} label="Close" onClick={onClose} className="-mr-2 -mt-1" />
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
@@ -149,10 +147,10 @@ export function useConfirm() {
           <div className="flex gap-4">
             {danger && <IconTile icon={TriangleAlert} tone="danger" />}
             <div className="min-w-0 pt-0.5">
-              <h2 id="confirm-title" className="text-base font-semibold tracking-tight">
+              <h2 id="confirm-title" className="text-title">
                 {options.title}
               </h2>
-              {options.description && <div className="mt-1.5 text-sm leading-relaxed text-muted">{options.description}</div>}
+              {options.description && <div className="mt-1.5 leading-relaxed text-muted">{options.description}</div>}
             </div>
           </div>
           <div className="mt-6 flex justify-end gap-2">

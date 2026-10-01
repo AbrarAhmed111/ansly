@@ -10,7 +10,7 @@ import { Sheet } from '@/components/dialog'
 import { Logo } from '@/components/logo'
 import { SECTION_ICONS } from '@/components/section-icons'
 import { ThemeToggle } from '@/components/theme'
-import { Avatar, Button, Kbd } from '@/components/ui'
+import { Avatar, IconButton, Kbd, Overline } from '@/components/ui'
 import { SECTIONS } from '@/lib/sections'
 
 interface NavItem {
@@ -57,7 +57,7 @@ function SearchButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-[13px] text-subtle shadow-xs transition hover:border-border-strong hover:text-muted"
+      className="flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-body-sm text-subtle shadow-xs transition hover:border-border-strong hover:text-muted"
     >
       <Search className="h-4 w-4" />
       <span className="flex-1 text-left">Search…</span>
@@ -73,7 +73,7 @@ function NavLinks() {
       {GROUPS.map((group, i) => (
         <div key={group.label ?? i}>
           {group.label && (
-            <p className="mb-1.5 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-subtle">{group.label}</p>
+            <Overline className="mb-1.5 px-2.5">{group.label}</Overline>
           )}
           <ul className="space-y-0.5">
             {group.items.map(({ href, label, icon: Icon }) => {
@@ -84,7 +84,7 @@ function NavLinks() {
                     href={href}
                     aria-current={active ? 'page' : undefined}
                     className={clsx(
-                      'group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] font-medium transition-colors',
+                      'group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body-sm font-medium transition-colors',
                       active ? 'bg-surface text-fg shadow-xs ring-1 ring-border' : 'text-muted hover:bg-surface-muted hover:text-fg',
                     )}
                   >
@@ -109,17 +109,15 @@ function UserFooter({ name, email }: { name: string | null; email: string }) {
     <div className="space-y-3 border-t border-border pt-4">
       <ThemeToggle compact className="flex w-full" />
       <div className="flex items-center gap-2.5 px-1">
-        <Avatar name={name || email} className="h-8 w-8 text-xs" />
+        <Avatar name={name || email} className="h-8 w-8 text-caption" />
         <div className="min-w-0 flex-1">
-          {name && <p className="truncate text-[13px] font-medium leading-tight">{name}</p>}
-          <p className="truncate text-xs leading-tight text-muted" title={email}>
+          {name && <p className="truncate text-body-sm font-medium leading-tight">{name}</p>}
+          <p className="truncate text-caption leading-tight text-muted" title={email}>
             {email}
           </p>
         </div>
         <form action="/auth/signout" method="post">
-          <Button variant="ghost" size="icon-sm" aria-label="Sign out" title="Sign out">
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <IconButton type="submit" icon={LogOut} label="Sign out" />
         </form>
       </div>
     </div>
@@ -158,12 +156,8 @@ export function AppShell({ name, email, children }: { name: string | null; email
           <Logo />
         </Link>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" aria-label="Search" onClick={() => setPaletteOpen(true)}>
-            <Search className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
-            <Menu className="h-5 w-5" />
-          </Button>
+          <IconButton size="icon" icon={Search} label="Search" onClick={() => setPaletteOpen(true)} />
+          <IconButton size="icon" icon={Menu} label="Open menu" onClick={() => setMenuOpen(true)} />
         </div>
       </header>
       <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} side="left">

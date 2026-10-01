@@ -4,7 +4,7 @@ import { clsx } from 'clsx'
 import { CornerDownLeft, Search, type LucideIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Kbd } from '@/components/ui'
+import { Kbd, Overline } from '@/components/ui'
 
 export interface Command {
   label: string
@@ -97,7 +97,7 @@ export function CommandPalette({
                 }
               }}
               placeholder="Search pages and actions…"
-              className="h-12 flex-1 bg-transparent text-[15px] placeholder:text-subtle focus:outline-none"
+              className="h-12 flex-1 bg-transparent text-body-lg placeholder:text-subtle focus:outline-none"
               role="combobox"
               aria-expanded
               aria-controls="command-list"
@@ -106,14 +106,14 @@ export function CommandPalette({
             <Kbd>Esc</Kbd>
           </div>
           <ul id="command-list" role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
-            {results.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No results for “{query}”.</li>}
+            {results.length === 0 && <li className="px-3 py-8 text-center text-muted">No results for “{query}”.</li>}
             {results.map((c, i) => {
               const header = c.group !== lastGroup ? c.group : null
               lastGroup = c.group
               const Icon = c.icon
               return (
                 <li key={`${c.group}-${c.href}`} role="presentation">
-                  {header && <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-subtle first:pt-1">{header}</p>}
+                  {header && <Overline className="px-3 pb-1 pt-3 first:pt-1">{header}</Overline>}
                   <button
                     id={`cmd-${i}`}
                     role="option"
@@ -121,7 +121,7 @@ export function CommandPalette({
                     onMouseMove={() => setActive(i)}
                     onClick={() => run(c)}
                     className={clsx(
-                      'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm',
+                      'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
                       i === active ? 'bg-accent-soft text-accent' : 'text-fg',
                     )}
                   >

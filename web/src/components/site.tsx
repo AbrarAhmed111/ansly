@@ -1,12 +1,30 @@
+import { clsx } from 'clsx'
 import { ArrowRight } from 'lucide-react'
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { Logo } from '@/components/logo'
-import { buttonStyles } from '@/components/ui'
+import { Overline, buttonStyles } from '@/components/ui'
+
+/** Centered marketing-page column. */
+export function Container({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={clsx('mx-auto w-full max-w-6xl px-4 sm:px-6', className)}>{children}</div>
+}
+
+/** Overline + section title + optional lead paragraph. */
+export function SectionIntro({ eyebrow, title, children }: { eyebrow: string; title: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="max-w-2xl">
+      <Overline tone="accent">{eyebrow}</Overline>
+      <h2 className="mt-2 text-h1">{title}</h2>
+      {children && <p className="mt-4 text-lead text-muted">{children}</p>}
+    </div>
+  )
+}
 
 export function SiteHeader({ signedIn }: { signedIn?: boolean }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-bg/75 backdrop-blur-lg">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <Container className="flex h-16 items-center justify-between">
         <Link href="/" aria-label="Ansly home">
           <Logo />
         </Link>
@@ -33,7 +51,7 @@ export function SiteHeader({ signedIn }: { signedIn?: boolean }) {
             </>
           )}
         </nav>
-      </div>
+      </Container>
     </header>
   )
 }
@@ -41,9 +59,9 @@ export function SiteHeader({ signedIn }: { signedIn?: boolean }) {
 export function SiteFooter() {
   return (
     <footer className="border-t border-border">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-muted sm:flex-row sm:px-6">
+      <Container className="flex flex-col items-center justify-between gap-4 py-8 text-muted sm:flex-row">
         <div className="flex items-center gap-3">
-          <Logo className="text-[15px]" />
+          <Logo className="text-title" />
           <span className="text-subtle">Truthful answers for job applications.</span>
         </div>
         <nav className="flex gap-5">
@@ -54,7 +72,7 @@ export function SiteFooter() {
             Sign in
           </Link>
         </nav>
-      </div>
+      </Container>
     </footer>
   )
 }
