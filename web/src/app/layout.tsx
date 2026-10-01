@@ -4,7 +4,6 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { ReactNode } from 'react'
 import { themeScript } from '@/components/theme'
-import Providers from '@/store/Providers'
 
 const sans = Geist({ subsets: ['latin'], variable: '--font-sans' })
 const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
@@ -28,7 +27,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body suppressHydrationWarning className="min-h-screen">
-        <Providers>
+        <>
           <Toaster
             position="bottom-right"
             toastOptions={{
@@ -46,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             }}
           />
           {children}
-        </Providers>
+        </>
       </body>
     </html>
   )
