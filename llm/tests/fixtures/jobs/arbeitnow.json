@@ -1,0 +1,46 @@
+{
+ "data": [
+  {
+   "slug": "remote-senior-sap-consultant-pscd-psm-berlin-282963",
+   "company_name": "Natuvion GmbH",
+   "title": "(Senior) SAP Consultant PSCD / PSM (m/w/d)",
+   "description": "<p><strong>Möchtest du die Zukunft eines neuen Fachbereichs aktiv mitgestalten? Dann bist du bei uns genau richtig!</strong><br>Für den weiteren Aufbau unseres Public-Business-Bereichs suchen wir einen <strong>Senior SAP Consultant (m/w/d) PSCD / PSM</strong>, der unsere Projekte im öffentlichen Umfeld maßgeblich unterstützt.</p><p>Dich erwartet ein <strong>dynamisches Team</strong>, in dem <strong>Eigeninitiative ausdrücklich erwünscht ist</strong>: Du kannst dich mit eigenen Ideen einbringen, Themen selbstständig vorantreiben und Verantwortung übernehmen. Gleichzeitig arbeitest du an <strong>abwechslungsreichen Projekten</strong> mit immer neuen Fragestellungen, hoher Dynamik und viel<strong> Gestaltungsspielraum</strong>.</p><p style=\"min-height: 1.7em;\"></p><h4>Deine Aufgaben:</h4><ul><li><p class=\"Paragraph SCXW130317516 BCX0\">Umsetzung von spannenden Transformationsprojekten und aktive Mitgestaltung von neuen Strukturen&nbsp;</p></li><li><p class=\"Paragraph SCXW130317516 BCX0\">Mitarbeit in spannenden Projekten und Begleitung unserer Kunden bei Fragen zu Public Business und PSCD Themen</p></li><li><p class=\"Paragraph SCXW130317516 BCX0\">Durchführung von Workshops sowie Beratung mit Blick auf Prozessoptimierung und digitale Transformation&nbsp;</p></li><li><p class=\"Paragraph SCXW130317516 BCX0\">Mitarbeit an strategischen und technischen Themen und Entwicklung praxisnaher Lösungsansätze&nbsp;</p></li><li><p class=\"Paragraph SCXW130317516 BCX0\">Teilnahme an Presales-Terminen und Mitwirkung bei der Präsentation unserer Expertise&nbsp;</p></li></ul> <br> <p style=\"min-height: 1.7em;\"></p><h4>Dein Profil:</h4><ul><li><p>Dir sind die Grundlagen der <strong>(Wirtschafts-)Informatik</strong> gut bekannt – du musst nicht unbedingt einen Bachelor oder Masterabschluss haben, hast aber einen technisch - analytischen Hintergrund. Ein relevantes Bachelor und/oder Master Studium ist dennoch gern gesehen.</p></li><li><p>Mindestens 5 Jahre Erfahrung im Public Business, idealerw",
+   "remote": true,
+   "url": "https://www.arbeitnow.com/jobs/companies/natuvion-gmbh/remote-senior-sap-consultant-pscd-psm-berlin-282963",
+   "tags": [
+    "Public Business",
+    "Remote"
+   ],
+   "job_types": [
+    "Mid",
+    "fulltime permanent"
+   ],
+   "location": "Remote job",
+   "created_at": 1790886608
+  },
+  {
+   "slug": "software-engineer-price-comparison-portal-berlin-233707",
+   "company_name": "Preiswecker",
+   "title": "Software Engineer",
+   "description": "<p>Preiswecker is a price comparison portal in Germany, helping thousands of users find the best deals online every day.</p><p>We are looking for a Software Engineer to join our team and help build our price comparison platform.</p><p>We are currently offering the following position:</p><p>Software Engineer - Price comparison portal</p><h2>Responsibilities</h2><ul><li>Design, build, and maintain features for our price comparison platform</li><li>Develop and optimize data pipelines that process merchant price feeds</li><li>Work closely with Product and BI to ship reliable, scalable features</li><li>Write clean, well-tested code and participate in code reviews</li><li>Monitor and improve performance of our systems</li></ul><h2>Qualifications</h2><ul><li>completed degree in computer science or a related field, or equivalent experience</li><li>solid experience with backend development and relational databases</li><li>familiarity with modern software engineering practices (testing, CI/CD, version control)</li><li>analytical mindset and a strong sense of ownership</li><li>good German and English</li></ul><h2>Benefits</h2><ul><li>flexible working hours and remote work options</li><li>flat hierarchies and short decision-making paths</li><li>modern office in a central location</li><li>training budget</li><li>fair salary and growth opportunities</li></ul><p>We look forward to your application!</p><p><a href=\"https://www.preiswecker.com\"></a>Preiswecker</a>",
+   "remote": false,
+   "url": "https://www.preiswecker.com/",
+   "tags": [
+    "Software Engineering",
+    "E-Commerce"
+   ],
+   "job_types": [
+    "Full-time"
+   ],
+   "location": "Berlin",
+   "created_at": 1786516800
+  }
+ ],
+ "links": {
+  "next": null
+ },
+ "meta": {
+  "current_page": 1,
+  "terms": "This is a free public API for jobs, please do not abuse. I would appreciate linking back to the site. By using the API, you agree to the terms of service present on Arbeitnow.com"
+ }
+}

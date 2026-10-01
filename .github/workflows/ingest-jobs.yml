@@ -1,0 +1,52 @@
+name: Ingest jobs
+
+# Fetches every enabled job source into Supabase, then refreshes matches and
+# saved-search alerts for every user. Needs repository secrets SUPABASE_URL,
+# SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY; skipped until they exist.
+
+on:
+  schedule:
+    - cron: '17 * * * *' # hourly; Arbeitnow asks for no more than that
+  workflow_dispatch:
+
+concurrency:
+  group: ingest-jobs
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+    steps:
+      - name: Check configuration
+        id: config
+        run: |
+          if [ -z "$SUPABASE_SECRET_KEY" ] || [ -z "$SUPABASE_URL" ]; then
+            echo "Supabase secrets are not set; skipping ingestion."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.ready == 'true'
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.config.outputs.ready == 'true'
+        with:
+          enable-cache: true
+          cache-dependency-glob: llm/uv.lock
+
+      - name: Install
+        if: steps.config.outputs.ready == 'true'
+        run: uv sync --frozen
+        working-directory: llm
+
+      - name: Ingest and refresh matches
+        if: steps.config.outputs.ready == 'true'
+        run: uv run python -m scripts.ingest_jobs
+        working-directory: llm

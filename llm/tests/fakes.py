@@ -3,6 +3,7 @@ Test doubles: an in-memory stand-in for SupabaseRest and a sample profile.
 """
 
 import copy
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -57,39 +58,106 @@ SAMPLE_PROFILE: Dict[str, List[Dict[str, Any]]] = {
 }
 
 
+TABLES = [
+    "profiles", "experiences", "projects", "skills", "education", "achievements", "saved_answers", "usage_events",
+    "job_sources", "jobs", "job_matches", "saved_searches", "job_alerts", "resumes", "applications",
+    "application_events", "application_answers",
+]
+
+# Tables whose rows are owned by a user; other tables (jobs, sources) are shared.
+OWNED = {
+    "experiences", "projects", "skills", "education", "achievements", "saved_answers", "usage_events",
+    "job_matches", "saved_searches", "job_alerts", "resumes", "applications", "application_events",
+    "application_answers",
+}
+
+
+def _compare(actual: Any, op: str, expected: str) -> bool:
+    if actual is None:
+        return False
+    try:
+        a, e = float(actual), float(expected)
+    except (TypeError, ValueError):
+        a, e = str(actual), expected
+    return {"lt": a < e, "lte": a <= e, "gt": a > e, "gte": a >= e}[op]
+
+
+def _in_values(value: str) -> List[str]:
+    inner = value[4:-1]
+    return [v.strip().strip('"').replace('\\"', '"') for v in re.findall(r'"(?:[^"\\]|\\.)*"|[^,]+', inner)]
+
+
 class FakeRest:
     """Implements the subset of SupabaseRest the app uses, over in-memory tables."""
 
     def __init__(self, tables: Optional[Dict[str, List[Dict[str, Any]]]] = None):
         self.tables = copy.deepcopy(tables if tables is not None else SAMPLE_PROFILE)
-        for name in ["profiles", "experiences", "projects", "skills", "education", "achievements",
-                     "saved_answers", "usage_events"]:
+        for name in TABLES:
             self.tables.setdefault(name, [])
 
     @staticmethod
     def _matches(row: Dict[str, Any], params: Dict[str, str]) -> bool:
         for key, value in params.items():
-            if key in ("select", "order", "limit"):
+            if key in ("select", "order", "limit", "offset", "on_conflict"):
                 continue
-            if value.startswith("eq.") and str(row.get(key)) != value[3:]:
+            actual = row.get(key)
+            if value.startswith("eq.") and str(actual) != value[3:]:
                 return False
-            if value.startswith("in.("):
-                options = value[4:-1].split(",")
-                if str(row.get(key)) not in options:
+            if value.startswith("neq.") and str(actual) == value[4:]:
+                return False
+            if value.startswith("in.(") and str(actual) not in _in_values(value):
+                return False
+            if value.startswith("is."):
+                expected = {"true": True, "false": False, "null": None}[value[3:]]
+                if actual is not expected and actual != expected:
                     return False
+            op = value.split(".", 1)[0]
+            if op in ("lt", "lte", "gt", "gte") and not _compare(actual, op, value.split(".", 1)[1]):
+                return False
         return True
 
     async def select(self, table: str, params: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
         params = params or {}
         rows = [copy.deepcopy(r) for r in self.tables[table] if self._matches(r, params)]
+        offset = int(params.get("offset", 0))
+        rows = rows[offset:]
         if "limit" in params:
             rows = rows[: int(params["limit"])]
         return rows
 
+    async def select_all(self, table: str, params: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        return await self.select(table, {k: v for k, v in (params or {}).items() if k not in ("limit", "offset")})
+
+    def _new_row(self, table: str, row: Dict[str, Any]) -> Dict[str, Any]:
+        defaults: Dict[str, Any] = {"id": str(uuid.uuid4()), "created_at": "2026-10-02T00:00:00+00:00"}
+        if table in OWNED:
+            defaults["user_id"] = USER_ID
+        if table == "saved_answers":
+            defaults["use_count"] = 0
+        return {**defaults, **row}
+
     async def insert(self, table: str, row: Dict[str, Any]) -> Dict[str, Any]:
-        stored = {"id": str(uuid.uuid4()), "user_id": USER_ID, "use_count": 0, **row}
+        stored = self._new_row(table, row)
         self.tables[table].append(stored)
         return copy.deepcopy(stored)
+
+    async def upsert(self, table: str, rows: List[Dict[str, Any]], on_conflict: str,
+                     ignore_duplicates: bool = False, returning: bool = False) -> List[Dict[str, Any]]:
+        keys = [k.strip() for k in on_conflict.split(",")]
+        def key_of(r: Dict[str, Any]) -> tuple:
+            # question_key is a generated column: lower(btrim(question)).
+            return tuple(str(r.get("question", "")).strip().lower() if k == "question_key" else str(r.get(k)) for k in keys)
+
+        out = []
+        for row in rows:
+            existing = next((r for r in self.tables[table] if key_of(r) == key_of(row)), None)
+            if existing is None:
+                existing = self._new_row(table, row)
+                self.tables[table].append(existing)
+            elif not ignore_duplicates:
+                existing.update(row)
+            out.append(copy.deepcopy(existing))
+        return out if returning else []
 
     async def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> List[Dict[str, Any]]:
         updated = []
@@ -98,6 +166,9 @@ class FakeRest:
                 row.update(values)
                 updated.append(copy.deepcopy(row))
         return updated
+
+    async def delete(self, table: str, filters: Dict[str, str]) -> None:
+        self.tables[table] = [r for r in self.tables[table] if not self._matches(r, filters)]
 
     async def count(self, table: str, params: Optional[Dict[str, str]] = None) -> int:
         return len([r for r in self.tables[table] if self._matches(r, params or {})])

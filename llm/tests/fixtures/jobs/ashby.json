@@ -1,0 +1,103 @@
+{
+ "apiVersion": "1",
+ "jobs": [
+  {
+   "id": "d3bc1ced-3ce4-4086-a050-555055dbb1ff",
+   "title": "Senior / Staff Fullstack Engineer",
+   "department": "Product",
+   "team": "Engineering",
+   "employmentType": "FullTime",
+   "location": "Europe",
+   "shouldDisplayCompensationOnJobPostings": false,
+   "secondaryLocations": [],
+   "publishedAt": "2021-04-27T20:13:45.158+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Remote",
+   "address": {
+    "postalAddress": {
+     "addressCountry": "European Union"
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/linear/d3bc1ced-3ce4-4086-a050-555055dbb1ff",
+   "applyUrl": "https://jobs.ashbyhq.com/linear/d3bc1ced-3ce4-4086-a050-555055dbb1ff/application",
+   "descriptionHtml": "<p style=\"min-height:1.5em\">At Linear, we're building the product development system for teams and agents. AI is fundamentally changing how software gets built, and we’re shaping the tools this new era requires. </p><p style=\"min-height:1.5em\">Founded in 2019, Linear has become the platform of choice for more than 40,000 companies (including OpenAI, Coinbase, and Ramp) to plan, build, and ship their products. Today, our team is distributed across North America, Europe, and Australia, and we’re continuing to grow internationally. What unites us is relentless focus, fast execution, and a deep care for software craftsmanship. </p><p style=\"min-height:1.5em\">As a small team, we’re all generalists and constantly picking up new challenges. When it comes to code, we’re looking to work with experienced people who can pick a problem and solve it.  We use TypeScript and build scalable systems so we can continuously make progress on a solid foundation. We don’t expect you to have a background in everything we use, but we do expect strong JavaScript fundamentals and a background working with React and TypeScript.</p><p style=\"min-height:1.5em\"><strong>Location &amp; work mode</strong></p><p style=\"min-height:1.5em\"><em>Linear is a remote-first company, with optional co-working offices in San Francisco, New York, and London. This role is open to candidates based in North America and Europe. You can work from most timezones within these regions. We value deep focus and async collaboration, with intentional moments to connect in person through team off-sites, optional co-working, and occasional travel.</em></p><p style=\"min-height:1.5em\"><strong>What you'll do</strong></p><ul style=\"min-height:1.5em\"><li><p style=\"min-height:1.5em\">Build new user-facing features with everything from database models to GraphQL resolvers and UI components</p></li><li><p style=\"min-height:1.5em\">Optimize our data synchronization stack by applying better serialization protocols</p></li><li><p style=\"m",
+   "descriptionPlain": "At Linear, we're building the product development system for teams and agents. AI is fundamentally changing how software gets built, and we’re shaping the tools this new era requires. \n\nFounded in 2019, Linear has become the platform of choice for more than 40,000 companies (including OpenAI, Coinbase, and Ramp) to plan, build, and ship their products. Today, our team is distributed across North America, Europe, and Australia, and we’re continuing to grow internationally. What unites us is relentless focus, fast execution, and a deep care for software craftsmanship. \n\nAs a small team, we’re all generalists and constantly picking up new challenges. When it comes to code, we’re looking to work with experienced people who can pick a problem and solve it.  We use TypeScript and build scalable systems so we can continuously make progress on a solid foundation. We don’t expect you to have a background in everything we use, but we do expect strong JavaScript fundamentals and a background working with React and TypeScript.\n\nLocation & work mode\n\nLinear is a remote-first company, with optional co-working offices in San Francisco, New York, and London. This role is open to candidates based in North America and Europe. You can work from most timezones within these regions. We value deep focus and async collaboration, with intentional moments to connect in person through team off-sites, optional co-working, and occasional travel.\n\nWhat you'll do\n\n - Build new user-facing features with everything from database models to GraphQL resolvers and UI components\n\n - Optimize our data synchronization stack by applying better serialization protocols\n\n - Add real-time collaborative editing to our content editor\n\n - Improve performance by profiling and tweaking virtualized list rendering\n\n - Add analytics, monitoring, and alerts to our service so that we can better respond to operational incidents\n\n - Open-source any non-trivial innovations that come out of our work on the product\n\n - Redefine best-in-class software development processes so that we can build a purpose-built product.\n\nWhat we're looking for\n\n - 5+ years of experience building customer-facing products at a high-quality software company\n\n - Strong React and TypeScript fundamentals, with experience across the full stack (Browser technologies, Node, GraphQL, PostgreSQL)\n\n - Track record of driving complex, end-to-end features (not just incremental improvements and refactors) with visible impact on the product\n\n - Prod",
+   "compensation": {
+    "compensationTierSummary": null,
+    "scrapeableCompensationSalarySummary": null,
+    "compensationTiers": [],
+    "summaryComponents": []
+   }
+  },
+  {
+   "id": "68a397e7-8a1a-4566-ae41-e8c61dd6ed93",
+   "title": "Product Manager - Strategic Partner Integrations (Bay Area based)",
+   "department": "Product",
+   "team": "Product",
+   "employmentType": "FullTime",
+   "location": "Remote, Bay Area, CA",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [],
+   "publishedAt": "2026-08-21T11:40:44.050+00:00",
+   "isListed": true,
+   "isRemote": null,
+   "workplaceType": null,
+   "address": {
+    "postalAddress": {}
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/supabase/68a397e7-8a1a-4566-ae41-e8c61dd6ed93",
+   "applyUrl": "https://jobs.ashbyhq.com/supabase/68a397e7-8a1a-4566-ae41-e8c61dd6ed93/application",
+   "descriptionHtml": "<h2><strong>About Supabase</strong></h2><p style=\"min-height:1.5em\">Supabase is the Postgres development platform, built by developers for developers. We provide a complete backend solution including Database, Auth, Storage, Edge Functions, Realtime, and Vector Search. All services are deeply integrated and designed for growth.</p><p style=\"min-height:1.5em\"></p><p style=\"min-height:1.5em\">More than 10 million developers build on it, from solo founders shipping over a weekend to teams and builders via Vercel, Lovable and Stripe, and every one of them reaches Supabase through a surface: an API, an auth flow, an SDK, or a Partner's product with Supabase integrated.</p><p style=\"min-height:1.5em\">The current and next wave of software leans on those surfaces harder than any before it.</p><p style=\"min-height:1.5em\">Agents now act on behalf of developers and end users, authentication has to work machine-to-machine as seamlessly as it once worked human-to-human, and independent platforms increasingly need to authenticate, delegate, and coordinate with each other without a person in the loop. For a platform built on Postgres with Auth, Compute, Storage and generated Data APIs at its core, the surfaces where Supabase meets Partners and their systems are some of the most important avenues that we own - this role owns these surfaces.</p><p style=\"min-height:1.5em\">This role owns a focused portfolio of those Partners. Not the platform as a whole, but a small number of strategic Partners",
+   "descriptionPlain": "ABOUT SUPABASE\n\nSupabase is the Postgres development platform, built by developers for developers. We provide a complete backend solution including Database, Auth, Storage, Edge Functions, Realtime, and Vector Search. All services are deeply integrated and designed for growth.\n\n\n\nMore than 10 million developers build on it, from solo founders shipping over a weekend to teams and builders via Vercel, Lovable and Stripe, and every one of them reaches Supabase through a surface: an API, an auth flow, an SDK, or a Partner's product with Supabase integrated.\n\nThe current and next wave of software leans on those surfaces harder than any before it.\n\nAgents now act on behalf of developers and end users, authentication has to work machine-to-machine as seamlessly as it once worked human-to-human, and independent platforms increasingly need to authenticate, delegate, and coordinate with each other without a person in the loop. For a platform built on Postgres with Auth, Compute, Storage and generated Data APIs at its core, the surfaces where Supabase meets Partners and their systems are some of the most important avenues that we own - this role owns these surfaces.\n\nThis role owns a focused portfolio of those Partners. Not the platform as a whole, but a small number of strategic Partners whose integrations you are accountable for making excellent. Success here is a product measure, not a commercial one: the integration is high quality, the developers who use it are well served, and it keeps improving. That means living close to those developers, obsessing over where the integration fails them, and turning what you learn into the roadmap. It is a product and engineering job first, because the best integrations are won in architecture reviews and pull requests, not in meetings.\n\n\n\n\nWHAT YOU'LL BE RESPONSIBLE FOR\n\n - Owning the success of a focused portfolio of strategic Partners, a small number of them rather than the platform as a whole. You are accountable for the outcome of each partnership: a high-quality integration that the developers who use it reach for, and that keeps getting better.\n\n - Living close to the developers who use these integrations. Talking to them constantly, finding where each integration breaks down in real use, and building the roadmap from that signal rather than from a Partner's wishlist.\n\n - Deciding the right integration model for each Partner: what Supabase owns, what the Partner owns, what you build jointly, and what stays open and Part",
+   "compensation": {
+    "compensationTierSummary": "$200K – $270K • Offers Equity",
+    "scrapeableCompensationSalarySummary": "$200K - $270K",
+    "compensationTiers": [
+     {
+      "id": "98ae546c-9fe8-4b15-9001-c81009cab0f5",
+      "tierSummary": "Actual salary will be based on job-related skills and experience. $200K – $270K • Offers Equity",
+      "title": null,
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "71bc8de0-2c1b-4449-868b-b3ac40bd29a8",
+        "summary": "Actual salary will be based on job-related skills and experience. $200K – $270K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "USD",
+        "minValue": 200000,
+        "maxValue": 270000
+       },
+       {
+        "id": "d7d5866f-8ea5-4f13-b96d-f449d01e3661",
+        "summary": "Offers Equity",
+        "compensationType": "EquityPercentage",
+        "interval": "NONE",
+        "currencyCode": null,
+        "minValue": null,
+        "maxValue": null
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "USD",
+      "minValue": 200000,
+      "maxValue": 270000
+     },
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": null
+     }
+    ]
+   }
+  }
+ ]
+}

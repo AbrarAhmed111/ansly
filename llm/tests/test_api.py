@@ -4,6 +4,7 @@ Supabase and the LLM gateway are replaced with in-memory fakes.
 """
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -136,7 +137,8 @@ async def test_per_minute_rate_limit(client):
 
 @pytest.mark.asyncio
 async def test_daily_limit(client, rest):
-    rest.tables["usage_events"] = [{"id": i, "kind": "generate"} for i in range(5)]
+    now = datetime.now(timezone.utc).isoformat()
+    rest.tables["usage_events"] = [{"id": i, "kind": "generate", "created_at": now} for i in range(5)]
     with patch("src.app.api.routes.answers.get_settings") as settings, mock_llm(ANSWERED):
         settings.return_value.RATE_LIMIT_PER_MINUTE = 100
         settings.return_value.DAILY_GENERATION_LIMIT = 5

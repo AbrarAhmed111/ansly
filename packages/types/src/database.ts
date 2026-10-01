@@ -121,6 +121,8 @@ export type UsageEventKind =
   | 'fill'
   | 'save_answer'
   | 'use_saved_answer'
+  | 'prepare'
+  | 'autofill'
 
 /** Everything that makes up a user's profile. */
 export interface FullProfile {

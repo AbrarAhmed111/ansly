@@ -30,6 +30,10 @@ ALIASES = {
     "amazonwebservices": "aws", "googlecloud": "gcp", "googlecloudplatform": "gcp", "azurecloud": "azure",
     "largelanguagemodels": "llm", "llms": "llm", "artificialintelligence": "ai", "machinelearning": "ml",
     "tailwindcss": "tailwind", "mongo": "mongodb", "cicd": "cicd", "ci-cd": "cicd",
+    "express": "expressjs", "nuxtjs": "nuxt", "rubyonrails": "rails", "sklearn": "scikitlearn",
+    "net": "dotnet", "aspnet": "dotnet", "aspnetcore": "dotnet", "huggingfacetransformers": "huggingface",
+    "postgressql": "postgresql", "gcloud": "gcp", "golanguage": "go", "reactjsnative": "reactnative",
+    "generativeai": "genai", "largelanguagemodel": "llm", "naturallanguageprocessing": "nlp",
 }
 # Generic trailing words: "CI/CD pipelines" is satisfied by "CI/CD".
 GENERIC_SUFFIXES = {"pipelines", "pipeline", "development", "apps", "applications", "services", "systems",
@@ -60,15 +64,20 @@ class ProfileContext:
     is_empty: bool = True
 
     def has_skill(self, skill: str) -> bool:
-        canonical = canonicalize(skill)
-        if canonical in self.corpus_terms:
+        return term_in_corpus(skill, self.corpus_terms)
+
+
+def term_in_corpus(skill: str, corpus_terms: Set[str]) -> bool:
+    """Whether a skill appears in a set of canonical profile terms ("CI/CD pipelines" counts as "CI/CD")."""
+    canonical = canonicalize(skill)
+    if canonical in corpus_terms:
+        return True
+    words = skill.lower().split()
+    while words and words[-1] in GENERIC_SUFFIXES:
+        words = words[:-1]
+        if words and canonicalize(" ".join(words)) in corpus_terms:
             return True
-        words = skill.lower().split()
-        while words and words[-1] in GENERIC_SUFFIXES:
-            words = words[:-1]
-            if words and canonicalize(" ".join(words)) in self.corpus_terms:
-                return True
-        return False
+    return False
 
 
 def _date_range(row: Dict[str, Any]) -> str:
@@ -90,7 +99,7 @@ def _lines(label: str, value: Any) -> List[str]:
     return [f"  {label}: {value}"]
 
 
-def _term_ngrams(text: str) -> Set[str]:
+def term_ngrams(text: str) -> Set[str]:
     tokens = re.findall(r"[a-z0-9+#][a-z0-9+#./\-]*", text.lower())
     tokens = [t.rstrip(".") for t in tokens]
     terms: Set[str] = set()
@@ -106,7 +115,7 @@ def _term_ngrams(text: str) -> Set[str]:
 
 def _mentions(row: Dict[str, Any], skills: List[str]) -> bool:
     text = " ".join(str(v) for v in row.values() if isinstance(v, (str, list)))
-    terms = _term_ngrams(text)
+    terms = term_ngrams(text)
     return any(canonicalize(s) in terms for s in skills)
 
 
@@ -114,7 +123,6 @@ def build_context(data: Dict[str, Any], analysis: QuestionAnalysis) -> ProfileCo
     """Formats fetched rows into prompt text. `data` maps section -> rows, plus "profile" -> row."""
     ctx = ProfileContext(text="")
     out: List[str] = []
-    corpus: List[str] = []
     profile = data.get("profile") or {}
     ctx.profile = profile
 
@@ -139,7 +147,6 @@ def build_context(data: Dict[str, Any], analysis: QuestionAnalysis) -> ProfileCo
                 if isinstance(value, bool):
                     value = "yes" if value else "no"
                 out += _lines(label, value)
-        corpus += [profile.get("headline") or "", profile.get("summary") or ""]
 
     prefixes = {"experiences": "E", "projects": "P", "skills": "S", "education": "ED", "achievements": "A"}
     for section in analysis.sections:
@@ -191,10 +198,7 @@ def build_context(data: Dict[str, Any], analysis: QuestionAnalysis) -> ProfileCo
 
     ctx.text = "\n".join(out)
     # Skill presence looks at every fetched section, not only the ones shown to the model.
-    for section in SECTION_LIMITS:
-        for r in data.get(section) or []:
-            corpus.append(" ".join(str(v) for v in r.values() if isinstance(v, (str, list))))
-    ctx.corpus_terms = _term_ngrams(" ".join(str(c) for c in corpus))
+    ctx.corpus_terms = profile_terms(data)
     ctx.is_empty = not any(data.get(s) for s in SECTION_LIMITS) and not (profile.get("summary") or "").strip()
     return ctx
 
@@ -212,6 +216,17 @@ async def fetch_profile_data(rest: SupabaseRest, analysis: QuestionAnalysis) -> 
             section, {"order": SECTION_ORDER[section], "limit": str(max(SECTION_LIMITS[section] * 3, 20))}
         )
     return data
+
+
+def profile_terms(data: Dict[str, Any]) -> Set[str]:
+    """Canonical terms mentioned anywhere in a profile's sections and summary."""
+    corpus: List[str] = []
+    profile = data.get("profile") or {}
+    corpus += [profile.get("headline") or "", profile.get("summary") or ""]
+    for section in SECTION_LIMITS:
+        for r in data.get(section) or []:
+            corpus.append(" ".join(str(v) for v in r.values() if isinstance(v, (str, list))))
+    return term_ngrams(" ".join(corpus))
 
 
 def missing_skills(ctx: ProfileContext, skills: List[str]) -> List[str]:

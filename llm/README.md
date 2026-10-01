@@ -32,6 +32,9 @@ All `/api/v1` routes need `Authorization: Bearer <Supabase access token>`.
 | `POST` | `/api/v1/saved-answers` | Save a preferred answer |
 | `POST` | `/api/v1/saved-answers/{id}/use` | Count a reuse |
 | `POST` | `/api/v1/events` | Usage event (`fill`, `use_saved_answer`) — no text |
+| `POST` | `/api/v1/jobs/refresh-matches` | Score recent jobs against your profile, create saved-search alerts |
+| `POST` | `/api/v1/saved-searches/parse` | Preview the filters for a natural-language search |
+| `POST` | `/api/v1/saved-searches` | Save a search (`query`, optional edited `filters`) |
 
 Answer response:
 
@@ -74,6 +77,32 @@ the provider's `*_FALLBACK_MODEL`. On failure it moves to the next deployment:
 OpenAI-compatible providers (Gemini, Groq, OpenAI, Mistral, Cerebras, Cohere,
 OpenRouter) use the `openai` SDK; Anthropic uses the `anthropic` SDK. To add a
 provider, add a `ProviderSpec` in `gateway/providers.py` and a `*_MODEL` setting.
+
+## Jobs (V2)
+
+`src/app/jobs/` finds and ranks jobs without scraping and without a model:
+
+```text
+job_sources ──► adapters (Greenhouse, Lever, Ashby boards; Arbeitnow feed)
+            ──► normalize + extract requirements (skills, years, workplace, salary, seniority)
+            ──► dedupe (company|title|place; other sources recorded in also_listed_on)
+            ──► jobs ──► matching (skills, role, experience, workplace, location → tier + reasons)
+                     ──► job_matches, job_alerts (new jobs passing a saved search)
+```
+
+- **Sources** are rows in `job_sources`, each with its terms recorded. Only
+  employer-published job board APIs and feeds whose terms allow reuse are
+  used. LinkedIn and Indeed are not sources. Remotive was considered and left
+  out: its terms forbid showing its jobs behind a sign-up.
+- **Ingestion** runs in a separate worker with `SUPABASE_SECRET_KEY`:
+  `uv run python -m scripts.ingest_jobs` (`--loop`, `--only greenhouse`,
+  `--no-match`). `.github/workflows/ingest-jobs.yml` runs it hourly. The API
+  server never has the secret key.
+- **Matching** is explainable: each match stores matched and missing skills,
+  experience fit, role, workplace and location fit, and reasons in plain
+  English. Tiers: strong / good / potential / low. pgvector is not needed.
+- **Saved searches** are parsed into filters the user sees and can edit
+  (roles, skills, workplace, locations, years, salary, employment type).
 
 ## Limits
 

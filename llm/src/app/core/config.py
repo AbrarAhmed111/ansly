@@ -31,6 +31,18 @@ class Settings(BaseSettings):
     SUPABASE_PUBLISHABLE_KEY: str = ""
     # Only needed if the project still signs user JWTs with the legacy HS256 secret.
     SUPABASE_JWT_SECRET: str = ""
+    # Secret (service-role) key. Only the ingestion worker reads it; leave it
+    # unset on the API server, which always acts as the signed-in user.
+    SUPABASE_SECRET_KEY: str = ""
+
+    # Job ingestion worker (scripts/ingest_jobs.py)
+    INGEST_INTERVAL_MINUTES: int = 60
+    INGEST_MAX_PAGES: int = 3
+    # Jobs from paginated feeds that haven't been seen for this long are closed.
+    INGEST_STALE_DAYS: int = 14
+
+    # Matching: only jobs first seen within this window are scored.
+    MATCH_WINDOW_DAYS: int = 45
 
     # Answer generation
     LLM_TEMPERATURE: float = 0.4
