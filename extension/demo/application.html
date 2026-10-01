@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Application for Product Engineer at Example AI</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #111; }
+    .field { margin: 18px 0; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+    textarea { min-height: 120px; }
+    .rich { min-height: 100px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Product Engineer — Example AI</h1>
+  <p>Demo form for trying Ansly locally. ✨ should appear only on the open-ended questions.</p>
+
+  <form onsubmit="event.preventDefault(); alert('Demo only — nothing is submitted.')">
+    <div class="field"><label for="first">First name</label><input id="first" autocomplete="given-name"></div>
+    <div class="field"><label for="email">Email</label><input id="email" type="email"></div>
+    <div class="field"><label for="phone">Phone</label><input id="phone" type="tel"></div>
+    <div class="field"><label for="linkedin">LinkedIn profile</label><input id="linkedin"></div>
+
+    <div class="field"><label for="why">Why are you interested in this role?</label><textarea id="why"></textarea></div>
+    <div class="field"><label for="project">Tell us about a project you're proud of.</label><textarea id="project" maxlength="1000"></textarea></div>
+    <div class="field"><label for="k8s">Do you have experience with Kubernetes?</label><input id="k8s"></div>
+    <div class="field"><label for="notice">What is your notice period?</label><textarea id="notice"></textarea></div>
+
+    <div class="field">
+      <div>Anything else you'd like us to know? (rich text editor)</div>
+      <div class="rich" contenteditable="true"></div>
+    </div>
+
+    <div id="react-root"></div>
+    <button type="submit">Submit application</button>
+  </form>
+
+  <!-- A React-controlled field, to check that filling updates React state. -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script>
+    if (window.React) {
+      const e = React.createElement
+      function ReactField() {
+        const [value, setValue] = React.useState('')
+        return e('div', { className: 'field' },
+          e('label', { htmlFor: 'react-q' }, 'Describe your experience with React. (React-controlled field)'),
+          e('textarea', { id: 'react-q', value, onChange: (ev) => setValue(ev.target.value) }),
+          e('small', null, `React state: ${value.length} characters`))
+      }
+      ReactDOM.createRoot(document.getElementById('react-root')).render(e(ReactField))
+    }
+  </script>
+</body>
+</html>

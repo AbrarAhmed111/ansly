@@ -1,0 +1,9 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx"
+  },
+  // vitest.config.ts mixes Vitest's and WXT's Vite versions; Vitest checks it itself.
+  "exclude": ["**/node_modules", ".output", "vitest.config.ts"]
+}
