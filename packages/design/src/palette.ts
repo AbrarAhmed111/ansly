@@ -1,0 +1,122 @@
+/**
+ * Raw colour scales. Components never use these directly; they use the
+ * semantic theme tokens in ./themes.ts. Scales are for illustrations and
+ * brand gradients, where a specific hue is the point.
+ */
+
+export const palette = {
+  /** Brand indigo-violet. 500 is the light-theme accent, 400 the dark-theme accent. */
+  brand: {
+    50: '#f0efff',
+    100: '#e2e0ff',
+    200: '#c9c5ff',
+    300: '#a7a0ff',
+    400: '#7c74ff',
+    500: '#635bff',
+    600: '#5046e6',
+    700: '#3f35c4',
+    800: '#33299c',
+    900: '#29237a',
+    950: '#211e42',
+  },
+  /** Purple, the middle stop of brand gradients. */
+  orchid: {
+    50: '#faf5ff',
+    100: '#f3e8ff',
+    200: '#e6d0ff',
+    300: '#cfa6ff',
+    400: '#b06cff',
+    500: '#9b4dff',
+    600: '#7c3aed',
+    700: '#6d28d9',
+    800: '#5b21b6',
+    900: '#4c1d95',
+    950: '#2e1065',
+  },
+  /** Magenta, the warm end of deep brand gradients. */
+  magenta: {
+    50: '#fdf4ff',
+    100: '#fae8ff',
+    200: '#f5d0fe',
+    300: '#f0abfc',
+    400: '#e879f9',
+    500: '#d946ef',
+    600: '#c026d3',
+    700: '#a21caf',
+    800: '#86198f',
+    900: '#701a75',
+    950: '#4a044e',
+  },
+  /** Pink, the warm end of light brand gradients. */
+  blush: {
+    50: '#fff1f7',
+    100: '#ffe4ef',
+    200: '#ffc9df',
+    300: '#ffa3cc',
+    400: '#ff7ab6',
+    500: '#f4569b',
+    600: '#e0367c',
+    700: '#bd2463',
+    800: '#9c2153',
+    900: '#831f49',
+    950: '#500b28',
+  },
+  /** Cool grey with a faint violet cast, matching the brand. */
+  neutral: {
+    0: '#ffffff',
+    25: '#fafafb',
+    50: '#f4f4f6',
+    100: '#e6e6ea',
+    200: '#d4d4da',
+    300: '#a0a0ad',
+    400: '#868694',
+    500: '#70707e',
+    600: '#686876',
+    700: '#3a3a44',
+    800: '#282830',
+    850: '#1d1d23',
+    900: '#131317',
+    950: '#0a0a0d',
+  },
+  green: {
+    50: '#ecfdf3',
+    100: '#d3f8e2',
+    200: '#a8efc6',
+    300: '#74e1a6',
+    400: '#4ad284',
+    500: '#22b866',
+    600: '#169652',
+    700: '#157644',
+    800: '#155d39',
+    900: '#134d31',
+    950: '#072b1a',
+  },
+  amber: {
+    50: '#fff8eb',
+    100: '#feecc7',
+    200: '#fdd78a',
+    300: '#fcc04d',
+    400: '#f5b43c',
+    500: '#e08e0b',
+    600: '#c46e06',
+    700: '#a15009',
+    800: '#833f0e',
+    900: '#6c340f',
+    950: '#33250a',
+  },
+  red: {
+    50: '#fef2f2',
+    100: '#fee2e3',
+    200: '#fecacc',
+    300: '#fca5a8',
+    400: '#fa696e',
+    500: '#f03e46',
+    600: '#dc2d37',
+    700: '#b91f29',
+    800: '#991d26',
+    900: '#7f1e25',
+    950: '#3a1214',
+  },
+} as const
+
+export type PaletteName = keyof typeof palette

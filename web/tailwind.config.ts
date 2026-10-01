@@ -1,30 +1,27 @@
+import { fontSize, gradients, light, dark, linearGradient, palette, themeVars, type ThemeToken } from '@ansly/design'
 import type { Config } from 'tailwindcss'
+import plugin from 'tailwindcss/plugin'
 
-const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`
+// Semantic tokens resolve to CSS variables so they switch with the theme and keep opacity modifiers.
+const semantic = Object.fromEntries(
+  (Object.keys(light) as ThemeToken[]).map((name) => [name, `rgb(var(--${name}) / <alpha-value>)`]),
+)
 
 const config: Config = {
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
+    // Only the type scale from @ansly/design: no text-sm, text-[13px], etc.
+    fontSize: fontSize as unknown as NonNullable<Config['theme']>['fontSize'],
     extend: {
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
-      colors: {
-        bg: token('bg'),
-        surface: token('surface'),
-        'surface-muted': token('surface-muted'),
-        border: token('border'),
-        'border-strong': token('border-strong'),
-        fg: token('fg'),
-        muted: token('muted'),
-        subtle: token('subtle'),
-        accent: token('accent'),
-        'accent-fg': token('accent-fg'),
-        'accent-soft': token('accent-soft'),
-        success: token('success'),
-        warning: token('warning'),
-        danger: token('danger'),
+      colors: { ...semantic, ...palette },
+      backgroundImage: {
+        'gradient-brand': linearGradient(gradients.brand),
+        'gradient-deep': linearGradient(gradients.deep, '135deg'),
+        'gradient-vivid': linearGradient(gradients.vivid, '135deg'),
       },
       boxShadow: {
         xs: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
@@ -49,7 +46,18 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // Theme variables: light by default, dark from the OS unless the user chose light, or when forced.
+    plugin(({ addBase }) => {
+      addBase({
+        ':root': { colorScheme: 'light', ...themeVars(light) },
+        '@media (prefers-color-scheme: dark)': {
+          ":root:not([data-theme='light'])": { colorScheme: 'dark', ...themeVars(dark) },
+        },
+        ":root[data-theme='dark']": { colorScheme: 'dark', ...themeVars(dark) },
+      })
+    }),
+  ],
 }
 
 export default config

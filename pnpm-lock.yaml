@@ -17,6 +17,9 @@ importers:
 
   extension:
     dependencies:
+      '@ansly/design':
+        specifier: workspace:*
+        version: link:../packages/design
       '@ansly/types':
         specifier: workspace:*
         version: link:../packages/types
@@ -54,6 +57,12 @@ importers:
 
   llm: {}
 
+  packages/design:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+
   packages/types:
     devDependencies:
       typescript:
@@ -68,6 +77,9 @@ importers:
 
   web:
     dependencies:
+      '@ansly/design':
+        specifier: workspace:*
+        version: link:../packages/design
       '@ansly/types':
         specifier: workspace:*
         version: link:../packages/types

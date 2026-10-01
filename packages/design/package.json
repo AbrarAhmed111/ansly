@@ -1,0 +1,17 @@
+{
+  "name": "@ansly/design",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ansly design tokens: colour palette, light/dark themes and typography",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}
