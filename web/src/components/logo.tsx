@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import Image from 'next/image'
-import smallLogoLight from '@/assets/img/small logo light.png'
+import smallLogoLight from '@/assets/img/small logo.png'
 
 export function LogoMark({ className }: { className?: string }) {
   return (
@@ -10,7 +10,7 @@ export function LogoMark({ className }: { className?: string }) {
       width={90}
       height={108}
       className={clsx(
-        'h-7 w-7 shrink-0 rounded-lg object-cover shadow-[0_1px_2px_rgb(0_0_0/0.16)]',
+        'h-6 w-6 shrink-0 rounded-lg object-cover shadow-[0_1px_2px_rgb(0_0_0/0.16)]',
         className,
       )}
       aria-hidden
