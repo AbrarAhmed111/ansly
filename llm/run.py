@@ -1,5 +1,5 @@
 """
-Server entrypoint for LLM RAG Starter.
+Server entrypoint for the Ansly answer engine.
 Runs FastAPI with Uvicorn in development mode with hot-reloading.
 """
 

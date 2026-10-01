@@ -88,10 +88,3 @@ uv run ruff check .
 uv run python -m scripts.check_providers      # live: one tiny call per deployment
 uv run python -m scripts.smoke_answers        # live: real answers for a sample profile
 ```
-
-## Leftover starter code
-
-`src/app/rag/`, `src/app/intent/`, `src/app/services/`, `src/app/schemas/chat.py`,
-`src/app/schemas/rag.py`, `knowledge/`, `tests/test_rag.py` and
-`tests/test_intent_detector.py` belong to the original chat/RAG starter. Nothing
-imports them anymore; they can be deleted.
