@@ -426,31 +426,33 @@ Next.js
 ```text
 ansly/
 │
-├── apps/
-│   ├── extension/
-│   │   ├── src/
-│   │   │   ├── content/
-│   │   │   ├── background/
-│   │   │   ├── components/
-│   │   │   └── lib/
-│   │   └── wxt.config.ts
-│   │
-│   └── web/
+├── web/                    Next.js app — profile, settings, auth
+│   └── src/
 │       ├── app/
 │       ├── components/
-│       └── lib/
+│       ├── lib/
+│       ├── store/
+│       └── utils/
 │
-├── services/
-│   └── llm/
-│       ├── app/
-│       │   ├── api/
-│       │   ├── services/
-│       │   ├── models/
-│       │   └── core/
-│       └── requirements.txt
+├── extension/              WXT browser extension (Manifest V3)
+│   ├── src/
+│   │   ├── entrypoints/    background, content script, popup
+│   │   ├── components/
+│   │   └── lib/
+│   └── wxt.config.ts
+│
+├── llm/                    FastAPI service — question analysis, retrieval, generation
+│   ├── src/app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── gateway/
+│   │   ├── intent/
+│   │   └── services/
+│   ├── tests/
+│   └── pyproject.toml      managed with uv
 │
 ├── packages/
-│   ├── types/
+│   ├── types/              shared TypeScript types
 │   └── ui/
 │
 ├── supabase/
@@ -460,6 +462,8 @@ ansly/
 ├── pnpm-workspace.yaml
 └── turbo.json
 ```
+
+`web/` and `llm/` come from the original Next.js + FastAPI starter and stay at the repo root. The starter's RAG pipeline (`llm/src/app/rag/`, `llm/knowledge/`) is outside V1 scope and is replaced by structured profile retrieval in Phase 4.
 
 ## 17. Technology Stack
 

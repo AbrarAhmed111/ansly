@@ -36,16 +36,15 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-
-- [ ] Configure pnpm workspaces
-- [ ] Configure Turborepo
-- [ ] Scaffold Next.js app 
-- [ ] Scaffold WXT extension (`extension`, Manifest V3)
-- [ ] Scaffold FastAPI service 
-- [ ] Create Supabase project and migrations folder
-- [ ] Set up shared TypeScript types (`packages/types`)
-- [ ] Configure environment variables per app
-- [ ] Basic CI (lint, type-check, build)
+- [x] Configure pnpm workspaces (`web`, `extension`, `llm`, `packages/*`)
+- [x] Configure Turborepo
+- [x] Adapt existing Next.js app (`web`) to the workspace
+- [x] Scaffold WXT extension (`extension`, Manifest V3)
+- [x] Adapt existing FastAPI service (`llm`) to the workspace
+- [x] Create Supabase project and migrations folder (`supabase/migrations`)
+- [x] Set up shared TypeScript types (`packages/types`)
+- [x] Configure environment variables per app
+- [x] Basic CI (lint, type-check, build)
 
 **Exit criterion:** All three apps run locally from the monorepo and connect to Supabase.
 
@@ -53,15 +52,15 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-- [ ] Scan `input`, `textarea`, `select`, `[contenteditable]`
-- [ ] Extract question text from label, placeholder, `aria-label`, `aria-labelledby`, `name`, `id`
-- [ ] Find surrounding question text (parent container, preceding text, headings)
-- [ ] Classify fields: skip name, email, phone, address, password, date, number
-- [ ] Flag long-answer fields ("Why…", "Describe…", "Tell us…", "Explain…", "How…")
-- [ ] MutationObserver for dynamically loaded fields
-- [ ] Shadow DOM root for injected UI
-- [ ] Inject ✨ button beside eligible fields
-- [ ] Keep detection generic — no per-site branching
+- [x] Scan `input`, `textarea`, `select`, `[contenteditable]`
+- [x] Extract question text from label, placeholder, `aria-label`, `aria-labelledby`, `name`, `id`
+- [x] Find surrounding question text (parent container, preceding text, headings)
+- [x] Classify fields: skip name, email, phone, address, password, date, number
+- [x] Flag long-answer fields ("Why…", "Describe…", "Tell us…", "Explain…", "How…")
+- [x] MutationObserver for dynamically loaded fields
+- [x] Shadow DOM root for injected UI
+- [x] Inject ✨ button beside eligible fields
+- [x] Keep detection generic — no per-site branching
 
 **Exit criterion:** On LinkedIn, Indeed, Greenhouse and Lever forms, ✨ appears on open-ended questions and not on basic personal fields. No AI yet.
 
@@ -69,12 +68,12 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-- [ ] Supabase Auth (web login)
-- [ ] Tables: `profiles`, `experiences`, `projects`, `skills`, `education`, `achievements`, `saved_answers`
-- [ ] Row-level security policies
-- [ ] CRUD screens for each profile section
-- [ ] Profile completeness indicator on dashboard
-- [ ] Seed own profile (WebWhiz, Nizam LLC, OnTask, ToPrep, Growducts, core skills)
+- [x] Supabase Auth (web login)
+- [x] Tables: `profiles`, `experiences`, `projects`, `skills`, `education`, `achievements`, `saved_answers`
+- [x] Row-level security policies
+- [x] CRUD screens for each profile section
+- [x] Profile completeness indicator on dashboard
+- [ ] Seed own profile (WebWhiz, Nizam LLC, OnTask, ToPrep, Growducts, core skills) — template in `supabase/seed/profile.seed.json`; needs your real details, then import from Settings
 
 **Exit criterion:** A logged-in user can build and edit a complete structured profile.
 
@@ -82,15 +81,15 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-- [ ] Validate Supabase JWT in FastAPI
-- [ ] Question classification (category + intent)
-- [ ] Structured profile retrieval by category (no embeddings)
-- [ ] System prompt with strict grounding rules
-- [ ] LLM provider integration (OpenAI / Anthropic / Gemini)
-- [ ] Structured output: `status`, `answer`, `confidence`, `usedSources`
-- [ ] `insufficient_information` handling — never invent facts
-- [ ] Error handling and logging
-- [ ] Endpoints: `GET /health`, `POST /api/v1/answers/generate`, `POST /api/v1/answers/regenerate`
+- [x] Validate Supabase JWT in FastAPI
+- [x] Question classification (category + intent)
+- [x] Structured profile retrieval by category (no embeddings)
+- [x] System prompt with strict grounding rules
+- [x] LLM provider integration (OpenAI / Anthropic / Gemini)
+- [x] Structured output: `status`, `answer`, `confidence`, `usedSources`
+- [x] `insufficient_information` handling — never invent facts
+- [x] Error handling and logging
+- [x] Endpoints: `GET /health`, `POST /api/v1/answers/generate`, `POST /api/v1/answers/regenerate`
 
 **Exit criterion:** Posting a question returns a first-person, grounded answer; questions outside the profile (e.g. Kubernetes) return `insufficient_information`.
 
@@ -98,13 +97,13 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-- [ ] Extension authentication (session handoff from web app)
-- [ ] API client via background service worker
-- [ ] Send question + minimal context (never full page HTML)
-- [ ] Loading state in popover
-- [ ] Answer popover UI
-- [ ] Insufficient-information state with "Add information" link
-- [ ] Error states and retry
+- [x] Extension authentication (session handoff from web app)
+- [x] API client via background service worker
+- [x] Send question + minimal context (never full page HTML)
+- [x] Loading state in popover
+- [x] Answer popover UI
+- [x] Insufficient-information state with "Add information" link
+- [x] Error states and retry
 
 **Exit criterion:** Clicking ✨ on a real application shows a generated answer in the popover.
 
@@ -112,12 +111,12 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-- [ ] Editable answer before filling
-- [ ] Regenerate
-- [ ] Fill `textarea` and text inputs
-- [ ] Fill React-controlled fields (native setter + `input`/`change` events)
-- [ ] Fill `contenteditable` fields
-- [ ] Verify the field contains the answer after filling
+- [x] Editable answer before filling
+- [x] Regenerate
+- [x] Fill `textarea` and text inputs
+- [x] Fill React-controlled fields (native setter + `input`/`change` events)
+- [x] Fill `contenteditable` fields
+- [x] Verify the field contains the answer after filling
 
 **Exit criterion — MVP:** The user can open a real LinkedIn/Indeed application, click ✨, get a truthful personalized answer, edit it, and fill the field in a few seconds.
 
@@ -125,12 +124,12 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-- [ ] Extract company and role from the application page
-- [ ] Optional job-description context (explicit user opt-in)
-- [ ] "Save as preferred answer" after edits
-- [ ] Similar-question detection
-- [ ] "Use saved answer / Generate new answer" choice
-- [ ] Saved answers page in web app (view, edit, delete)
+- [x] Extract company and role from the application page
+- [x] Optional job-description context (explicit user opt-in)
+- [x] "Save as preferred answer" after edits
+- [x] Similar-question detection
+- [x] "Use saved answer / Generate new answer" choice
+- [x] Saved answers page in web app (view, edit, delete)
 
 **Exit criterion:** "Why are you interested in this role?" produces role-specific answers, and a previously saved answer is offered for a similar question.
 
@@ -138,16 +137,16 @@ Each phase lists its tasks and an exit criterion. A phase is done only when its 
 
 **Tasks**
 
-- [ ] Better icon positioning
-- [ ] Keyboard shortcut
-- [ ] Dark / light theme
-- [ ] Network error handling
-- [ ] Rate limiting and usage limits
-- [ ] Analytics
-- [ ] Extension settings and privacy controls
-- [ ] Site-specific adapters only where real issues were found
-- [ ] Deploy web (Vercel) and API (Render / Railway)
-- [ ] Chrome Web Store listing and privacy policy
+- [x] Better icon positioning
+- [x] Keyboard shortcut
+- [x] Dark / light theme
+- [x] Network error handling
+- [x] Rate limiting and usage limits
+- [x] Analytics
+- [x] Extension settings and privacy controls
+- [ ] Site-specific adapters only where real issues were found — none yet; add after real-world use
+- [ ] Deploy web (Vercel) and API (Render / Railway) — needs your accounts; steps in README
+- [ ] Chrome Web Store listing and privacy policy — privacy page at `/privacy` done; listing needs your developer account
 
 **Exit criterion:** Ansly is published and has been used reliably across a meaningful number of real applications.
 

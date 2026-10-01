@@ -1,23 +1,22 @@
 {
-  "name": "nextjs-llm-monorepo",
+  "name": "ansly",
   "version": "0.1.0",
   "private": true,
-  "description": "Next.js frontend (web) + FastAPI LLM/RAG backend (llm) monorepo starter",
+  "description": "AI job application assistant — browser extension, web app, and FastAPI answer engine",
+  "packageManager": "pnpm@10.34.6",
   "scripts": {
-    "dev": "concurrently -k -n web,llm -c cyan,magenta \"npm:dev:web\" \"npm:dev:llm\"",
-    "dev:web": "npm run dev --prefix web",
-    "dev:llm": "uv --directory llm run python run.py",
-    "install:web": "npm ci --prefix web",
-    "install:llm": "uv --directory llm sync --group dev",
-    "install:all": "npm run install:web && npm run install:llm",
-    "test": "npm run test:web && npm run test:llm",
-    "test:web": "npm test --prefix web -- --passWithNoTests",
-    "test:llm": "uv --directory llm run pytest",
-    "build:web": "npm run build --prefix web",
-    "lint:web": "npm run lint --prefix web"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "check": "turbo run lint typecheck build test",
+    "supabase": "supabase",
+    "e2e": "node scripts/e2e.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "supabase": "^2.40.0",
+    "turbo": "^2.5.0"
   },
   "engines": {
     "node": ">=20.9.0"

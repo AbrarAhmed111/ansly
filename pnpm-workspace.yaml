@@ -1,0 +1,12 @@
+packages:
+  - web
+  - extension
+  - llm
+  - supabase
+  - packages/*
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - spawn-sync
+  - supabase
