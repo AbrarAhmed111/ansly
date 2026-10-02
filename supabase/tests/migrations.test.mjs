@@ -161,3 +161,35 @@ test('anonymous visitors cannot read profile data', async () => {
     /permission denied/,
   )
 })
+
+test('profile facts are private to their owner and anon gets nothing', async () => {
+  await asUser(ALICE, (tx) =>
+    tx.query(`insert into public.profile_facts (category, prompt, answer, source)
+              values ('leadership', 'Describe a time you led a team', 'I led the checkout rewrite.', 'extension')`),
+  )
+  await asUser(BOB, async (tx) => {
+    assert.equal((await tx.query('select * from public.profile_facts')).rows.length, 0)
+  })
+  await asUser(ALICE, async (tx) => {
+    const { rows } = await tx.query('select category, user_id, source from public.profile_facts')
+    assert.deepEqual(rows, [{ category: 'leadership', user_id: ALICE, source: 'extension' }])
+  })
+  await assert.rejects(
+    db.transaction(async (tx) => {
+      await tx.exec('set local role anon')
+      await tx.query('select * from public.profile_facts')
+    }),
+    /permission denied/,
+  )
+})
+
+test("skills accept level 'none' and usage events accept 'fill_all'", async () => {
+  await asUser(ALICE, async (tx) => {
+    await tx.query(`insert into public.skills (name, level) values ('Kubernetes', 'none')`)
+    await tx.query(`insert into public.usage_events (kind) values ('fill_all')`)
+  })
+  await assert.rejects(
+    asUser(ALICE, (tx) => tx.query(`insert into public.skills (name, level) values ('Rust', 'guru')`)),
+    /check constraint/,
+  )
+})

@@ -1,4 +1,5 @@
 export type * from './api'
 export type * from './database'
+export type * from './fields'
 export * from './bridge'
 export * from './completeness'

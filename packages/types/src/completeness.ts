@@ -66,7 +66,8 @@ export function profileCompleteness(data: FullProfile): Completeness {
       key: 'skills',
       label: 'At least five skills',
       weight: 15,
-      done: data.skills.length >= 5,
+      // "I don't have this" rows (level 'none') aren't skills.
+      done: data.skills.filter((s) => s.level !== 'none').length >= 5,
       href: '/profile/skills',
     },
     {
@@ -82,6 +83,13 @@ export function profileCompleteness(data: FullProfile): Completeness {
       weight: 5,
       done: data.achievements.length > 0,
       href: '/profile/achievements',
+    },
+    {
+      key: 'additional',
+      label: 'Additional details (answers you gave Ansly)',
+      weight: 5,
+      done: (data.profile_facts ?? []).length > 0,
+      href: '/profile/additional',
     },
   ]
 

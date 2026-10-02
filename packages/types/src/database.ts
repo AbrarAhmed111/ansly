@@ -75,7 +75,8 @@ export type SkillCategory =
   | 'soft'
   | 'other'
 
-export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert'
+/** 'none' = the user said they don't have this skill (Ansly answers "No" instead of asking again). */
+export type SkillLevel = 'none' | 'beginner' | 'intermediate' | 'advanced' | 'expert'
 
 export interface Skill extends OwnedRow {
   name: string
@@ -101,6 +102,14 @@ export interface Achievement extends OwnedRow {
   url: string | null
 }
 
+/** Grounding facts the user added when Ansly asked (extension) or on /profile/additional (web). */
+export interface ProfileFact extends OwnedRow {
+  category: string | null
+  prompt: string
+  answer: string
+  source: 'extension' | 'web'
+}
+
 export interface SavedAnswer {
   id: string
   user_id: string
@@ -121,6 +130,7 @@ export type UsageEventKind =
   | 'fill'
   | 'save_answer'
   | 'use_saved_answer'
+  | 'fill_all'
 
 /** Everything that makes up a user's profile. */
 export interface FullProfile {
@@ -130,6 +140,7 @@ export interface FullProfile {
   skills: Skill[]
   education: Education[]
   achievements: Achievement[]
+  profile_facts: ProfileFact[]
 }
 
 export type ProfileSection =
@@ -138,3 +149,4 @@ export type ProfileSection =
   | 'skills'
   | 'education'
   | 'achievements'
+  | 'profile_facts'

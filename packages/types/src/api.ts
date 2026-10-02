@@ -3,7 +3,8 @@
  * Keep in sync with the Pydantic models in `llm/src/app/schemas`.
  */
 
-import type { SavedAnswer, UsageEventKind } from './database'
+import type { Profile, SavedAnswer, Skill, SkillLevel, UsageEventKind } from './database'
+import type { FieldKind } from './fields'
 
 export type ServiceStatus = 'ok' | 'error' | 'not_configured'
 
@@ -35,14 +36,47 @@ export interface FieldContext {
   label?: string | null
   /** The field's maxlength, so the answer fits. */
   maxLength?: number | null
-  kind?: 'textarea' | 'input' | 'contenteditable' | null
+  /** The element type (popover) or the detected field kind (fill all). */
+  kind?: 'textarea' | 'input' | 'contenteditable' | Exclude<FieldKind, 'profile' | 'ignored'> | null
+  /** For choice fields: the answer must be one of these (several for choice_multi). */
+  options?: string[] | null
 }
+
+/** `auto` = the question category's default (cover letters: detailed; yes/no and logistics: concise). */
+export type AnswerLength = 'auto' | 'concise' | 'standard' | 'detailed'
+
+export type AnswerTone = 'professional' | 'friendly' | 'enthusiastic' | 'confident' | 'formal' | 'technical'
+
+export interface AnswerStyle {
+  length: AnswerLength
+  tone: AnswerTone
+  /** Free-text steer, e.g. "mention my open-source work". */
+  instruction?: string | null
+}
+
+/** Question categories returned in `AnswerResponse.category`. */
+export type AnswerCategory =
+  | 'cover_letter'
+  | 'about_me'
+  | 'motivation'
+  | 'project'
+  | 'experience'
+  | 'skill_check'
+  | 'behavioral'
+  | 'strengths'
+  | 'education'
+  | 'achievement'
+  | 'logistics'
+  | 'general'
 
 /** `POST /api/v1/answers/generate` */
 export interface GenerateAnswerRequest {
   question: string
   job_context?: JobContext | null
   field?: FieldContext | null
+  style?: AnswerStyle | null
+  /** Facts the candidate just gave without saving them to their profile. */
+  additional_facts?: string[] | null
 }
 
 /** `POST /api/v1/answers/regenerate` */
@@ -57,7 +91,7 @@ export type AnswerStatus = 'answered' | 'insufficient_information'
 export type Confidence = 'high' | 'medium' | 'low'
 
 export interface UsedSource {
-  type: 'profile' | 'experience' | 'project' | 'skill' | 'education' | 'achievement'
+  type: 'profile' | 'experience' | 'project' | 'skill' | 'education' | 'achievement' | 'fact'
   id: string
   label: string
 }
@@ -69,10 +103,76 @@ export interface AnswerResponse {
   usedSources: UsedSource[]
   /** What's missing from the profile, when status is insufficient_information. */
   missingInformation: string | null
+  /** The same gaps as questions the extension can ask inline (ask-and-learn). */
+  missing: MissingInfo[]
   category: string
   intent: string
   provider: string | null
   model: string | null
+}
+
+/** Profile columns that ask-and-learn may write. */
+export type ProfileField = Extract<
+  keyof Profile,
+  'work_authorization' | 'requires_sponsorship' | 'notice_period' | 'salary_expectation' | 'willing_to_relocate' | 'preferred_work_mode'
+>
+
+export type MissingTarget =
+  | { type: 'profile_field'; field: ProfileField }
+  | { type: 'skill'; name: string }
+  | { type: 'fact'; category: string }
+
+export interface MissingInfo {
+  /** e.g. 'notice_period', 'skill:kubernetes', 'fact:leadership' */
+  key: string
+  /** Question shown to the user. */
+  prompt: string
+  input: 'text' | 'textarea' | 'select' | 'boolean' | 'number' | 'skill'
+  options?: string[] | null
+  target: MissingTarget
+}
+
+/** Value for a `skill` target: "I don't have this" is a valid answer. */
+export interface SkillAnswer {
+  have: boolean
+  years?: number | null
+  level?: Exclude<SkillLevel, 'none'> | null
+}
+
+/** `POST /api/v1/profile/missing` */
+export interface SaveMissingRequest {
+  items: { key: string; target: MissingTarget; value: string | boolean | SkillAnswer; prompt?: string | null }[]
+}
+
+export interface SaveMissingResponse {
+  saved: { key: string; target: MissingTarget; row: Partial<Profile> | Skill | Record<string, unknown> }[]
+}
+
+/** `POST /api/v1/answers/generate-batch` */
+export interface GenerateBatchRequest {
+  job_context?: JobContext | null
+  /** Page-level default. */
+  style?: AnswerStyle | null
+  items: { id: string; question: string; field?: FieldContext | null; additional_facts?: string[] | null }[]
+}
+
+export type BatchAnswerResult = AnswerResponse & {
+  id: string
+  /** Set when this question couldn't be generated at all (the others still were). */
+  error?: string | null
+}
+
+export interface GenerateBatchResponse {
+  results: BatchAnswerResult[]
+}
+
+/** `POST /api/v1/saved-answers/match-batch` */
+export interface MatchSavedBatchRequest {
+  items: { id: string; question: string }[]
+}
+
+export interface MatchSavedBatchResponse {
+  results: (MatchSavedAnswerResponse & { id: string })[]
 }
 
 /** `POST /api/v1/saved-answers/match` */
@@ -99,7 +199,7 @@ export type UseSavedAnswerResponse = SavedAnswer
 
 /** `POST /api/v1/events` */
 export interface TrackEventRequest {
-  kind: Extract<UsageEventKind, 'fill' | 'use_saved_answer'>
+  kind: Extract<UsageEventKind, 'fill' | 'use_saved_answer' | 'fill_all'>
   category?: string | null
 }
 
