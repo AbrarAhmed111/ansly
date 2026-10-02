@@ -9,9 +9,10 @@ import {
   type WebToExtensionMessage,
 } from '@ansly/types'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { CheckCircle2, CircleDashed, KeyRound, Mail, PlugZap, Puzzle, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
+import { Check, CheckCircle2, CircleDashed, KeyRound, Mail, PlugZap, Puzzle, RefreshCw, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import toast from 'react-hot-toast'
+import { LogoMark } from '@/components/logo'
 import {
   Alert,
   Badge,
@@ -59,6 +60,28 @@ async function createExtensionSession(email: string, password: string): Promise<
 }
 
 const stepState = (done: boolean, active: boolean): StepState => (done ? 'done' : active ? 'active' : 'idle')
+
+function ProductMarkTile({ className = 'h-12 w-12' }: { className?: string }) {
+  return (
+    <span className={`${className} inline-flex shrink-0 items-center justify-center rounded-xl border border-accent/25 bg-accent-soft`}>
+      <LogoMark className="h-7 w-7 rounded-lg shadow-none" />
+    </span>
+  )
+}
+
+function FeatureCard({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
+  return (
+    <Card className="h-full">
+      <div className="flex items-start gap-3">
+        <IconTile icon={Icon} tone="accent" size="sm" />
+        <div>
+          <h3 className="font-semibold">{title}</h3>
+          <p className="mt-1 text-body-sm leading-relaxed text-muted">{body}</p>
+        </div>
+      </div>
+    </Card>
+  )
+}
 
 export default function ExtensionPage() {
   const [status, setStatus] = useState<ExtensionStatusPayload | null>(null)
@@ -124,7 +147,7 @@ export default function ExtensionPage() {
             icon: CheckCircle2,
             tone: 'success' as const,
             title: 'You’re all set',
-            body: `Connected${status.email ? ` as ${status.email}` : ''}. Look for ✨ beside questions on application forms.`,
+            body: `Connected${status.email ? ` as ${status.email}` : ''}. Look for the Ansly mark beside questions on application forms.`,
           }
         : {
             icon: PlugZap,
@@ -138,29 +161,77 @@ export default function ExtensionPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Browser extension"
-        description="The Ansly extension adds ✨ beside open-ended questions on job application forms."
+        description="Connect the browser extension so Ansly can draft answers beside open-ended questions on job application forms."
       />
 
-      <Card className="relative mb-6 overflow-hidden">
-        <Glow className="-right-16 -top-16 h-48 w-48" />
-        <div className="relative flex flex-wrap items-center gap-4">
-          {!checked ? (
-            <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface-muted">
-              <Spinner className="h-5 w-5" />
-            </span>
-          ) : (
-            <IconTile icon={hero.icon} tone={hero.tone} size="lg" />
-          )}
-          <div className="min-w-0 flex-1">
-            <h2 className="text-h3">{hero.title}</h2>
-            <p className="mt-0.5 text-muted">{hero.body}</p>
+      <Card className="relative mb-6 overflow-hidden p-0">
+        <Glow className="-right-24 -top-24 h-64 w-64" />
+        <div className="relative grid lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+          <div className="border-b border-border p-6 lg:border-b-0 lg:border-r">
+            <div className="flex flex-wrap items-start gap-4">
+              {!checked ? (
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface-muted">
+                  <Spinner className="h-5 w-5" />
+                </span>
+              ) : status?.connected ? (
+                <ProductMarkTile />
+              ) : (
+                <IconTile icon={hero.icon} tone={hero.tone} size="lg" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-h3">{hero.title}</h2>
+                  {status && <Badge>v{status.version}</Badge>}
+                </div>
+                <p className="mt-1 max-w-2xl leading-relaxed text-muted">{hero.body}</p>
+              </div>
+              {checked && !status && (
+                <Button variant="secondary" icon={RefreshCw} onClick={() => window.location.reload()}>
+                  Check again
+                </Button>
+              )}
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              {[
+                { label: 'Detection', value: installed ? 'Installed' : checked ? 'Missing' : 'Checking' },
+                { label: 'Session', value: connected ? 'Connected' : 'Not connected' },
+                { label: 'Control', value: 'Review first' },
+              ].map((item) => (
+                <div key={item.label} className="rounded-lg border border-border bg-surface/70 p-3">
+                  <p className="text-caption text-subtle">{item.label}</p>
+                  <p className="mt-1 font-medium">{item.value}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          {status && <Badge>v{status.version}</Badge>}
-          {checked && !status && (
-            <Button variant="secondary" icon={RefreshCw} onClick={() => window.location.reload()}>
-              Check again
-            </Button>
-          )}
+
+          <div className="bg-surface-muted/40 p-6">
+            <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+              <div className="flex items-center gap-2 border-b border-border pb-3">
+                <span className="h-2.5 w-2.5 rounded-full bg-border-strong" />
+                <span className="h-2.5 w-2.5 rounded-full bg-border-strong" />
+                <span className="h-2.5 w-2.5 rounded-full bg-border-strong" />
+                <span className="ml-2 truncate text-caption text-subtle">careers.example.com/apply</span>
+              </div>
+              <div className="mt-4 rounded-lg border border-accent bg-surface px-3 py-3 ring-4 ring-accent/10">
+                <p className="text-caption text-subtle">Why are you interested in this role?</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className="text-body-sm text-muted">Draft answer from your profile</span>
+                  <ProductMarkTile className="h-9 w-9" />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Badge>
+                  <Check className="h-3 w-3 text-success" />
+                  You approve
+                </Badge>
+                <Badge>
+                  <Check className="h-3 w-3 text-success" />
+                  Profile grounded
+                </Badge>
+              </div>
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -179,7 +250,7 @@ export default function ExtensionPage() {
               {connected ? 'Signed in with its own secure session.' : 'Confirm your password to give the extension its own sign-in.'}
             </Step>
             <Step n={3} title="Open any application" state={stepState(false, connected)}>
-              Click <span className="font-medium text-fg">✨</span> beside a question, review the draft, then fill. Works on
+              Click the <LogoMark className="mx-0.5 inline h-4 w-4 rounded-sm shadow-none" /> mark beside a question, review the draft, then fill. Works on
               LinkedIn, Indeed, Greenhouse, Lever, Workday and company sites.
             </Step>
           </Steps>
@@ -219,13 +290,17 @@ export default function ExtensionPage() {
             </form>
           </Card>
         ) : (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader icon={Sparkles} title="Answers from your profile only" description="If your profile doesn't support an answer, Ansly says so instead of inventing one." />
-            </Card>
-            <Card>
-              <CardHeader icon={ShieldCheck} title="You approve every fill" description="Nothing is typed into a form until you click Fill. Ansly never submits applications." />
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            <FeatureCard
+              icon={ShieldCheck}
+              title="Answers from your profile only"
+              body="If your profile doesn't support an answer, Ansly says so instead of inventing one."
+            />
+            <FeatureCard
+              icon={CheckCircle2}
+              title="You approve every fill"
+              body="Nothing is typed into a form until you click Fill. Ansly never submits applications."
+            />
             {checked && (
               <Alert tone="accent" title="Installed it already?">
                 Pages opened before installing can&apos;t see the extension. Reload this page to detect it.
