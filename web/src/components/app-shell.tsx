@@ -1,16 +1,16 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { BookmarkCheck, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, Wand2, type LucideIcon } from 'lucide-react'
+import { BookmarkCheck, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import { CommandPalette, type Command } from '@/components/command-palette'
-import { Sheet } from '@/components/dialog'
+import { Dialog, Sheet } from '@/components/dialog'
 import { Logo } from '@/components/logo'
 import { SECTION_ICONS } from '@/components/section-icons'
 import { ThemeToggle } from '@/components/theme'
-import { Avatar, IconButton, Kbd, Overline } from '@/components/ui'
+import { Avatar, Button, IconButton, IconTile, Kbd, Overline, buttonStyles } from '@/components/ui'
 import { SECTIONS } from '@/lib/sections'
 
 interface NavItem {
@@ -124,7 +124,64 @@ function UserFooter({ name, email }: { name: string | null; email: string }) {
   )
 }
 
-export function AppShell({ name, email, children }: { name: string | null; email: string; children: ReactNode }) {
+function NewUserExtensionNotice({ userId, createdAt }: { userId: string; createdAt?: string }) {
+  const [open, setOpen] = useState(false)
+  const storageKey = `ansly-extension-access-notice:${userId}`
+
+  useEffect(() => {
+    if (!createdAt) return
+    const created = new Date(createdAt).getTime()
+    if (!Number.isFinite(created)) return
+    const isRecentSignup = Date.now() - created < 7 * 24 * 60 * 60 * 1000
+    if (!isRecentSignup || localStorage.getItem(storageKey)) return
+    setOpen(true)
+  }, [createdAt, storageKey])
+
+  const close = () => {
+    localStorage.setItem(storageKey, 'dismissed')
+    setOpen(false)
+  }
+
+  return (
+    <Dialog open={open} onClose={close} labelledBy="extension-access-title">
+      <div className="flex gap-4">
+        <IconTile icon={ShieldCheck} tone="accent" />
+        <div className="min-w-0">
+          <Overline tone="accent">Extension access</Overline>
+          <h2 id="extension-access-title" className="mt-1 text-h3">
+            Contact Abrar Ahmed to enable your extension
+          </h2>
+          <p className="mt-2 leading-relaxed text-muted">
+            New Ansly accounts need extension access from the owner before generating answers in the browser. Contact
+            Abrar Ahmed, built by DevAbby, and share the email you signed up with.
+          </p>
+        </div>
+      </div>
+      <div className="mt-6 flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" onClick={close}>
+          Got it
+        </Button>
+        <a href="https://www.abrarahmed.pro" target="_blank" rel="noreferrer" className={buttonStyles()} onClick={close}>
+          Contact Abrar Ahmed
+        </a>
+      </div>
+    </Dialog>
+  )
+}
+
+export function AppShell({
+  name,
+  email,
+  userId,
+  createdAt,
+  children,
+}: {
+  name: string | null
+  email: string
+  userId: string
+  createdAt?: string
+  children: ReactNode
+}) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const path = usePathname()
@@ -175,6 +232,7 @@ export function AppShell({ name, email, children }: { name: string | null; email
       </Sheet>
 
       <CommandPalette commands={COMMANDS} open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <NewUserExtensionNotice userId={userId} createdAt={createdAt} />
 
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-5xl px-4 pb-24 pt-8 sm:px-6 lg:px-10 lg:pt-12">{children}</div>

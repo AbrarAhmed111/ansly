@@ -1,79 +1,115 @@
 # Ansly
 
-AI job application assistant. A Chrome extension detects open-ended questions
-on job application forms, drafts truthful, personalized answers from your
-structured profile, and fills them in after you review them.
+AI job application assistant for filling application forms faster without inventing experience.
 
-> **Status:** V1 (Phases 1–8) implemented. See
-> [`documents/ansly-phases.md`](documents/ansly-phases.md) for the roadmap and
-> [`documents/ansly-product-plan.md`](documents/ansly-product-plan.md) for the
-> product plan.
+<p>
+  <a href="https://www.abrarahmed.pro" target="_blank" rel="noreferrer">
+    <img src="https://www.abrarahmed.pro/assets/devAbby-fulllogo-C9-MX7QK.png" alt="Built by DevAbby" height="36" />
+  </a>
+</p>
 
-## How it works
+**Built by DevAbby.**
+
+Ansly is a web app, FastAPI answer engine, Supabase database, and Chromium browser extension. You build a structured profile once, then the extension detects application questions, drafts grounded answers from your profile, lets you review/edit, and fills the field only when you approve.
+
+> Status: V1 is implemented, with V1.1 fill-all / ask-and-learn work in progress. See [documents/ansly-product-plan.md](documents/ansly-product-plan.md), [documents/ansly-phases.md](documents/ansly-phases.md), and [documents/product-audit.md](documents/product-audit.md).
+
+## What It Does
+
+- Detects open-ended questions on job application forms.
+- Drafts truthful, first-person answers from your profile.
+- Refuses to guess when your profile does not support an answer.
+- Lets you review, edit, regenerate, save, and fill answers.
+- Reuses saved answers for similar questions.
+- Supports optional job context: company, role, and job description when enabled.
+- Supports personal use as an unpacked Chrome or Microsoft Edge extension, with no store publishing fee.
+
+## How It Works
 
 ```text
-Application page → ✨ beside a question → Generate → Review / edit → Fill
+Build profile
+  -> open application form
+  -> enable Ansly on the site
+  -> click Ansly beside a question
+  -> generate or use saved answer
+  -> review / edit
+  -> fill
+  -> you submit manually
 ```
 
-Answers come only from your profile. If the profile doesn't support an answer
-(say, a question about Kubernetes when you've never listed it), Ansly tells you
-what to add instead of inventing one.
+Ansly never auto-submits applications. It only fills after user approval.
 
 ## Architecture
 
 ```text
-   Browser                                Web app (Next.js)
- ┌──────────────────────┐               ┌──────────────────────────────┐
- │ extension (WXT)      │◄── session ───│ Profile · Saved answers ·    │
- │ content: detect, ✨, │   handoff     │ Settings · Auth · Connect    │
- │   popover, fill      │               └──────────────┬───────────────┘
- │ background: session, │                              │ supabase-js (RLS)
- │   API client         │                              ▼
- └──────────┬───────────┘               ┌──────────────────────────────┐
-            │ question + minimal        │ Supabase                     │
-            │ job context               │ PostgreSQL · Auth · RLS      │
-            ▼                           └──────────────▲───────────────┘
- ┌──────────────────────┐   user's own JWT (RLS)       │
- │ llm (FastAPI)        │──────────────────────────────┘
- │ classify → retrieve  │
- │ → ground → generate  │──► LLM gateway: Gemini, Groq, OpenAI, Anthropic,
- └──────────────────────┘    Mistral, Cerebras, Cohere, OpenRouter (fallback)
+Browser extension
+  - WXT + React
+  - field detection
+  - saved-answer matching
+  - answer popover
+  - fill / fill-all UI
+  - own Supabase session
+
+Web app
+  - Next.js
+  - auth
+  - dashboard
+  - profile editor
+  - saved answers
+  - settings
+  - extension connection
+
+LLM API
+  - FastAPI
+  - question classification
+  - structured profile retrieval
+  - grounded answer generation
+  - provider fallback gateway
+  - usage/rate limits
+
+Supabase
+  - Auth
+  - PostgreSQL
+  - RLS
+  - profile sections
+  - saved answers
+  - usage events
 ```
 
-- `llm` owns all LLM provider keys. It reads profiles with the **user's own
-  token**, so row-level security applies and the server never holds a key that
-  can read other users' data.
-- The extension gets its **own** Supabase session from the web app's Connect
-  page (sharing the web session would break with refresh-token rotation).
+The API reads profile data using the user's own JWT, so Supabase row-level security still applies. The extension receives a separate Supabase session from the web app because sharing the web session would conflict with refresh-token rotation.
 
-## Repo layout
+## Repo Layout
 
 ```text
 ansly/
-  web/              Next.js app — auth, profile editor, saved answers, settings, extension connect
-  extension/        WXT browser extension (Manifest V3) — field detection, ✨ UI, fill
-  llm/              FastAPI service — question analysis, retrieval, grounded generation, LLM gateway
-  packages/types/   Shared TypeScript types (DB rows, API contracts, bridge protocol, completeness)
-  packages/design/  Design tokens: colour palette, light/dark themes, type scale (see its README)
-  supabase/         Migrations, migration tests (PGlite), and a seed profile
-  documents/        Product plan and development phases
+  web/              Next.js web app
+  extension/        WXT browser extension for Chrome and Edge
+  llm/              FastAPI answer service and LLM gateway
+  packages/types/   Shared TypeScript contracts
+  packages/design/  Shared design tokens
+  supabase/         Migrations, tests, seed profile
+  documents/        Product plans and audits
 ```
 
 ## Prerequisites
 
-- Node.js 20.9+ and [pnpm](https://pnpm.io) 10 (`npm i -g pnpm`)
-- Python 3.10+ and [`uv`](https://docs.astral.sh/uv/)
-- A [Supabase](https://supabase.com) project
+- Node.js 20.9+
+- pnpm 10
+- Python 3.10+
+- uv
+- Supabase project
 - At least one LLM provider API key
 
 ## Setup
 
+Install dependencies:
+
 ```sh
-pnpm install                      # all JS workspaces
+pnpm install
 uv --directory llm sync --group dev
 ```
 
-Create each app's env file from its example (PowerShell: `Copy-Item`):
+Create env files:
 
 ```sh
 cp web/.env.example web/.env
@@ -81,18 +117,19 @@ cp llm/.env.example llm/.env
 cp extension/.env.example extension/.env
 ```
 
-| File | What to set |
+Set these values:
+
+| File | Variables |
 | --- | --- |
-| `web/.env` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_BASE_URL` (the API) |
-| `llm/.env` | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, provider keys (`GOOGLE_API_KEY1`, `GROQ_API_KEY1`, … any number per provider) |
+| `web/.env` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_BASE_URL` |
+| `llm/.env` | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, provider keys such as `GOOGLE_API_KEY1`, `GROQ_API_KEY1`, `OPENAI_API_KEY1` |
 | `extension/.env` | `WXT_SUPABASE_URL`, `WXT_SUPABASE_PUBLISHABLE_KEY`, `WXT_API_URL`, `WXT_WEB_URL` |
 
-Supabase values are under **Project Settings → API Keys**. Only the
-**publishable** key is used anywhere; never put the secret key in any app.
+Only use the Supabase publishable key in app env files. Do not put the Supabase secret/service-role key in the web app, extension, or client bundle.
 
-### Database
+## Database
 
-Apply the migrations to your Supabase project once:
+Apply migrations:
 
 ```sh
 pnpm supabase login
@@ -100,58 +137,121 @@ pnpm supabase link --project-ref <your-project-ref>
 pnpm supabase db push
 ```
 
-(Or paste `supabase/migrations/*.sql` into the Supabase SQL editor.) In
-**Authentication → URL Configuration**, add `http://localhost:3000/auth/callback`
-to the redirect URLs.
+Or paste the SQL files from `supabase/migrations/` into the Supabase SQL editor.
 
-To start your profile quickly, fill in `supabase/seed/profile.seed.json` and
-import it from **Settings → Import profile** in the web app.
+In Supabase Auth URL configuration, add:
 
-## Running locally
-
-```sh
-pnpm dev                                  # web, extension (dev browser) and llm together
-pnpm --filter @ansly/web dev              # web       → http://localhost:3000
-pnpm --filter @ansly/llm dev              # llm       → http://localhost:8000 (/docs, /health)
-pnpm --filter @ansly/extension dev        # extension → opens Chrome with it loaded
+```text
+http://localhost:3000/auth/callback
+https://YOUR-WEB-DOMAIN/auth/callback
 ```
 
-Then sign up in the web app, open **Extension → Connect**, and visit any job
-application. See [`extension/README.md`](extension/README.md) for loading the
-extension in your own Chrome profile.
+## Run Locally
+
+```sh
+pnpm dev
+```
+
+Or run each app:
+
+```sh
+pnpm --filter @ansly/web dev          # http://localhost:3000
+pnpm --filter @ansly/llm dev          # http://localhost:8000
+pnpm --filter @ansly/extension dev    # Chrome dev browser
+pnpm --filter @ansly/extension dev:edge
+```
+
+Then:
+
+1. Sign up in the web app.
+2. Build your profile.
+3. Open `/extension` in the web app.
+4. Connect the extension.
+5. Visit a job application.
+6. Enable Ansly on that site from the extension popup.
+
+## Personal Extension Use
+
+You do not need to publish the extension to use it yourself.
+
+Chrome:
+
+```sh
+pnpm --filter @ansly/extension build
+```
+
+Open `chrome://extensions`, enable Developer mode, choose Load unpacked, and select:
+
+```text
+extension/.output/chrome-mv3
+```
+
+Microsoft Edge:
+
+```sh
+pnpm --filter @ansly/extension build:edge
+```
+
+Open `edge://extensions`, enable Developer mode, choose Load unpacked, and select:
+
+```text
+extension/.output/edge-mv3
+```
+
+For deployed personal use, make sure `extension/.env` points to deployed URLs before building:
+
+```env
+WXT_API_URL=https://YOUR-LLM-API-DOMAIN
+WXT_WEB_URL=https://YOUR-WEB-DOMAIN
+```
 
 ## Checks
 
 ```sh
-pnpm check        # lint, type-check, test and build everything (same as CI)
-pnpm test         # tests only
+pnpm check
+pnpm test
 ```
 
-| Workspace | Tests |
-| --- | --- |
-| `llm` | pytest: gateway fallback, classifier, retrieval, grounding, parsing, similarity, auth, rate limits, endpoints |
-| `extension` | Vitest + happy-dom: field detection on LinkedIn/Indeed/Greenhouse/Lever/Workday markup, React-controlled fill, job context, popover flows, API client |
-| `web` | Jest: form conversion, profile import, completeness, redirect safety |
-| `supabase` | Node test runner + PGlite: migrations apply, RLS isolates users |
-
-`llm` also has live checks that spend a few real provider calls:
+Useful targeted checks:
 
 ```sh
-uv --directory llm run python -m scripts.check_providers   # which keys/models work
-uv --directory llm run python -m scripts.smoke_answers     # real answers for a sample profile
+pnpm --filter @ansly/web typecheck
+pnpm --filter @ansly/web test
+pnpm --filter @ansly/extension typecheck
+pnpm --filter @ansly/extension test
+pnpm --filter @ansly/llm test
+pnpm --filter @ansly/supabase test
 ```
 
 ## Deployment
 
-- **web** → Vercel, root directory `web`, with the three `NEXT_PUBLIC_*` variables.
-- **llm** → Render / Railway: `uv sync --frozen --no-dev` then
-  `uv run uvicorn src.app.main:app --host 0.0.0.0 --port $PORT`, with
-  `ENVIRONMENT=production`, Supabase values, provider keys, and
-  `ALLOWED_ORIGINS` set to the web app's URL.
-- **extension** → set the production `WXT_API_URL` / `WXT_WEB_URL`, run
-  `pnpm --filter @ansly/extension zip`, and upload the zip to the Chrome Web
-  Store. The privacy policy lives at `/privacy` on the web app.
-- Add the production web URL to Supabase's redirect URLs.
+Web:
+
+- Deploy `web/` to Vercel.
+- Set `NEXT_PUBLIC_SUPABASE_URL`.
+- Set `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+- Set `NEXT_PUBLIC_BASE_URL` to the deployed LLM/API origin.
+
+LLM API:
+
+- Deploy `llm/` to your Python host.
+- Set Supabase env values and provider keys.
+- Confirm `GET /health` works.
+
+Extension:
+
+- Set production `WXT_API_URL` and `WXT_WEB_URL`.
+- Build Chrome or Edge output.
+- Load unpacked for personal use, or zip for store submission later.
+
+## Privacy Notes
+
+- Detection runs locally.
+- Nothing is sent until you ask Ansly to generate, match, save, or fill.
+- Job description sharing is opt-in.
+- Usage analytics do not store question or answer text.
+- Gender, race, veteran, and disability questions are intentionally not answered.
+- Ansly never submits applications.
 
 ## License
 

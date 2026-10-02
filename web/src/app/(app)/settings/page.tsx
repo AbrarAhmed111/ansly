@@ -144,9 +144,8 @@ export default function SettingsPage() {
             title="Import profile"
             description={
               <>
-                Add items from an Ansly JSON export or a filled-in seed file (see{' '}
-                <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-caption">supabase/seed/profile.seed.json</code>
-                ). Items are added to your profile; your personal details are overwritten by the file&apos;s values.
+                Add items from an Ansly JSON export. Items are added to your profile; your personal details are
+                overwritten by the file&apos;s values.
               </>
             }
           />
