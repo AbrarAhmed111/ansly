@@ -63,7 +63,7 @@ class FakeRest:
     def __init__(self, tables: Optional[Dict[str, List[Dict[str, Any]]]] = None):
         self.tables = copy.deepcopy(tables if tables is not None else SAMPLE_PROFILE)
         for name in ["profiles", "experiences", "projects", "skills", "education", "achievements",
-                     "saved_answers", "usage_events"]:
+                     "saved_answers", "usage_events", "profile_facts"]:
             self.tables.setdefault(name, [])
         self.rate_limit_hits = 0
 

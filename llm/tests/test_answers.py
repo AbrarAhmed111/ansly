@@ -8,14 +8,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.app.answers.classifier import classify_question
+from src.app.answers.classifier import apply_field_signals, classify_question
 from src.app.answers.engine import AnswerEngine
 from src.app.answers.parser import fit_to_length, parse_answer
 from src.app.answers.profile_context import build_context, canonicalize, fetch_profile_data
 from src.app.answers.prompt import SYSTEM_PROMPT, build_user_message
 from src.app.answers.similarity import MATCH_THRESHOLD, best_match, similarity
 from src.app.gateway import GatewayResult
-from src.app.schemas.answers import FieldContext, GenerateAnswerRequest, JobContext
+from src.app.schemas.answers import AnswerStyle, FieldContext, GenerateAnswerRequest, JobContext
 from tests.fakes import FakeRest
 
 # --- classification -----------------------------------------------------------
@@ -54,7 +54,7 @@ async def test_fetches_only_needed_sections():
     rest.select = AsyncMock(wraps=rest.select)
     await fetch_profile_data(rest, classify_question("What is your degree?"))
     tables = [call.args[0] for call in rest.select.await_args_list]
-    assert tables == ["profiles", "education", "achievements"]
+    assert tables == ["profiles", "education", "achievements", "profile_facts"]
 
 
 @pytest.mark.asyncio
@@ -98,6 +98,66 @@ def test_prompt_separates_job_context_from_profile():
     assert message.index("JOB CONTEXT") < message.index("CANDIDATE PROFILE")
     assert "at most 500 characters" in message
     assert "Use only facts stated in the CANDIDATE PROFILE" in SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize("question", [
+    "Cover letter", "Please upload or paste your cover letter", "Covering letter (optional)", "Motivation letter",
+    "Letter of motivation",
+])
+def test_classify_cover_letter(question):
+    assert classify_question(question).category == "cover_letter"
+
+
+def test_field_signals_make_unlimited_letter_textarea_a_cover_letter():
+    letter = "Write a short letter to the hiring team"
+    assert apply_field_signals(classify_question(letter), "textarea", None).category == "cover_letter"
+    assert apply_field_signals(classify_question(letter), "textarea", 300).category != "cover_letter"
+    assert apply_field_signals(classify_question(letter), "input", None).category != "cover_letter"
+
+
+def _message(question: str, style: AnswerStyle | None = None, field: FieldContext | None = None) -> str:
+    analysis = classify_question(question)
+    ctx = build_context(FakeRest().tables | {"profile": FakeRest().tables["profiles"][0]}, analysis)
+    return build_user_message(analysis, ctx, None, field or FieldContext(kind="textarea"), style=style)
+
+
+@pytest.mark.parametrize("question,length,target", [
+    ("Cover letter", "auto", "250–400 words in 3–4 paragraphs"),
+    ("Why are you interested in this role?", "auto", "80–150 words"),
+    ("Do you have experience with Next.js?", "auto", "40–80 words"),
+    ("Cover letter", "concise", "40–80 words"),
+    ("Why are you interested in this role?", "detailed", "180–300 words"),
+    ("Tell us about yourself", "standard", "80–150 words"),
+])
+def test_length_targets(question, length, target):
+    assert target in _message(question, AnswerStyle(length=length))
+
+
+def test_max_length_beats_length_target():
+    message = _message("Cover letter", AnswerStyle(length="detailed"), FieldContext(kind="textarea", max_length=300))
+    assert "never more than 300 characters (roughly 50 words) — the limit wins" in message
+
+
+def test_single_line_fields_get_no_word_target():
+    assert "Length:" not in _message("Why this role?", AnswerStyle(length="detailed"), FieldContext(kind="input"))
+
+
+@pytest.mark.parametrize("tone", ["professional", "friendly", "enthusiastic", "confident", "formal", "technical"])
+def test_tone_never_outranks_grounding(tone):
+    message = _message("Why are you interested in this role?", AnswerStyle(tone=tone))
+    assert f"Tone: {tone}:" in message
+    assert "STYLE (wording only; the grounding rules still apply)" in message
+    # Grounding lives in the system prompt and explicitly wins over style.
+    assert SYSTEM_PROMPT.index("Grounding rules") < SYSTEM_PROMPT.index("always win over the STYLE")
+    assert "Never add a fact to sound more enthusiastic, confident or detailed" in SYSTEM_PROMPT
+
+
+def test_style_instruction_on_generate_and_regenerate():
+    assert "CANDIDATE'S INSTRUCTION" in _message("Tell us about yourself", AnswerStyle(instruction="mention open source"))
+    analysis = classify_question("Tell us about yourself")
+    ctx = build_context(FakeRest().tables | {"profile": FakeRest().tables["profiles"][0]}, analysis)
+    regen = build_user_message(analysis, ctx, None, None, previous_answer="Old.", style=AnswerStyle(instruction="shorter"))
+    assert "The candidate asked: shorter" in regen and "CANDIDATE'S INSTRUCTION" not in regen
 
 
 # --- parsing ------------------------------------------------------------------
@@ -192,6 +252,16 @@ async def test_engine_regenerate_includes_previous_answer():
         previous_answer="Old take.", instruction="shorter")
     kwargs = gateway.generate.await_args.kwargs
     assert "PREVIOUS ANSWER" in kwargs["messages"][0]["content"] and "shorter" in kwargs["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_engine_passes_style_and_detects_cover_letter_fields():
+    gateway = _gateway_returning({"status": "answered", "answer": "Letter.", "confidence": "high", "usedSources": []})
+    response = await AnswerEngine(gateway).answer(FakeRest(), GenerateAnswerRequest(
+        question="Write a letter to the team", field=FieldContext(kind="textarea"), style=AnswerStyle(tone="formal")))
+    message = gateway.generate.await_args.kwargs["messages"][0]["content"]
+    assert response.category == "cover_letter"
+    assert "250–400 words" in message and "Tone: formal:" in message
 
 
 # --- similarity ---------------------------------------------------------------

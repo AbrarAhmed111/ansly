@@ -12,7 +12,7 @@ from src.app.answers.classifier import classify_question
 from src.app.answers.similarity import best_match
 from src.app.api.deps import get_rest
 from src.app.db.rest import SupabaseError, SupabaseRest
-from src.app.schemas.answers import CreateSavedAnswerRequest, MatchSavedAnswerRequest
+from src.app.schemas.answers import CreateSavedAnswerRequest, MatchSavedAnswerRequest, MatchSavedBatchRequest
 
 router = APIRouter(prefix="/saved-answers", tags=["Saved answers"])
 
@@ -29,6 +29,19 @@ async def match_saved_answer(request: MatchSavedAnswerRequest, rest: SupabaseRes
         raise _upstream(e) from e
     match, score = best_match(request.question, saved)
     return {"match": match, "score": score}
+
+
+@router.post("/match-batch", summary="Find saved answers for several questions at once")
+async def match_saved_batch(request: MatchSavedBatchRequest, rest: SupabaseRest = Depends(get_rest)) -> Dict[str, Any]:
+    try:
+        saved = await rest.select("saved_answers", {"order": "updated_at.desc", "limit": "500"})
+    except SupabaseError as e:
+        raise _upstream(e) from e
+    results = []
+    for item in request.items:
+        match, score = best_match(item.question, saved)
+        results.append({"id": item.id, "match": match, "score": score})
+    return {"results": results}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Save a preferred answer")

@@ -29,14 +29,24 @@ async def check_rate_limit(rest: SupabaseRest, per_minute: int) -> None:
         )
 
 
-async def check_daily_limit(rest: SupabaseRest, limit: int) -> None:
+async def check_daily_limit(rest: SupabaseRest, limit: int, needed: int = 1) -> None:
+    """Refuses when `needed` more generations would go over today's limit (fill all needs several)."""
+    if needed <= 0:
+        return
     start_of_day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     used = await rest.count(
         "usage_events",
         {"kind": "in.(generate,regenerate)", "created_at": f"gte.{start_of_day.isoformat()}"},
     )
-    if used >= limit:
+    remaining = max(limit - used, 0)
+    if remaining <= 0:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"Daily limit of {limit} generated answers reached. It resets at midnight UTC.",
+        )
+    if needed > remaining:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"These {needed} answers would go over your daily limit: {remaining} left today. "
+            "Answer fewer fields at once, or try again after midnight UTC.",
         )

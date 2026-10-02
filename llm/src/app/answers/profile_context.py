@@ -15,6 +15,8 @@ from src.app.db.rest import SupabaseRest
 from .classifier import QuestionAnalysis
 
 SECTION_LIMITS = {"experiences": 6, "projects": 6, "skills": 60, "education": 4, "achievements": 8}
+# Facts the user gave when Ansly asked (or on /profile/additional). Always fetched: they are few and short.
+FACTS_LIMIT = 30
 SECTION_ORDER = {
     "experiences": "is_current.desc,start_date.desc.nullslast,sort_order.asc",
     "projects": "sort_order.asc,start_date.desc.nullslast",
@@ -57,7 +59,12 @@ class ProfileContext:
     sources: Dict[str, Source] = field(default_factory=dict)
     profile: Dict[str, Any] = field(default_factory=dict)
     corpus_terms: Set[str] = field(default_factory=set)
+    # Skills the user said they don't have (skills.level = 'none'), canonicalized.
+    declined_skills: Set[str] = field(default_factory=set)
     is_empty: bool = True
+
+    def declined(self, skill: str) -> bool:
+        return canonicalize(skill) in self.declined_skills and not self.has_skill(skill)
 
     def has_skill(self, skill: str) -> bool:
         canonical = canonicalize(skill)
@@ -110,9 +117,19 @@ def _mentions(row: Dict[str, Any], skills: List[str]) -> bool:
     return any(canonicalize(s) in terms for s in skills)
 
 
-def build_context(data: Dict[str, Any], analysis: QuestionAnalysis) -> ProfileContext:
-    """Formats fetched rows into prompt text. `data` maps section -> rows, plus "profile" -> row."""
+def build_context(
+    data: Dict[str, Any],
+    analysis: QuestionAnalysis,
+    additional_facts: Optional[List[str]] = None,
+    include_logistics: Optional[bool] = None,
+) -> ProfileContext:
+    """Formats fetched rows into prompt text. `data` maps section -> rows, plus "profile" -> row,
+    and "profile_facts" -> rows. `additional_facts` are what the candidate just told us without saving."""
     ctx = ProfileContext(text="")
+    # "I don't have this skill" rows are knowledge, not skills: keep them out of the text and the corpus.
+    skills = data.get("skills") or []
+    ctx.declined_skills = {canonicalize(r["name"]) for r in skills if r.get("level") == "none"}
+    data = {**data, "skills": [r for r in skills if r.get("level") != "none"]}
     out: List[str] = []
     corpus: List[str] = []
     profile = data.get("profile") or {}
@@ -128,7 +145,7 @@ def build_context(data: Dict[str, Any], analysis: QuestionAnalysis) -> ProfileCo
         links = {k: v for k, v in (profile.get("links") or {}).items() if v}
         if links:
             out.append("  Links: " + ", ".join(f"{k}: {v}" for k, v in links.items()))
-        if analysis.category == "logistics":
+        if analysis.category == "logistics" if include_logistics is None else include_logistics:
             for label, key in [("Work authorization", "work_authorization"),
                                ("Requires visa sponsorship", "requires_sponsorship"),
                                ("Notice period / availability", "notice_period"),
@@ -189,13 +206,33 @@ def build_context(data: Dict[str, Any], analysis: QuestionAnalysis) -> ProfileCo
             out += _lines("Technologies", r.get("technologies"))
             ctx.sources[ref] = Source(ref, type_name, r.get("id", ""), label)
 
+    facts = (data.get("profile_facts") or [])[:FACTS_LIMIT]
+    for i, r in enumerate(facts, start=1):
+        ref = f"F{i}"
+        out.append(f"[{ref}] FACT ({r.get('category') or 'general'}): {r['prompt']}")
+        out += _lines("Answer", r.get("answer"))
+        ctx.sources[ref] = Source(ref, "fact", r.get("id", ""), r["prompt"][:80])
+        corpus.append(r.get("answer") or "")
+    for i, fact in enumerate(additional_facts or [], start=1):
+        if not fact.strip():
+            continue
+        ref = f"N{i}"
+        out.append(f"[{ref}] FACT (from the candidate, just now): {fact.strip()}")
+        ctx.sources[ref] = Source(ref, "fact", "", "What you told Ansly")
+        corpus.append(fact)
+
     ctx.text = "\n".join(out)
     # Skill presence looks at every fetched section, not only the ones shown to the model.
     for section in SECTION_LIMITS:
         for r in data.get(section) or []:
             corpus.append(" ".join(str(v) for v in r.values() if isinstance(v, (str, list))))
     ctx.corpus_terms = _term_ngrams(" ".join(str(c) for c in corpus))
-    ctx.is_empty = not any(data.get(s) for s in SECTION_LIMITS) and not (profile.get("summary") or "").strip()
+    ctx.is_empty = (
+        not any(data.get(s) for s in SECTION_LIMITS)
+        and not (profile.get("summary") or "").strip()
+        and not facts
+        and not any(f.strip() for f in additional_facts or [])
+    )
     return ctx
 
 
@@ -210,6 +247,10 @@ async def fetch_profile_data(rest: SupabaseRest, analysis: QuestionAnalysis) -> 
     for section in sections:
         data[section] = await rest.select(
             section, {"order": SECTION_ORDER[section], "limit": str(max(SECTION_LIMITS[section] * 3, 20))}
+        )
+    if analysis.category != "logistics":
+        data["profile_facts"] = await rest.select(
+            "profile_facts", {"order": "updated_at.desc", "limit": str(FACTS_LIMIT)}
         )
     return data
 

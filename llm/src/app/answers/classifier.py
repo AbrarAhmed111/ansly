@@ -9,10 +9,11 @@ Rule-based, zero-token understanding of an application question:
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 # Profile sections each category draws on, most relevant first.
 CATEGORY_SECTIONS = {
+    "cover_letter": ["experiences", "projects", "skills", "achievements", "education"],
     "about_me": ["experiences", "projects", "skills", "education", "achievements"],
     "motivation": ["experiences", "projects", "skills"],
     "project": ["projects", "experiences", "skills"],
@@ -28,6 +29,7 @@ CATEGORY_SECTIONS = {
 
 # (category, intent, patterns). First match wins, so order matters.
 RULES: List[Tuple[str, str, List[str]]] = [
+    ("cover_letter", "cover_letter", [r"\bcover(?:ing)? letter\b", r"\bmotivation(?:al)? letter\b", r"\bletter of motivation\b"]),
     ("logistics", "salary", [r"\bsalary\b", r"\bcompensation\b", r"\bpay (?:range|expectation)", r"\bexpected (?:ctc|pay)\b", r"\bctc\b"]),
     ("logistics", "sponsorship", [r"\bsponsor(?:ship)?\b", r"\bvisa\b"]),
     ("logistics", "work_authorization", [r"\b(?:legally )?authori[sz]ed to work\b", r"\bwork (?:authori[sz]ation|permit)\b", r"\bright to work\b"]),
@@ -47,7 +49,7 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("strengths", "strengths", [r"\bstrength\w*\b", r"\bwhy should we hire\b", r"\bwhat makes you (?:unique|stand out|a good fit|the right)\b", r"\bwhat (?:would you|can you) bring\b", r"\bgood fit\b"]),
     ("education", "education", [r"\b(?:degree|education|university|college|school|studied|coursework|gpa|certification)\b"]),
     ("achievement", "achievement", [r"\b(?:achievement|accomplishment|award|recognition|proudest)\b"]),
-    ("about_me", "about_me", [r"\btell (?:us|me) (?:a bit |a little )?about yourself\b", r"\bintroduce yourself\b", r"\bdescribe yourself\b", r"\b(?:professional )?summary\b", r"\bcover letter\b", r"\babout you\b"]),
+    ("about_me", "about_me", [r"\btell (?:us|me) (?:a bit |a little )?about yourself\b", r"\bintroduce yourself\b", r"\bdescribe yourself\b", r"\b(?:professional )?summary\b", r"\babout you\b"]),
     ("skill_check", "skill_years", [r"\bhow many years\b"]),
     ("skill_check", "skill_check", [r"\b(?:do|have) you (?:have )?(?:any )?(?:professional |hands-on |prior )?(?:experience|familiarity|exposure|knowledge)\b", r"\bhave you (?:ever )?(?:used|worked with|built with|deployed|written)\b", r"\bare you (?:familiar|proficient|comfortable|experienced)\b", r"\brate your\b"]),
     ("experience", "experience", [r"\bexperience\b", r"\bbackground\b", r"\b(?:current|previous|past) (?:role|job|position|employer)\b", r"\bresponsibilities\b", r"\bwork history\b"]),
@@ -137,3 +139,17 @@ def classify_question(question: str) -> QuestionAnalysis:
         sections=list(CATEGORY_SECTIONS[category]),
         target_skills=target_skills,
     )
+
+
+def apply_field_signals(analysis: QuestionAnalysis, kind: Optional[str], max_length: Optional[int]) -> QuestionAnalysis:
+    """A large free-text field with no limit whose label mentions a letter is a cover letter."""
+    if (
+        analysis.category != "cover_letter"
+        and kind in ("textarea", "contenteditable")
+        and not max_length
+        and re.search(r"\bletter\b", normalize_question(analysis.question))
+    ):
+        analysis.category, analysis.intent = "cover_letter", "cover_letter"
+        analysis.sections = list(CATEGORY_SECTIONS["cover_letter"])
+        analysis.target_skills = []
+    return analysis
