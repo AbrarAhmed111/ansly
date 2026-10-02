@@ -84,8 +84,9 @@ Both return 429.
 
 ## Deploy (Vercel)
 
-Create a Vercel project with Root Directory `llm` and the FastAPI preset.
-Vercel serves the `app` exported by `index.py`. Set the variables from `.env.example` in the project,
+Create a Vercel project with Root Directory `llm`. `vercel.json` builds
+`api/index.py` with `@vercel/python` (which installs `requirements.txt`) and
+routes every request to it. Set the variables from `.env.example` in the project,
 with `ENVIRONMENT=production` and `ALLOWED_ORIGINS` set to the web app's URL.
 
 ## Tests
