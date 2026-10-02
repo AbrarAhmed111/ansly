@@ -417,3 +417,19 @@ Each step is releasable on its own.
 - **Batch answers are longer prompts** — watch provider latency and token limits; the per-item fallback must work.
 - **Optional host permissions** change install UX; test the permission prompt flow on Chrome and Edge.
 - **Daily limits** — Fill all can use 5–10 generations in one click. Confirm the production daily limit is sized for that.
+
+---
+
+## Implementation notes (2026-10-02)
+
+All six sections are implemented. Where the build differs from the text above:
+
+- **Enabled sites list.** Not stored separately: granted host permissions plus registered content scripts are the list, so it can't drift. It is per browser profile (permissions don't sync), so `chrome.storage.sync` isn't used for it. The web `/settings` page reads and removes sites through the web bridge; adding a site has to happen in the extension, because the browser's permission prompt needs a click there.
+- **Global switch.** The popup keeps one master switch ("Show Ansly on enabled sites") as a pause button.
+- **`missingInformation`.** Kept as the human-readable sentence; the structured items are a new `missing: MissingInfo[]` field next to it, so existing callers (web playground) keep working.
+- **Daily limit for Fill all.** Only answers that actually need the model count (profile fields, saved answers and deterministic choices don't). The batch is refused up front with the remaining count if it would go over.
+- **`fill_all` usage event.** Sent by the extension through `/events`, so it respects the user's analytics setting; the API records one `generate` event per generated answer, as before.
+- **Question order.** `aria-describedby` is used as the question only when no label / aria-label exists, and never when it just says "Max 500 characters".
+- **Comboboxes whose options aren't rendered** (react-select before opening) are sent as `short_text`; the fill types the answer and picks the matching option, then verifies and reports "select it manually" on failure.
+- **Migration file** is `20261003000000_profile_facts.sql` (14-digit timestamp like the others). `profile_facts.category` is nullable with default `'general'` so the web editor can leave it empty.
+- **Live ATS QA is still to do**: fixtures cover simplified Greenhouse (classic + job boards), Lever, Ashby, Workday, LinkedIn Easy Apply and Indeed markup. Use detection debug + Copy diagnostics on the real sites and turn each miss into a fixture.

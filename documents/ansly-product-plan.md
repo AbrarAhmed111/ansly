@@ -515,7 +515,7 @@ This boundary is important.
 - ✗ Job alerts
 - ✗ Application tracking
 - ✗ Resume builder
-- ✗ Cover letter platform
+- ✗ Cover letter platform (answering a cover-letter *field* on an application form is in scope: it is one more application question, grounded in the profile like any other. A product for writing and managing cover letters is not.)
 - ✗ Automated job applications
 - ✗ Auto-submit
 - ✗ Autonomous browser agent
