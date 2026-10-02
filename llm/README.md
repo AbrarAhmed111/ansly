@@ -77,8 +77,17 @@ provider, add a `ProviderSpec` in `gateway/providers.py` and a `*_MODEL` setting
 
 ## Limits
 
-`RATE_LIMIT_PER_MINUTE` (per user, in memory) and `DAILY_GENERATION_LIMIT`
-(per user, counted from `usage_events`). Both return 429.
+`RATE_LIMIT_PER_MINUTE` (per user, via the `check_rate_limit` Postgres
+function) and `DAILY_GENERATION_LIMIT` (per user, counted from `usage_events`).
+Both live in Supabase, so they hold across restarts and serverless instances.
+Both return 429.
+
+## Deploy (Vercel)
+
+Create a Vercel project with Root Directory `llm` and the FastAPI preset.
+`[tool.vercel] entrypoint` in `pyproject.toml` points Vercel at
+`src.app.main:app`. Set the variables from `.env.example` in the project,
+with `ENVIRONMENT=production` and `ALLOWED_ORIGINS` set to the web app's URL.
 
 ## Tests
 

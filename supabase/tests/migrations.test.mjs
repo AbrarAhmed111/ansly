@@ -133,6 +133,25 @@ test('usage events are append-only', async () => {
   )
 })
 
+test('rate limit counts hits per user within the window', async () => {
+  const check = (userId) =>
+    asUser(userId, async (tx) => (await tx.query('select public.check_rate_limit(2, 60) as wait')).rows[0].wait)
+  assert.equal(await check(ALICE), 0)
+  assert.equal(await check(ALICE), 0)
+  const wait = await check(ALICE)
+  assert.ok(wait >= 1 && wait <= 60, `expected a retry delay, got ${wait}`)
+  assert.equal(await check(BOB), 0)
+
+  await assert.rejects(
+    asUser(ALICE, (tx) => tx.query('select * from public.rate_limit_hits')),
+    /permission denied/,
+  )
+  await assert.rejects(
+    asUser(ALICE, (tx) => tx.query('select public.check_rate_limit(1, 999999)')),
+    /invalid rate limit/,
+  )
+})
+
 test('anonymous visitors cannot read profile data', async () => {
   await assert.rejects(
     db.transaction(async (tx) => {

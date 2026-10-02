@@ -65,6 +65,7 @@ class FakeRest:
         for name in ["profiles", "experiences", "projects", "skills", "education", "achievements",
                      "saved_answers", "usage_events"]:
             self.tables.setdefault(name, [])
+        self.rate_limit_hits = 0
 
     @staticmethod
     def _matches(row: Dict[str, Any], params: Dict[str, str]) -> bool:
@@ -98,6 +99,13 @@ class FakeRest:
                 row.update(values)
                 updated.append(copy.deepcopy(row))
         return updated
+
+    async def rpc(self, function: str, args: Optional[Dict[str, Any]] = None) -> Any:
+        assert function == "check_rate_limit", function
+        if self.rate_limit_hits >= args["max_hits"]:
+            return args["window_seconds"]
+        self.rate_limit_hits += 1
+        return 0
 
     async def count(self, table: str, params: Optional[Dict[str, str]] = None) -> int:
         return len([r for r in self.tables[table] if self._matches(r, params or {})])

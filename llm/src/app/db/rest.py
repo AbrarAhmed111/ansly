@@ -61,6 +61,12 @@ class SupabaseRest:
         self._check(response)
         return response.json()
 
+    async def rpc(self, function: str, args: Optional[Dict[str, Any]] = None) -> Any:
+        async with self._client() as client:
+            response = await client.post(f"/rpc/{function}", json=args or {})
+        self._check(response)
+        return response.json()
+
     async def count(self, table: str, params: Optional[Dict[str, str]] = None) -> int:
         async with self._client() as client:
             response = await client.head(

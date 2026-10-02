@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 
 from src.app.api.deps import answer_engine, get_rest
 from src.app.core.auth import AuthUser, get_current_user
-from src.app.core.rate_limit import rate_limiter
+from src.app.core.rate_limit import check_rate_limit
 from src.app.gateway import GatewayResult, GatewayUnavailableError
 from src.app.main import app
 from tests.fakes import USER_ID, FakeRest
@@ -27,7 +27,6 @@ def rest():
 def client(rest):
     app.dependency_overrides[get_current_user] = lambda: AuthUser(id=USER_ID, email="sam@example.com", token="t")
     app.dependency_overrides[get_rest] = lambda: rest
-    rate_limiter.reset()
     yield AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     app.dependency_overrides.clear()
 
@@ -178,10 +177,10 @@ async def test_track_event(client, rest):
     assert bad.status_code == 422
 
 
-def test_rate_limiter_unit():
-    rate_limiter.reset()
-    rate_limiter.check("u", 1)
+@pytest.mark.asyncio
+async def test_rate_limit_sets_retry_after():
+    rest = FakeRest()
+    await check_rate_limit(rest, 1)
     with pytest.raises(HTTPException) as exc:
-        rate_limiter.check("u", 1)
-    assert exc.value.status_code == 429 and "Retry-After" in exc.value.headers
-    rate_limiter.check("other-user", 1)
+        await check_rate_limit(rest, 1)
+    assert exc.value.status_code == 429 and exc.value.headers["Retry-After"] == "60"

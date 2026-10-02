@@ -11,7 +11,7 @@ from src.app.answers.engine import AnswerEngine
 from src.app.api.deps import get_answer_engine, get_rest
 from src.app.core.auth import AuthUser, get_current_user
 from src.app.core.config import get_settings
-from src.app.core.rate_limit import check_daily_limit, rate_limiter
+from src.app.core.rate_limit import check_daily_limit, check_rate_limit
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.gateway import GatewayUnavailableError
 from src.app.schemas.answers import AnswerResponse, GenerateAnswerRequest, RegenerateAnswerRequest
@@ -31,8 +31,8 @@ async def _run(
     instruction: Optional[str] = None,
 ) -> AnswerResponse:
     settings = get_settings()
-    rate_limiter.check(user.id, settings.RATE_LIMIT_PER_MINUTE)
     try:
+        await check_rate_limit(rest, settings.RATE_LIMIT_PER_MINUTE)
         await check_daily_limit(rest, settings.DAILY_GENERATION_LIMIT)
         response = await engine.answer(rest, request, previous_answer=previous_answer, instruction=instruction)
     except SupabaseError as e:
