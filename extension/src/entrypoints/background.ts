@@ -11,8 +11,19 @@ import {
   type TabMessage,
 } from '@/lib/messages'
 import { fetchProfileSummary } from '@/lib/profile-summary'
+import { fetchProfileValues } from '@/lib/profile-values'
 import { getValidSession, isValidSession, sessionItem } from '@/lib/session'
-import { getSettings } from '@/lib/settings'
+import { getSettings, migrateFromV1, sitesNoticeItem } from '@/lib/settings'
+import {
+  enabledSites,
+  injectIntoOpenTabs,
+  injectIntoTab,
+  reconcileSites,
+  registerSite,
+  removeSite,
+  sitesIn,
+  unregisterSite,
+} from '@/lib/sites'
 
 const deps: ApiDeps = {
   getSession: (force) => getValidSession(force),
@@ -30,6 +41,53 @@ async function connection(): Promise<ConnectionState> {
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data })
 
+/** Runs `fn` with a fresh access token, mapping "not connected" / network failures to Results. */
+async function withSession<T>(fn: (token: string) => Promise<T>): Promise<Result<T>> {
+  let session
+  try {
+    session = await getValidSession()
+  } catch {
+    return { ok: false, error: { code: 'network', message: "Can't reach Ansly." } }
+  }
+  if (!session) return { ok: false, error: { code: 'not_connected', message: 'Not connected' } }
+  try {
+    return ok(await fn(session.access_token))
+  } catch (e) {
+    return { ok: false, error: { code: 'server', message: e instanceof Error ? e.message : String(e) } }
+  }
+}
+
+const CONTEXT_MENU_ID = 'ansly-answer'
+
+/**
+ * Sends a message to a tab's content script. On a site that isn't enabled there is
+ * none yet, so it is injected once (the shortcut / context menu click grants activeTab).
+ */
+async function sendToTab(tabId: number, message: TabMessage, frameId?: number): Promise<void> {
+  const options = frameId == null ? undefined : { frameId }
+  try {
+    await browser.tabs.sendMessage(tabId, message, options)
+    return
+  } catch {
+    // No content script yet.
+  }
+  try {
+    await injectIntoTab(tabId)
+  } catch {
+    return // chrome:// pages, the web store, etc.
+  }
+  // The freshly injected script needs a moment to mount its listener.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await new Promise((r) => setTimeout(r, 150))
+    try {
+      await browser.tabs.sendMessage(tabId, message, options)
+      return
+    } catch {
+      // Not listening yet.
+    }
+  }
+}
+
 type Handlers = { [K in RequestType]: (payload: RequestMap[K]['payload']) => Promise<Result<RequestMap[K]['response']>> }
 
 const handlers: Handlers = {
@@ -42,21 +100,12 @@ const handlers: Handlers = {
     if (!(await getSettings()).analytics) return ok(null)
     return apiRequest(deps, 'POST', '/api/v1/events', payload)
   },
+  generateBatch: (payload) => apiRequest(deps, 'POST', '/api/v1/answers/generate-batch', payload),
+  matchSavedBatch: (payload) => apiRequest(deps, 'POST', '/api/v1/saved-answers/match-batch', payload),
+  saveMissing: (payload) => apiRequest(deps, 'POST', '/api/v1/profile/missing', payload),
+  getProfileValues: () => withSession(fetchProfileValues),
   getConnection: async () => ok(await connection()),
-  async getProfileSummary() {
-    let session
-    try {
-      session = await getValidSession()
-    } catch {
-      return { ok: false, error: { code: 'network', message: "Can't reach Ansly." } }
-    }
-    if (!session) return { ok: false, error: { code: 'not_connected', message: 'Not connected' } }
-    try {
-      return ok(await fetchProfileSummary(session.access_token))
-    } catch (e) {
-      return { ok: false, error: { code: 'server', message: e instanceof Error ? e.message : String(e) } }
-    }
-  },
+  getProfileSummary: () => withSession(fetchProfileSummary),
   async connect(session: ExtensionSession) {
     if (!isValidSession(session)) {
       return { ok: false, error: { code: 'bad_request', message: 'The web app sent an invalid session.' } }
@@ -71,6 +120,19 @@ const handlers: Handlers = {
   async openWebApp({ path }) {
     const safePath = path.startsWith('/') && !path.startsWith('//') ? path : '/'
     await browser.tabs.create({ url: `${WEB_URL}${safePath}` })
+    return ok(null)
+  },
+  getSites: async () => ok(await enabledSites()),
+  async removeSite({ domain }) {
+    await removeSite(domain)
+    return ok(await enabledSites())
+  },
+  async enableSite({ domain }) {
+    if (!(await enabledSites()).includes(domain)) {
+      return { ok: false, error: { code: 'bad_request', message: `Ansly doesn't have access to ${domain}.` } }
+    }
+    await registerSite(domain)
+    await injectIntoOpenTabs(domain)
     return ok(null)
   },
 }
@@ -90,18 +152,42 @@ export default defineBackground(() => {
   })
 
   // Keyboard shortcut: ask the active tab to open Ansly for the focused field.
+  // On a site that isn't enabled, the shortcut is a one-time "Scan this page" (activeTab).
   browser.commands.onCommand.addListener(async (command) => {
     if (command !== 'generate-answer') return
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
-    if (tab?.id == null) return
-    try {
-      await browser.tabs.sendMessage(tab.id, { ansly: true, type: 'shortcut' } satisfies TabMessage)
-    } catch {
-      // No content script on this page (e.g. chrome:// pages).
-    }
+    if (tab?.id != null) await sendToTab(tab.id, { ansly: true, type: 'shortcut' })
   })
 
+  // Right-click → "Answer with Ansly": works on any editable field, detected or not.
+  browser.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId !== CONTEXT_MENU_ID || tab?.id == null) return
+    await sendToTab(tab.id, { ansly: true, type: 'contextAnswer' }, info.frameId)
+  })
+
+  // Enabling a site = granting its host permission (from the popup). Doing the
+  // registration here keeps working even if the permission prompt closes the popup.
+  browser.permissions.onAdded.addListener(async ({ origins }) => {
+    for (const domain of sitesIn(origins)) {
+      await registerSite(domain)
+      await injectIntoOpenTabs(domain)
+    }
+  })
+  browser.permissions.onRemoved.addListener(async ({ origins }) => {
+    for (const domain of sitesIn(origins)) await unregisterSite(domain)
+  })
+
+  browser.runtime.onStartup.addListener(() => void reconcileSites())
+
   browser.runtime.onInstalled.addListener(async ({ reason }) => {
-    if (reason === 'install') await browser.tabs.create({ url: `${WEB_URL}/extension` })
+    await browser.contextMenus.removeAll()
+    browser.contextMenus.create({ id: CONTEXT_MENU_ID, title: 'Answer with Ansly', contexts: ['editable'] })
+    if (reason === 'install') {
+      await sitesNoticeItem.setValue(false)
+      await browser.tabs.create({ url: `${WEB_URL}/extension` })
+    } else if (reason === 'update') {
+      await migrateFromV1()
+    }
+    await reconcileSites()
   })
 })

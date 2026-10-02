@@ -26,19 +26,26 @@ export default defineConfig({
   // Keep the dev server off port 3000, which belongs to the web app (Next.js).
   dev: { server: { port: 3100, origin: 'http://localhost:3100' } },
   modules: ['@wxt-dev/module-react'],
-  manifest: {
+  manifest: ({ manifestVersion }) => ({
     name: 'Ansly',
     description: 'AI job application assistant — truthful, personalized answers from your own profile.',
-    permissions: ['storage', 'activeTab'],
+    // activeTab + scripting: one-time "Scan this page" without a permanent permission.
+    // contextMenus: right-click → "Answer with Ansly" on any field.
+    permissions: ['storage', 'activeTab', 'scripting', 'contextMenus'],
     // The background calls the Ansly API and Supabase; nothing else.
     host_permissions: [
       ...new Set([originPattern(apiUrl), 'http://localhost/*', 'http://127.0.0.1/*', 'https://*.supabase.co/*']),
     ],
+    // Sites are opt-in: the popup requests one origin at a time (lib/sites.ts).
+    // MV2 (Firefox) has no optional_host_permissions; host patterns go in optional_permissions.
+    ...(manifestVersion === 3
+      ? { optional_host_permissions: ['https://*/*'] }
+      : { optional_permissions: ['https://*/*'] }),
     commands: {
       'generate-answer': {
         suggested_key: { default: 'Alt+Shift+A', mac: 'Alt+Shift+A' },
         description: 'Answer the focused field with Ansly',
       },
     },
-  },
+  }),
 })

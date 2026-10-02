@@ -1,13 +1,38 @@
+import type { AnswerLength, AnswerTone } from '@ansly/types'
 import { useEffect, useState } from 'react'
 import { send, type ConnectionState } from '@/lib/messages'
 import type { ProfileSummary } from '@/lib/profile-summary'
 import { getSettings, updateSettings, type Settings, type Theme } from '@/lib/settings'
+import { LENGTHS, TONES } from '@/lib/style'
 import { getStatus, type ExtensionStatus, type StatusCheck } from '@/lib/status'
+import { Sites } from './Sites'
 
 const LABELS: Record<StatusCheck['status'], string> = {
   ok: 'Connected',
   error: 'Unreachable',
   not_configured: 'Not configured',
+}
+
+/** Collects the sanitized detection report from every frame of the active tab and copies it. */
+async function copyDiagnostics(): Promise<string> {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
+  if (tab?.id == null) return 'No page'
+  try {
+    const results = await browser.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      // Runs in the content script's world, where it exposes the report.
+      func: () => {
+        const report = (window as unknown as Record<symbol, (() => unknown) | undefined>)[Symbol.for('ansly.diagnostics')]
+        return report ? report() : null
+      },
+    })
+    const frames = results.map((r) => r.result).filter(Boolean)
+    if (!frames.length) return 'Not running here'
+    await navigator.clipboard.writeText(JSON.stringify({ version: browser.runtime.getManifest().version, frames }, null, 2))
+    return 'Copied'
+  } catch {
+    return "Can't read this page"
+  }
 }
 
 const extensionShortcutsUrl = () => (/\bEdg\//.test(navigator.userAgent) ? 'edge://extensions/shortcuts' : 'chrome://extensions/shortcuts')
@@ -34,10 +59,10 @@ export default function App() {
   const [connection, setConnection] = useState<ConnectionState | null>(null)
   const [summary, setSummary] = useState<ProfileSummary | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [hostname, setHostname] = useState<string | null>(null)
   const [shortcut, setShortcut] = useState<string | null>(null)
   const [status, setStatus] = useState<ExtensionStatus | null>(null)
   const [showStatus, setShowStatus] = useState(false)
+  const [diagnosticsNote, setDiagnosticsNote] = useState<string | null>(null)
 
   useEffect(() => {
     void send('getConnection', null).then((r) => {
@@ -46,14 +71,6 @@ export default function App() {
       if (r.data.connected) void send('getProfileSummary', null).then((s) => s.ok && setSummary(s.data))
     })
     void getSettings().then(setSettings)
-    void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      try {
-        const url = tab?.url ? new URL(tab.url) : null
-        if (url && /^https?:$/.test(url.protocol)) setHostname(url.hostname)
-      } catch {
-        // Not a web page.
-      }
-    })
     void browser.commands.getAll().then((commands) => {
       setShortcut(commands.find((c) => c.name === 'generate-answer')?.shortcut || null)
     })
@@ -64,7 +81,6 @@ export default function App() {
   }, [showStatus, status])
 
   const patch = async (p: Partial<Settings>) => setSettings(await updateSettings(p))
-  const siteDisabled = Boolean(hostname && settings?.disabledSites.includes(hostname))
 
   return (
     <main>
@@ -104,23 +120,16 @@ export default function App() {
         )}
       </section>
 
+      <Sites />
+
       {settings && (
         <section className="settings">
-          <Toggle label="Show Ansly on application forms" checked={settings.enabled} onChange={(v) => void patch({ enabled: v })} />
-          {hostname && (
-            <Toggle
-              label={`Turn off on ${hostname}`}
-              checked={siteDisabled}
-              disabled={!settings.enabled}
-              onChange={(v) =>
-                void patch({
-                  disabledSites: v
-                    ? [...settings.disabledSites, hostname]
-                    : settings.disabledSites.filter((h) => h !== hostname),
-                })
-              }
-            />
-          )}
+          <Toggle
+            label="Show Ansly on enabled sites"
+            help="Pause Ansly everywhere without removing your sites."
+            checked={settings.enabled}
+            onChange={(v) => void patch({ enabled: v })}
+          />
           <Toggle
             label="Use job descriptions"
             help="Send the job description with questions for more role-specific answers."
@@ -128,11 +137,53 @@ export default function App() {
             onChange={(v) => void patch({ useJobDescription: v })}
           />
           <Toggle
+            label="Review answers before filling"
+            help="Fill all shows every answer in the panel first, with one confirm."
+            checked={settings.reviewBeforeFill}
+            onChange={(v) => void patch({ reviewBeforeFill: v })}
+          />
+          <Toggle
+            label="Overwrite fields that already have text"
+            help="Fill all skips fields you've already filled unless this is on."
+            checked={settings.overwriteFilled}
+            onChange={(v) => void patch({ overwriteFilled: v })}
+          />
+          <Toggle
+            label="Detection debug"
+            help="Outline every field: green = detected, grey = ignored (hover the label for why)."
+            checked={settings.detectionDebug}
+            onChange={(v) => void patch({ detectionDebug: v })}
+          />
+          {settings.detectionDebug && (
+            <div className="row">
+              <span>
+                Copy diagnostics
+                <small className="muted block">Field structure only, never what you typed.</small>
+              </span>
+              <button className="link" onClick={() => void copyDiagnostics().then(setDiagnosticsNote)}>
+                {diagnosticsNote ?? 'Copy'}
+              </button>
+            </div>
+          )}
+          <Toggle
             label="Usage analytics"
             help="Count fills and saved-answer reuse (never the text)."
             checked={settings.analytics}
             onChange={(v) => void patch({ analytics: v })}
           />
+          <label className="row">
+            <span>Default length</span>
+            <select value={settings.defaultLength} onChange={(e) => void patch({ defaultLength: e.target.value as AnswerLength })}>
+              <option value="auto">Auto</option>
+              {LENGTHS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+            </select>
+          </label>
+          <label className="row">
+            <span>Default tone</span>
+            <select value={settings.defaultTone} onChange={(e) => void patch({ defaultTone: e.target.value as AnswerTone })}>
+              {TONES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </label>
           <label className="row">
             <span>Theme</span>
             <select value={settings.theme} onChange={(e) => void patch({ theme: e.target.value as Theme })}>

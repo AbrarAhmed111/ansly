@@ -5,14 +5,22 @@ import { getSettings, settingsItem, type Settings } from '@/lib/settings'
 
 const WEB_ORIGIN = (import.meta.env.WXT_WEB_URL || 'http://localhost:3000').replace(/\/+$/, '')
 
+// Set while a live copy of this script is running in this frame.
+const LOADED = Symbol.for('ansly.content')
+
+// Not declared in the manifest: the background registers it per enabled site,
+// and the popup / shortcut inject it once for "Scan this page" (see lib/sites.ts).
 export default defineContentScript({
-  matches: ['<all_urls>'],
-  // Not on the Ansly web app itself (its own forms are the profile).
-  excludeMatches: [`${WEB_ORIGIN}/*`],
-  // Application forms are often embedded in iframes (e.g. Greenhouse on company sites).
-  allFrames: true,
-  runAt: 'document_idle',
+  registration: 'runtime',
   async main(ctx) {
+    // Not on the Ansly web app itself (its own forms are the profile).
+    if (window.location.origin === WEB_ORIGIN) return
+    // A one-time scan on an enabled site, or a second scan, must not mount twice.
+    const w = window as unknown as Record<symbol, boolean>
+    if (w[LOADED]) return
+    w[LOADED] = true
+    ctx.onInvalidated(() => delete w[LOADED])
+
     // Pages without any text fields never get UI.
     if (!document.querySelector('textarea, input, [contenteditable]')) {
       // ...unless fields arrive later (single-page apps).

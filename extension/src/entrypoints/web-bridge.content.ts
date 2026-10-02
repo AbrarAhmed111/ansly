@@ -41,6 +41,11 @@ export default defineContentScript({
       } else if (msg.type === 'ANSLY_DISCONNECT') {
         await send('disconnect', null)
         await postStatus()
+      } else if (msg.type === 'ANSLY_GET_SITES' || msg.type === 'ANSLY_REMOVE_SITE') {
+        const result = msg.type === 'ANSLY_REMOVE_SITE' && typeof msg.domain === 'string'
+          ? await send('removeSite', { domain: msg.domain })
+          : await send('getSites', null)
+        if (result.ok) reply({ source: BRIDGE_EXTENSION, type: 'ANSLY_SITES', sites: result.data })
       }
     })
 
