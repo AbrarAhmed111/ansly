@@ -1,6 +1,6 @@
 'use client'
 
-import type { AnswerResponse, UsedSource } from '@ansly/types'
+import type { AnswerResponse, AnswerStyle, UsedSource } from '@ansly/types'
 import { clsx } from 'clsx'
 import { BookmarkPlus, Briefcase, Check, ChevronDown, CornerDownLeft, FileQuestion, RefreshCw, SearchX, Sparkles, Wand2 } from 'lucide-react'
 import Link from 'next/link'
@@ -38,7 +38,19 @@ const EXAMPLES = [
   'Do you have experience with Kubernetes?',
 ]
 
-const TWEAKS = ['Shorter', 'More detailed', 'More technical', 'More enthusiastic', 'More formal']
+/** Presets map onto the same length / tone values as the extension's controls. */
+const TWEAKS: { label: string; style: Partial<AnswerStyle> }[] = [
+  { label: 'Shorter', style: { length: 'concise' } },
+  { label: 'More detailed', style: { length: 'detailed' } },
+  { label: 'More technical', style: { tone: 'technical' } },
+  { label: 'More enthusiastic', style: { tone: 'enthusiastic' } },
+  { label: 'More formal', style: { tone: 'formal' } },
+]
+
+const DEFAULT_STYLE: AnswerStyle = { length: 'auto', tone: 'professional' }
+
+const isOn = (style: AnswerStyle, preset: Partial<AnswerStyle>) =>
+  Object.entries(preset).every(([k, v]) => style[k as keyof AnswerStyle] === v)
 
 const SOURCE_ROUTES: Record<UsedSource['type'], { slug: string; label: string }> = {
   profile: { slug: 'personal', label: 'Personal' },
@@ -47,6 +59,7 @@ const SOURCE_ROUTES: Record<UsedSource['type'], { slug: string; label: string }>
   skill: { slug: 'skills', label: 'Skill' },
   education: { slug: 'education', label: 'Education' },
   achievement: { slug: 'achievements', label: 'Achievement' },
+  fact: { slug: 'additional', label: 'Additional detail' },
 }
 
 const CONFIDENCE_TONE = { high: 'success', medium: 'accent', low: 'warning' } as const
@@ -64,6 +77,7 @@ export default function PlaygroundPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<'generate' | 'regenerate' | null>(null)
   const [instruction, setInstruction] = useState('')
+  const [style, setStyle] = useState<AnswerStyle>(DEFAULT_STYLE)
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const questionRef = useRef<HTMLTextAreaElement>(null)
@@ -71,7 +85,8 @@ export default function PlaygroundPage() {
   useEffect(() => questionRef.current?.focus(), [])
 
   const limit = Number(maxLength) > 0 ? Number(maxLength) : null
-  const request = () => ({
+  const request = (s: AnswerStyle = style) => ({
+    style: s,
     question: question.trim(),
     job_context:
       company.trim() || role.trim() || description.trim()
@@ -102,17 +117,29 @@ export default function PlaygroundPage() {
     }
   }
 
-  async function onRegenerate(steer?: string) {
+  async function onRegenerate(preset?: Partial<AnswerStyle>) {
     if (!result || busy) return
+    // A preset toggles: clicking an active one goes back to the default for that setting.
+    let next = style
+    if (preset && isOn(style, preset)) {
+      next = {
+        ...style,
+        length: preset.length ? DEFAULT_STYLE.length : style.length,
+        tone: preset.tone ? DEFAULT_STYLE.tone : style.tone,
+      }
+    } else if (preset) {
+      next = { ...style, ...preset }
+    }
+    setStyle(next)
     setBusy('regenerate')
     setError(null)
     try {
       show(
         await regenerateAnswer({
-          ...request(),
+          ...request(next),
           question: asked,
           previous_answer: answer || result.answer,
-          instruction: (steer ?? instruction).trim() || null,
+          instruction: instruction.trim() || null,
         }),
       )
       setInstruction('')
@@ -321,8 +348,8 @@ export default function PlaygroundPage() {
               <div className="space-y-3 border-t border-border bg-surface-muted/30 px-5 py-4">
                 <div className="flex flex-wrap gap-1.5">
                   {TWEAKS.map((t) => (
-                    <Chip key={t} disabled={Boolean(busy)} onClick={() => void onRegenerate(t.toLowerCase())}>
-                      {t}
+                    <Chip key={t.label} selected={isOn(style, t.style)} disabled={Boolean(busy)} onClick={() => void onRegenerate(t.style)}>
+                      {t.label}
                     </Chip>
                   ))}
                 </div>

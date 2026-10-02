@@ -1,4 +1,4 @@
-import { Award, Briefcase, FolderGit2, GraduationCap, UserRound, Wrench, type LucideIcon } from 'lucide-react'
+import { Award, Briefcase, FolderGit2, GraduationCap, MessageSquarePlus, UserRound, Wrench, type LucideIcon } from 'lucide-react'
 
 /** Icon for each profile section, keyed by route slug. */
 export const SECTION_ICONS: Record<string, LucideIcon> = {
@@ -8,4 +8,5 @@ export const SECTION_ICONS: Record<string, LucideIcon> = {
   skills: Wrench,
   education: GraduationCap,
   achievements: Award,
+  additional: MessageSquarePlus,
 }

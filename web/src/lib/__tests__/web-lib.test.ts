@@ -99,7 +99,7 @@ describe('planImport', () => {
 })
 
 describe('profileCompleteness', () => {
-  const empty: FullProfile = { profile: null, experiences: [], projects: [], skills: [], education: [], achievements: [] }
+  const empty: FullProfile = { profile: null, experiences: [], projects: [], skills: [], education: [], achievements: [], profile_facts: [] }
 
   it('is 0 for an empty profile', () => {
     expect(profileCompleteness(empty).percent).toBe(0)
@@ -113,9 +113,16 @@ describe('profileCompleteness', () => {
       skills: Array.from({ length: 5 }, (_, i) => ({ name: `s${i}` })),
       education: [{}],
       achievements: [{}],
+      profile_facts: [{}],
     } as unknown as FullProfile
     expect(profileCompleteness(full).percent).toBe(100)
     const partial = { ...full, achievements: [], education: [] } as FullProfile
     expect(profileCompleteness(partial).percent).toBe(90)
+  })
+
+  it("doesn't count declined skills", () => {
+    const skills = Array.from({ length: 5 }, (_, i) => ({ name: `s${i}`, level: i === 0 ? 'none' : null }))
+    const item = profileCompleteness({ ...empty, skills } as unknown as FullProfile).items.find((i) => i.key === 'skills')
+    expect(item?.done).toBe(false)
   })
 })

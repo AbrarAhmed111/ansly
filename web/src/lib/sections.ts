@@ -109,6 +109,7 @@ export const SECTIONS: SectionDef[] = [
         { value: 'other', label: 'Other' },
       ] },
       { name: 'level', label: 'Level', type: 'select', options: [
+        { value: 'none', label: "None — I don't have this skill" },
         { value: 'beginner', label: 'Beginner' },
         { value: 'intermediate', label: 'Intermediate' },
         { value: 'advanced', label: 'Advanced' },
@@ -151,6 +152,34 @@ export const SECTIONS: SectionDef[] = [
     ],
     itemTitle: (r) => String(r.title),
     itemSubtitle: (r) => month(r.date),
+  },
+  {
+    slug: 'additional',
+    table: 'profile_facts',
+    title: 'Additional details',
+    singular: 'detail',
+    description:
+      'Answers you gave when Ansly asked for something your profile was missing. Ansly uses them like the rest of your profile.',
+    fields: [
+      { name: 'prompt', label: 'Question', type: 'text', required: true, wide: true, placeholder: 'Describe a time you led a team' },
+      { name: 'answer', label: 'Your answer', type: 'textarea', required: true, wide: true,
+        help: 'Facts only: Ansly treats this as true about you.' },
+      { name: 'category', label: 'Topic', type: 'select', options: [
+        { value: 'general', label: 'General' },
+        { value: 'leadership', label: 'Leadership' },
+        { value: 'challenge', label: 'Challenges' },
+        { value: 'conflict', label: 'Conflict' },
+        { value: 'failure', label: 'Failure / mistakes' },
+        { value: 'motivation', label: 'Motivation' },
+        { value: 'strengths', label: 'Strengths' },
+        { value: 'weakness', label: 'Weaknesses' },
+        { value: 'project', label: 'Projects' },
+        { value: 'experience', label: 'Experience' },
+        { value: 'other', label: 'Other' },
+      ] },
+    ],
+    itemTitle: (r) => String(r.prompt),
+    itemSubtitle: (r) => join(r.category === 'general' ? '' : r.category, r.source === 'extension' ? 'From the extension' : ''),
   },
 ]
 

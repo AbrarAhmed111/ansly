@@ -10,6 +10,7 @@ export interface ProfileExport {
   skills?: Record<string, unknown>[]
   education?: Record<string, unknown>[]
   achievements?: Record<string, unknown>[]
+  profile_facts?: Record<string, unknown>[]
   saved_answers?: Record<string, unknown>[]
 }
 

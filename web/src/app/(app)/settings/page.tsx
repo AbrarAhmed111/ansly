@@ -4,6 +4,7 @@ import { clsx } from 'clsx'
 import { Download, FileJson, LogOut, Palette, Upload, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import toast from 'react-hot-toast'
+import { EnabledSites } from '@/components/enabled-sites'
 import { ThemeToggle } from '@/components/theme'
 import { Alert, Avatar, Badge, Button, Card, CardHeader, ErrorText, IconButton, Overline, PageHeader } from '@/components/ui'
 import { errorMessage, humanize, plural } from '@/lib/format'
@@ -120,6 +121,8 @@ export default function SettingsPage() {
             className="flex-wrap"
           />
         </Card>
+
+        <EnabledSites />
 
         <Card>
           <CardHeader
