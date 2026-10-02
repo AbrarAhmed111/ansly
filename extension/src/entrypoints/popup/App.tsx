@@ -67,7 +67,10 @@ export default function App() {
   return (
     <main>
       <header>
-        <h1>✨ Ansly</h1>
+        <div className="brand">
+          <img src="/icon/32.png" alt="" />
+          <h1>Ansly</h1>
+        </div>
         {connection && <span className="version">v{connection.version}</span>}
       </header>
 
@@ -76,7 +79,7 @@ export default function App() {
           <p className="muted">Loading…</p>
         ) : connection.connected ? (
           <>
-            <p className="ready">✓ Ansly is ready</p>
+            <p className="ready">Ansly is ready</p>
             <dl>
               <dt>Your profile</dt>
               <dd>{summary?.name ?? connection.email ?? '—'}</dd>
@@ -101,7 +104,7 @@ export default function App() {
 
       {settings && (
         <section className="settings">
-          <Toggle label="Show ✨ on application forms" checked={settings.enabled} onChange={(v) => void patch({ enabled: v })} />
+          <Toggle label="Show Ansly on application forms" checked={settings.enabled} onChange={(v) => void patch({ enabled: v })} />
           {hostname && (
             <Toggle
               label={`Turn off on ${hostname}`}
