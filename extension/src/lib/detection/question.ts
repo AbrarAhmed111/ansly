@@ -2,14 +2,20 @@
  * Question extraction: finds the human-readable question for a form field,
  * using only generic signals (no per-site rules).
  *
- * Order: aria-labelledby → <label> → aria-label → fieldset legend →
- * surrounding text (preceding siblings / headings up the tree) → placeholder → name/id.
+ * Order: aria-labelledby → <label> → aria-label → aria-describedby →
+ * field-container label conventions (Workday data-automation-id, data-testid) →
+ * surrounding text (preceding siblings / headings up the tree) → fieldset legend →
+ * placeholder → name/id.
+ *
+ * Works inside open shadow roots: ids and labels are looked up in the field's own root.
  */
 
 export type QuestionSource =
   | 'aria-labelledby'
   | 'label'
   | 'aria-label'
+  | 'aria-describedby'
+  | 'container'
   | 'legend'
   | 'surrounding'
   | 'placeholder'
@@ -53,6 +59,8 @@ export function visibleText(el: Element): string {
     if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SELECT', 'TEXTAREA', 'INPUT', 'BUTTON', 'OPTION', 'SVG'].includes(tag)) return
     if (tag === 'ANSLY-ROOT' || element.getAttribute('aria-hidden') === 'true' || element.hasAttribute('hidden')) return
     if (element.getAttribute('contenteditable') && element.getAttribute('contenteditable') !== 'false') return
+    // Dropdown options inside a label aren't part of the question.
+    if (element !== el && ['option', 'listbox'].includes(element.getAttribute('role') ?? '')) return
     element.childNodes.forEach(walk)
     if (/^(P|DIV|LI|BR|H[1-6]|LABEL|LEGEND|SPAN)$/.test(tag)) parts.push(' ')
   }
@@ -60,48 +68,78 @@ export function visibleText(el: Element): string {
   return parts.join('').replace(/\s+/g, ' ').trim()
 }
 
+/** The document or shadow root that holds `el`; ids and label[for] resolve there. */
+function rootOf(el: Element): Document | ShadowRoot {
+  const root = el.getRootNode()
+  return root instanceof ShadowRoot || root instanceof Document ? root : el.ownerDocument
+}
+
 function byIds(el: Element, attr: string): string {
   const ids = el.getAttribute(attr)?.split(/\s+/).filter(Boolean) ?? []
-  const doc = el.ownerDocument
+  const root = rootOf(el)
   return ids
-    .map((id) => doc.getElementById(id))
+    .map((id) => root.getElementById(id) ?? el.ownerDocument.getElementById(id))
     .filter((n): n is HTMLElement => Boolean(n))
     .map((n) => visibleText(n))
     .join(' ')
 }
 
+function escapeId(id: string): string {
+  return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/["\\]/g, '\\$&')
+}
+
 function labelText(el: HTMLElement): string {
-  const doc = el.ownerDocument
   const texts: string[] = []
-  if (el.id) {
-    const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(el.id) : el.id.replace(/["\\]/g, '\\$&')
-    doc.querySelectorAll(`label[for="${escaped}"]`).forEach((l) => texts.push(visibleText(l)))
-  }
+  if (el.id) rootOf(el).querySelectorAll(`label[for="${escapeId(el.id)}"]`).forEach((l) => texts.push(visibleText(l)))
   const wrapping = el.closest('label')
   if (wrapping) texts.push(visibleText(wrapping))
   return texts.find((t) => cleanText(t)) ?? ''
 }
 
-function legendText(el: HTMLElement): string {
-  const legend = el.closest('fieldset')?.querySelector(':scope > legend')
+function legendText(el: Element): string {
+  const fieldset = el.closest('fieldset')
+  const legend = fieldset ? [...fieldset.children].find((c) => c.tagName === 'LEGEND') : null
   return legend ? visibleText(legend) : ''
 }
 
-const isField = (el: Element) =>
-  el.matches('input:not([type=hidden]), textarea, select, [contenteditable]:not([contenteditable=false])')
+/**
+ * Label conventions of field containers that don't use <label for>: Workday wraps each
+ * field in [data-automation-id^="formField"] with a [data-automation-id="formLabel"];
+ * many React forms use data-testid="...label".
+ */
+function containerLabel(el: Element, own: Element[] = [el]): string {
+  const workday = el.closest('[data-automation-id^="formField"]')
+  const wdLabel = workday?.querySelector('[data-automation-id="formLabel"], [data-automation-id="richTextLabel"], label')
+  if (wdLabel && !wdLabel.contains(el)) return visibleText(wdLabel)
+  for (let node = el.parentElement, depth = 0; node && depth < 4; node = node.parentElement, depth++) {
+    // A container with other fields holds their labels too.
+    if ([...node.querySelectorAll(FIELD_QUERY)].some((f) => !own.some((o) => o === f || o.contains(f) || f.contains(o)))) break
+    const label = node.querySelector(':scope > [data-testid$="label" i], :scope > [data-testid*="-label" i], :scope > [class*="label" i]:not(input):not(textarea)')
+    if (label && !own.some((o) => label.contains(o)) && !label.querySelector('input, textarea, select')) {
+      const text = visibleText(label)
+      if (text) return text
+    }
+  }
+  return ''
+}
+
+const FIELD_QUERY = 'input:not([type=hidden]), textarea, select, [contenteditable]:not([contenteditable=false]), [role=combobox], [role=radiogroup], [role=textbox]'
+
+const isField = (el: Element) => el.matches(FIELD_QUERY)
 
 /**
  * Text that appears before the field inside its nearby containers: the closest
  * preceding sibling with text, checked at each ancestor level. Stops at
  * containers that hold other fields' questions.
  */
-function surroundingText(el: HTMLElement): string {
+function surroundingText(el: HTMLElement, own: HTMLElement[] = [el]): string {
   let node: Element | null = el
+  const isOwn = (n: Element) => own.some((o) => n === o || n.contains(o))
   for (let depth = 0; node && depth < MAX_ANCESTOR_DEPTH; depth++) {
     let sibling = node.previousElementSibling
     while (sibling) {
       // A sibling that contains another field belongs to a different question.
-      if (isField(sibling) || sibling.querySelector('input:not([type=hidden]), textarea, select')) break
+      if (!isOwn(sibling) && (isField(sibling) || sibling.querySelector('input:not([type=hidden]), textarea, select'))) break
       const text = cleanText(visibleText(sibling))
       if (text) return text
       sibling = sibling.previousElementSibling
@@ -109,10 +147,9 @@ function surroundingText(el: HTMLElement): string {
     if (sibling) break
     const parent: HTMLElement | null = node.parentElement
     if (!parent || parent === el.ownerDocument.body) break
-    // Don't climb into a container that holds several fields: its text isn't ours.
-    if (parent.querySelectorAll('input:not([type=hidden]), textarea, select, [contenteditable=true]').length > 1) {
-      break
-    }
+    // Don't climb into a container that holds other fields: its text isn't ours.
+    const others = [...parent.querySelectorAll(FIELD_QUERY)].filter((f) => !own.some((o) => o === f || o.contains(f) || f.contains(o)))
+    if (others.length > 0) break
     node = parent
   }
   return ''
@@ -133,20 +170,60 @@ export function humanizeName(name: string | null): string {
   return words
 }
 
-export function extractQuestion(el: HTMLElement): ExtractedQuestion {
-  const hint = cleanText(byIds(el, 'aria-describedby')) || null
-  const candidates: [QuestionSource, () => string][] = [
-    ['aria-labelledby', () => byIds(el, 'aria-labelledby')],
-    ['label', () => labelText(el)],
-    ['aria-label', () => el.getAttribute('aria-label') ?? ''],
-    ['surrounding', () => surroundingText(el)],
-    ['legend', () => legendText(el)],
-    ['placeholder', () => el.getAttribute('placeholder') ?? el.getAttribute('data-placeholder') ?? ''],
-    ['name', () => humanizeName(el.getAttribute('name')) || humanizeName(el.id)],
-  ]
+/** A label that only describes format is helper text, not the question. */
+const FORMAT_HINT = /^(max(imum)?|min(imum)?|up to|at least|limit)\b.*\b(characters?|words?)\b/i
+
+function firstText(candidates: [QuestionSource, () => string][], hint: string | null): ExtractedQuestion {
   for (const [source, get] of candidates) {
     const text = cleanText(get())
-    if (text) return { text, source, hint }
+    if (text && !(source === 'aria-describedby' && FORMAT_HINT.test(text))) return { text, source, hint }
   }
   return { text: '', source: 'none', hint }
+}
+
+export function extractQuestion(el: HTMLElement): ExtractedQuestion {
+  const hint = cleanText(byIds(el, 'aria-describedby')) || null
+  return firstText(
+    [
+      ['aria-labelledby', () => byIds(el, 'aria-labelledby')],
+      ['label', () => labelText(el)],
+      ['aria-label', () => el.getAttribute('aria-label') ?? ''],
+      ['aria-describedby', () => hint ?? ''],
+      ['container', () => containerLabel(el)],
+      ['surrounding', () => surroundingText(el)],
+      ['legend', () => legendText(el)],
+      ['placeholder', () => el.getAttribute('placeholder') ?? el.getAttribute('data-placeholder') ?? ''],
+      ['name', () => humanizeName(el.getAttribute('name')) || humanizeName(el.id)],
+    ],
+    hint,
+  )
+}
+
+/** The question for a radio / checkbox group: legend, radiogroup label, or the text before the group. */
+export function extractGroupQuestion(anchor: HTMLElement, controls: HTMLElement[]): ExtractedQuestion {
+  const first = controls[0] ?? anchor
+  const hint = cleanText(byIds(anchor, 'aria-describedby')) || null
+  const group = first.closest('[role=radiogroup], [role=group]') as HTMLElement | null
+  return firstText(
+    [
+      ['aria-labelledby', () => (group ? byIds(group, 'aria-labelledby') : '') || byIds(anchor, 'aria-labelledby')],
+      ['aria-label', () => group?.getAttribute('aria-label') ?? anchor.getAttribute('aria-label') ?? ''],
+      ['legend', () => legendText(first)],
+      ['container', () => containerLabel(first, controls)],
+      ['surrounding', () => surroundingText(anchor, controls)],
+      ['name', () => humanizeName(first.getAttribute('name'))],
+    ],
+    hint,
+  )
+}
+
+/** The visible label of one option (radio / checkbox / role=option). */
+export function optionLabel(el: HTMLElement): string {
+  const fromLabel = cleanText(el.getAttribute('aria-label')) || cleanText(byIds(el, 'aria-labelledby')) || cleanText(labelText(el))
+  if (fromLabel) return fromLabel
+  if (el.getAttribute('role')) return cleanText(visibleText(el))
+  // <input type=radio> Yes  (text right after the input)
+  const next = el.nextSibling
+  const after = next?.nodeType === Node.TEXT_NODE ? next.textContent : next instanceof Element ? visibleText(next) : ''
+  return cleanText(after) || cleanText((el as HTMLInputElement).value)
 }

@@ -2,9 +2,11 @@ import type { ExtensionSession } from '@ansly/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeBrowser } from 'wxt/testing/fake-browser'
 import { apiRequest, type ApiDeps } from '../api'
+import { API_URL } from '../config'
 import { isOnScreen, popoverPosition, sparklePosition } from '../geometry'
 import { getValidSession, isValidSession, needsRefresh, sessionItem } from '../session'
-import { DEFAULT_SETTINGS, getSettings, isEnabledOn, updateSettings } from '../settings'
+import { DEFAULT_SETTINGS, getSettings, migrateFromV1, settingsItem, sitesNoticeItem, updateSettings } from '../settings'
+import { domainFromPattern, embeddedAtsDomains, siteDomain, sitePattern } from '../sites'
 
 const session = (overrides: Partial<ExtensionSession> = {}): ExtensionSession => ({
   access_token: 'a'.repeat(40),
@@ -40,7 +42,7 @@ describe('apiRequest', () => {
     const result = await apiRequest(deps(fetchImpl), 'POST', '/api/v1/answers/generate', { question: 'Why?' })
     expect(result).toEqual({ ok: true, data: { status: 'answered' } })
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe('http://localhost:8000/api/v1/answers/generate')
+    expect(url).toBe(`${API_URL}/api/v1/answers/generate`)
     expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${'a'.repeat(40)}`)
     expect(init.body).toBe('{"question":"Why?"}')
   })
@@ -116,13 +118,46 @@ describe('session', () => {
 })
 
 describe('settings', () => {
-  it('defaults and per-site disabling', async () => {
+  it('defaults and updates', async () => {
     expect(await getSettings()).toEqual(DEFAULT_SETTINGS)
-    const s = await updateSettings({ disabledSites: ['example.com'], useJobDescription: true })
+    const s = await updateSettings({ useJobDescription: true })
     expect(s.useJobDescription).toBe(true)
-    expect(isEnabledOn(s, 'example.com')).toBe(false)
-    expect(isEnabledOn(s, 'jobs.lever.co')).toBe(true)
-    expect(isEnabledOn({ ...s, enabled: false }, 'jobs.lever.co')).toBe(false)
+    expect(await getSettings()).toEqual({ ...DEFAULT_SETTINGS, useJobDescription: true })
+  })
+
+  it('migrates V1 settings once: drops disabledSites and shows the notice', async () => {
+    await settingsItem.setValue({ ...DEFAULT_SETTINGS, analytics: false, disabledSites: ['example.com'] } as never)
+    await migrateFromV1()
+    expect(await settingsItem.getValue()).toEqual({ ...DEFAULT_SETTINGS, analytics: false })
+    expect(await sitesNoticeItem.getValue()).toBe(true)
+    // Dismissed notices stay dismissed on later updates.
+    await sitesNoticeItem.setValue(false)
+    await migrateFromV1()
+    expect(await sitesNoticeItem.getValue()).toBe(false)
+  })
+})
+
+describe('sites', () => {
+  it('maps hostnames to registrable domains', () => {
+    expect(siteDomain('jobs.lever.co')).toBe('lever.co')
+    expect(siteDomain('www.linkedin.com')).toBe('linkedin.com')
+    expect(siteDomain('careers.acme.co.uk')).toBe('acme.co.uk')
+    expect(siteDomain('acme.wd5.myworkdayjobs.com')).toBe('myworkdayjobs.com')
+    expect(siteDomain('localhost')).toBeNull()
+    expect(siteDomain('127.0.0.1')).toBeNull()
+  })
+
+  it('round-trips site patterns and ignores other origins', () => {
+    expect(sitePattern('lever.co')).toBe('https://*.lever.co/*')
+    expect(domainFromPattern(sitePattern('lever.co'))).toBe('lever.co')
+    expect(domainFromPattern('https://*/*')).toBeNull()
+    expect(domainFromPattern('http://localhost/*')).toBeNull()
+    expect(domainFromPattern('https://api.ansly.app/*')).toBeNull()
+  })
+
+  it('finds embedded ATS forms that are not enabled yet', () => {
+    const frames = ['https://boards.greenhouse.io/embed/job_app?token=1', 'https://www.youtube.com/embed/x', 'about:blank', 'https://jobs.lever.co/acme']
+    expect(embeddedAtsDomains(frames, ['lever.co'])).toEqual(['greenhouse.io'])
   })
 })
 

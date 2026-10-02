@@ -77,3 +77,59 @@ export const NOISE = `
 <label for="disabled-q">Why us?</label><textarea id="disabled-q" disabled></textarea>
 <label for="ro-q">Why us?</label><textarea id="ro-q" readonly></textarea>
 <input type="password" aria-label="Password"><input type="number" aria-label="Years"><input type="hidden" name="token">`
+
+// Greenhouse's newer job-boards UI: react-select comboboxes, EEO selects, a consent checkbox.
+export const GREENHOUSE_NEW = `
+<title>Senior Engineer at Acme | Greenhouse</title>
+<form>
+  <div class="text-input-wrapper"><label id="first_name-label" for="first_name">First Name<span>*</span></label><input id="first_name" aria-required="true" type="text"></div>
+  <div class="field-wrapper"><label id="question_100-label" for="question_100">Will you now or in the future require sponsorship?<span>*</span></label>
+    <div class="select__container"><div class="select__control"><input id="question_100" role="combobox" aria-expanded="false" aria-labelledby="question_100-label" aria-required="true" type="text" value=""></div></div>
+  </div>
+  <div class="field-wrapper"><label for="question_101">Years of experience with TypeScript</label><input id="question_101" type="number"></div>
+  <div class="field-wrapper"><label for="question_102">What is your notice period?</label><input id="question_102" type="text"></div>
+  <fieldset><legend>Which of these have you used in production?</legend>
+    <label><input type="checkbox" name="question_103[]" value="react"> React</label>
+    <label><input type="checkbox" name="question_103[]" value="vue"> Vue</label>
+    <label><input type="checkbox" name="question_103[]" value="python"> Python</label>
+  </fieldset>
+  <div class="eeoc"><label for="gender">Gender</label><select id="gender"><option value="">Select...</option><option>Male</option><option>Female</option><option>Decline to self-identify</option></select></div>
+  <div class="eeoc"><label for="veteran_status">Veteran Status</label><select id="veteran_status"><option value="">Select...</option><option>I am a veteran</option></select></div>
+  <label><input type="checkbox" name="gdpr_consent"> I agree to the privacy policy</label>
+  <div class="field-wrapper"><label for="resume">Resume/CV</label><input id="resume" type="file"></div>
+</form>`
+
+// Ashby: radio-like buttons, a yes/no checkbox, an essay.
+export const ASHBY = `
+<title>Product Engineer @ Acme</title>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="_systemfield_name">Name</label><input id="_systemfield_name" type="text"></div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="a1">Are you willing to relocate to San Francisco?</label>
+  <div role="radiogroup" aria-labelledby="a1-label"><span id="a1-label" hidden>Are you willing to relocate to San Francisco?</span>
+    <div role="radio" aria-checked="false" tabindex="0">Yes</div><div role="radio" aria-checked="false" tabindex="-1">No</div>
+  </div>
+</div>
+<div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="a2">What would you build in your first 90 days?</label><textarea id="a2"></textarea></div>
+<div class="ashby-application-form-field-entry"><label><input type="checkbox" name="remote_ok"> I'm comfortable working in a hybrid setup</label></div>`
+
+// Workday: labels via data-automation-id, a radio group, an ARIA listbox dropdown.
+export const WORKDAY_WIDGETS = `
+<div data-automation-id="formField-legallyAuthorized">
+  <div data-automation-id="formLabel">Are you legally authorized to work in this country?</div>
+  <div><input type="radio" id="r1" name="auth" value="1"><label for="r1">Yes</label><input type="radio" id="r2" name="auth" value="0"><label for="r2">No</label></div>
+</div>
+<div data-automation-id="formField-howDidYouHear">
+  <div data-automation-id="formLabel">How did you hear about us?</div>
+  <button aria-haspopup="listbox" data-automation-id="dropdown">Select One</button>
+  <div role="listbox" aria-label="How did you hear about us?"><div role="option">LinkedIn</div><div role="option">Referral</div></div>
+</div>
+<div data-automation-id="formField-summary"><div data-automation-id="formLabel">Tell us about yourself</div><div><textarea data-automation-id="textAreaField"></textarea></div></div>`
+
+// LinkedIn Easy Apply step 2: selects for logistics.
+export const LINKEDIN_STEP = `
+<div role="dialog"><form>
+  <div><label for="sel-1"><span>Will you now, or in the future, require sponsorship for employment visa status?</span></label>
+    <select id="sel-1" required><option value="Select an option">Select an option</option><option>Yes</option><option>No</option></select></div>
+  <div><label for="sel-2"><span>Are you comfortable working in a hybrid setting?</span></label>
+    <select id="sel-2"><option>Select an option</option><option>Yes</option><option>No</option></select></div>
+  <div><label for="num-1">How many years of experience do you have with Python?</label><input id="num-1" type="text"></div>
+</form></div>`
