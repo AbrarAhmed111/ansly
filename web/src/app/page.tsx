@@ -12,6 +12,7 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { LogoMark, LogoWithTagline } from '@/components/logo'
 import { Container, SectionIntro, SiteFooter, SiteHeader } from '@/components/site'
@@ -43,7 +44,7 @@ function StatusRow({ name, check }: { name: string; check: StatusCheck }) {
 const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: UserRound, title: 'Build your profile', body: 'Experience, projects and skills — once. Import from JSON to start fast.' },
   { icon: Globe, title: 'Open any application', body: 'LinkedIn, Indeed, Greenhouse, Lever, Workday and company career sites.' },
-  { icon: Sparkles, title: 'Click ✨', body: 'Ansly drafts a first-person answer grounded only in your profile.' },
+  { icon: Sparkles, title: 'Click', body: 'Ansly drafts a first-person answer grounded only in your profile.' },
   { icon: MousePointerClick, title: 'Review, edit, fill', body: 'Nothing is entered until you approve it. You stay in control.' },
 ]
 
@@ -85,9 +86,7 @@ function ProductPreview() {
                 at a startup, where I owned the architecture from API design to production deploys
               </span>
               <span className="ml-0.5 inline-block h-4 w-px animate-pulse bg-accent align-middle" />
-              <span className="absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-brand text-accent-fg shadow-glow">
-                <Sparkles className="h-3.5 w-3.5" />
-              </span>
+              <LogoMark className="absolute -right-3 -top-3 h-7 w-7 rounded-full shadow-glow" />
             </div>
           </div>
 
@@ -132,15 +131,31 @@ export default async function Home() {
         {/* Hero */}
         <section className="relative overflow-hidden">
           <GridPattern fade="top" className="-z-10" />
-          <Container className="grid items-center gap-14 pb-20 pt-16 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:pb-28 lg:pt-24">
+          <Container className="grid items-center gap-14 pb-20 pt-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:pb-28 lg:pt-16">
             <div className="animate-fade-up">
-              <LogoWithTagline className="mb-6 w-48 sm:w-56" />
-              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-caption font-medium text-muted shadow-xs">
-                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent-soft">
-                  <Sparkles className="h-2.5 w-2.5 text-accent" />
+
+              <LogoWithTagline className="mb-6 w-48 sm:w-56 rounded-lg" />
+              <div className="flex flex-col items-start gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-caption font-medium text-muted shadow-xs">
+                  <LogoMark className="h-4 w-4 rounded-full shadow-none" />
+                  Browser extension for job applications
                 </span>
-                Browser extension for job applications
-              </span>
+                <a
+                  href="https://www.abrarahmed.pro"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg mt-2 border border-border bg-surface px-3 py-1.5 text-caption font-semibold uppercase tracking-[0.14em] text-muted shadow-xs transition hover:border-accent/40 hover:text-fg"
+                >
+                  <span>Built by</span>
+                  <Image
+                    src="https://www.abrarahmed.pro/assets/devAbby-fulllogo-C9-MX7QK.png"
+                    alt="DevAbby"
+                    width={98}
+                    height={20}
+                    className="h-8 w-auto"
+                  />
+                </a>
+              </div>
               <h1 className="mt-6 text-display">
                 Fill job applications in seconds — <span className="text-gradient">truthfully.</span>
               </h1>

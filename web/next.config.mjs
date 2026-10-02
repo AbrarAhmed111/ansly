@@ -9,6 +9,15 @@ const nextConfig = {
   transpilePackages: ['@ansly/types', '@ansly/design'],
   // Trace server dependencies from the monorepo root (pnpm hoists into ../node_modules).
   outputFileTracingRoot: repoRoot,
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'www.abrarahmed.pro',
+        pathname: '/assets/devAbby-fulllogo-C9-MX7QK.png',
+      },
+    ],
+  },
 }
 
 export default nextConfig
