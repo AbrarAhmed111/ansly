@@ -1,6 +1,7 @@
 # Ansly extension
 
-Chrome extension (Manifest V3, built with [WXT](https://wxt.dev) + React) that
+Chromium browser extension for Chrome and Microsoft Edge (Manifest V3, built
+with [WXT](https://wxt.dev) + React) that
 adds ✨ beside open-ended questions on job application forms.
 
 ## What's where
@@ -26,14 +27,21 @@ src/
 ```sh
 cp .env.example .env      # Supabase URL + publishable key, API and web app URLs
 pnpm dev                  # opens a Chrome window with the extension loaded, hot-reloads
+pnpm dev:edge             # opens an Edge window with the extension loaded, hot-reloads
 pnpm test                 # Vitest
 pnpm build                # .output/chrome-mv3
+pnpm build:edge           # .output/edge-mv3
 pnpm zip                  # zip for the Chrome Web Store
+pnpm zip:edge             # zip for Microsoft Edge Add-ons
 ```
 
 To use it in your normal Chrome profile: `pnpm build`, open
 `chrome://extensions`, turn on **Developer mode**, **Load unpacked**, and pick
 `extension/.output/chrome-mv3`.
+
+To use it in your normal Microsoft Edge profile: `pnpm build:edge`, open
+`edge://extensions`, turn on **Developer mode**, **Load unpacked**, and pick
+`extension/.output/edge-mv3`.
 
 ## Connecting
 
@@ -52,6 +60,6 @@ to Supabase.
 
 ## Keyboard shortcut
 
-`Alt+Shift+A` answers the focused field (change it at
-`chrome://extensions/shortcuts`). Inside the popover, `Ctrl+Enter` fills and
-`Esc` closes.
+`Alt+Shift+A` answers the focused field. Change it at
+`chrome://extensions/shortcuts` in Chrome or `edge://extensions/shortcuts` in
+Edge. Inside the popover, `Ctrl+Enter` fills and `Esc` closes.

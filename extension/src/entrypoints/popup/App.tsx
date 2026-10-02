@@ -10,6 +10,8 @@ const LABELS: Record<StatusCheck['status'], string> = {
   not_configured: 'Not configured',
 }
 
+const extensionShortcutsUrl = () => (/\bEdg\//.test(navigator.userAgent) ? 'edge://extensions/shortcuts' : 'chrome://extensions/shortcuts')
+
 function Toggle({ label, help, checked, onChange, disabled }: {
   label: string
   help?: string
@@ -141,7 +143,7 @@ export default function App() {
           </label>
           <div className="row">
             <span>Keyboard shortcut</span>
-            <button className="link" onClick={() => void browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
+            <button className="link" onClick={() => void browser.tabs.create({ url: extensionShortcutsUrl() })}>
               {shortcut ?? 'Not set'}
             </button>
           </div>
