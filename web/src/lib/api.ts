@@ -1,4 +1,15 @@
-import type { AnswerResponse, CreateSavedAnswerRequest, GenerateAnswerRequest, RegenerateAnswerRequest, SavedAnswer } from '@ansly/types'
+import type {
+  AnswerResponse,
+  CreateSavedAnswerRequest,
+  CreateSavedSearchRequest,
+  GenerateAnswerRequest,
+  ParseSearchResponse,
+  PrepareApplicationResponse,
+  RefreshMatchesResponse,
+  RegenerateAnswerRequest,
+  SavedAnswer,
+  SavedSearch,
+} from '@ansly/types'
 import { createClient } from '@/lib/supabase/client'
 
 // Referenced as a literal so Next.js inlines it into the browser bundle.
@@ -14,7 +25,7 @@ export class ApiError extends Error {
 }
 
 /** Calls the llm API as the signed-in user (the API checks the Supabase JWT). */
-async function call<T>(path: string, body: unknown): Promise<T> {
+async function call<T>(path: string, body?: unknown): Promise<T> {
   if (!BASE_URL) throw new ApiError('The Ansly API is not configured (NEXT_PUBLIC_BASE_URL).', 0)
   const {
     data: { session },
@@ -26,7 +37,7 @@ async function call<T>(path: string, body: unknown): Promise<T> {
     res = await fetch(`${BASE_URL.replace(/\/$/, '')}${path}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body ?? {}),
     })
   } catch {
     throw new ApiError('Could not reach the Ansly API. Check that it is running and try again.', 0)
@@ -52,3 +63,12 @@ export const generateAnswer = (req: GenerateAnswerRequest) => call<AnswerRespons
 export const regenerateAnswer = (req: RegenerateAnswerRequest) => call<AnswerResponse>('/api/v1/answers/regenerate', req)
 
 export const saveAnswer = (req: CreateSavedAnswerRequest) => call<SavedAnswer>('/api/v1/saved-answers', req)
+
+export const refreshMatches = () => call<RefreshMatchesResponse>('/api/v1/jobs/refresh-matches')
+
+export const parseSearch = (query: string) => call<ParseSearchResponse>('/api/v1/saved-searches/parse', { query })
+
+export const createSavedSearch = (req: CreateSavedSearchRequest) => call<SavedSearch>('/api/v1/saved-searches', req)
+
+export const prepareApplication = (id: string) =>
+  call<PrepareApplicationResponse>(`/api/v1/applications/${encodeURIComponent(id)}/prepare`)

@@ -6,6 +6,8 @@
 export const BRIDGE_WEB = 'ansly-web'
 export const BRIDGE_EXTENSION = 'ansly-extension'
 
+import type { TrackedApplication } from './api'
+
 /** Tokens for a Supabase session created for the extension alone. */
 export interface ExtensionSession {
   access_token: string
@@ -19,6 +21,8 @@ export type WebToExtensionMessage =
   | { source: typeof BRIDGE_WEB; type: 'ANSLY_PING' }
   | { source: typeof BRIDGE_WEB; type: 'ANSLY_CONNECT'; session: ExtensionSession }
   | { source: typeof BRIDGE_WEB; type: 'ANSLY_DISCONNECT' }
+  /** "Apply with Ansly": the next page opened at this application's URL belongs to it. */
+  | { source: typeof BRIDGE_WEB; type: 'ANSLY_START_APPLICATION'; application: TrackedApplication }
 
 export interface ExtensionStatusPayload {
   version: string
@@ -29,3 +33,4 @@ export interface ExtensionStatusPayload {
 export type ExtensionToWebMessage =
   | ({ source: typeof BRIDGE_EXTENSION; type: 'ANSLY_STATUS' } & ExtensionStatusPayload)
   | { source: typeof BRIDGE_EXTENSION; type: 'ANSLY_CONNECTED'; ok: boolean; error?: string }
+  | { source: typeof BRIDGE_EXTENSION; type: 'ANSLY_APPLICATION_STARTED'; ok: boolean }

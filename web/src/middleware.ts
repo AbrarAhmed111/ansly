@@ -3,7 +3,17 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { safeNext } from '@/lib/safe-next'
 import { supabaseKey, supabaseUrl } from '@/lib/supabase/env'
 
-const PROTECTED = ['/dashboard', '/profile', '/saved-answers', '/settings', '/extension', '/playground']
+const PROTECTED = [
+  '/dashboard',
+  '/profile',
+  '/saved-answers',
+  '/settings',
+  '/extension',
+  '/playground',
+  '/jobs',
+  '/applications',
+  '/resumes',
+]
 const AUTH_PAGES = ['/login']
 
 /** Refreshes the Supabase session cookie and guards signed-in pages. */

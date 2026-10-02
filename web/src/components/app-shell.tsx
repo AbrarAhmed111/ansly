@@ -1,7 +1,24 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { BookmarkCheck, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, Wand2, type LucideIcon } from 'lucide-react'
+import {
+  BellRing,
+  BookmarkCheck,
+  Briefcase,
+  FileText,
+  KanbanSquare,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Plus,
+  Puzzle,
+  Search,
+  SearchCheck,
+  Settings,
+  Sparkles,
+  Wand2,
+  type LucideIcon,
+} from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -12,20 +29,33 @@ import { SECTION_ICONS } from '@/components/section-icons'
 import { ThemeToggle } from '@/components/theme'
 import { Avatar, IconButton, Kbd, Overline } from '@/components/ui'
 import { SECTIONS } from '@/lib/sections'
+import { createClient } from '@/lib/supabase/client'
 
 interface NavItem {
   href: string
   label: string
   icon: LucideIcon
+  /** Key into the live counts shown beside the item. */
+  count?: 'alerts'
 }
 
 const GROUPS: { label?: string; items: NavItem[] }[] = [
   { items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }] },
   {
+    label: 'Jobs',
+    items: [
+      { href: '/jobs', label: 'For you', icon: Sparkles },
+      { href: '/jobs/alerts', label: 'Alerts', icon: BellRing, count: 'alerts' },
+      { href: '/jobs/searches', label: 'Saved searches', icon: SearchCheck },
+      { href: '/applications', label: 'Applications', icon: KanbanSquare },
+    ],
+  },
+  {
     label: 'Profile',
     items: [
       { href: '/profile/personal', label: 'Personal', icon: SECTION_ICONS.personal },
       ...SECTIONS.map((s) => ({ href: `/profile/${s.slug}`, label: s.title, icon: SECTION_ICONS[s.slug] })),
+      { href: '/resumes', label: 'Resumes', icon: FileText },
     ],
   },
   {
@@ -49,6 +79,9 @@ const COMMANDS: Command[] = [
     keywords: s.title,
   })),
   { label: 'Add saved answer', href: '/saved-answers?new=1', icon: Plus, group: 'Actions' },
+  { label: 'New saved search', href: '/jobs/searches?new=1', icon: SearchCheck, group: 'Actions', keywords: 'jobs alerts' },
+  { label: 'Track an application', href: '/applications?new=1', icon: Briefcase, group: 'Actions', keywords: 'job apply' },
+  { label: 'Upload a resume', href: '/resumes?new=1', icon: FileText, group: 'Actions', keywords: 'cv' },
   { label: 'Try a question', href: '/playground', icon: Wand2, group: 'Actions', keywords: 'generate answer playground' },
 ]
 
@@ -66,8 +99,31 @@ function SearchButton({ onClick }: { onClick: () => void }) {
   )
 }
 
+const ALL_ITEMS = GROUPS.flatMap((g) => g.items)
+
+/** The most specific nav item for a path ("/jobs/alerts" is Alerts, not For you). */
+function activeHref(path: string): string | undefined {
+  return ALL_ITEMS.map((i) => i.href)
+    .filter((href) => path === href || path.startsWith(`${href}/`))
+    .sort((a, b) => b.length - a.length)[0]
+}
+
+function useNavCounts(path: string) {
+  const [counts, setCounts] = useState<Record<'alerts', number>>({ alerts: 0 })
+  useEffect(() => {
+    void createClient()
+      .from('job_alerts')
+      .select('id', { count: 'exact', head: true })
+      .is('seen_at', null)
+      .then(({ count }) => setCounts({ alerts: count ?? 0 }))
+  }, [path])
+  return counts
+}
+
 function NavLinks() {
   const path = usePathname()
+  const current = activeHref(path)
+  const counts = useNavCounts(path)
   return (
     <nav className="space-y-5" aria-label="Main">
       {GROUPS.map((group, i) => (
@@ -76,8 +132,9 @@ function NavLinks() {
             <Overline className="mb-1.5 px-2.5">{group.label}</Overline>
           )}
           <ul className="space-y-0.5">
-            {group.items.map(({ href, label, icon: Icon }) => {
-              const active = path === href || path.startsWith(`${href}/`)
+            {group.items.map(({ href, label, icon: Icon, count }) => {
+              const active = href === current
+              const badge = count ? counts[count] : 0
               return (
                 <li key={href}>
                   <Link
@@ -92,7 +149,12 @@ function NavLinks() {
                       className={clsx('h-4 w-4 shrink-0', active ? 'text-accent' : 'text-subtle group-hover:text-muted')}
                       aria-hidden
                     />
-                    {label}
+                    <span className="flex-1">{label}</span>
+                    {badge > 0 && (
+                      <span className="rounded-full bg-accent px-1.5 text-caption font-semibold tabular-nums text-accent-fg">
+                        {badge}
+                      </span>
+                    )}
                   </Link>
                 </li>
               )
