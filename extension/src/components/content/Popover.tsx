@@ -1,8 +1,10 @@
-import type { AnswerResponse, FieldContext, JobContext, SavedAnswer } from '@ansly/types'
+import type { AnswerResponse, AnswerStyle, FieldContext, JobContext, SavedAnswer } from '@ansly/types'
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { fillField } from '@/lib/fill'
 import { popoverPosition, popoverWidth, type Box } from '@/lib/geometry'
 import { send, type ApiFailure } from '@/lib/messages'
+import { autoLabel, LENGTHS, localCategory, resolveLength, sameStyle, TONES } from '@/lib/style'
+import { applyMissing, directAnswer, MissingForm, type MissingSubmit } from './MissingForm'
 
 export interface PopoverTarget {
   el: HTMLElement
@@ -15,7 +17,7 @@ type State =
   | { step: 'saved'; match: SavedAnswer }
   | { step: 'generating' }
   | { step: 'answer'; response: AnswerResponse | null; text: string; original: string; savedId: string | null; busy: 'regenerate' | 'save' | null; fillError: string | null }
-  | { step: 'insufficient'; response: AnswerResponse }
+  | { step: 'insufficient'; response: AnswerResponse; learning: boolean; learnError: string | null }
   | { step: 'error'; error: ApiFailure; retry: 'generate' | 'match' }
 
 type Action =
@@ -23,6 +25,8 @@ type Action =
   | { type: 'generate' }
   | { type: 'generated'; response: AnswerResponse }
   | { type: 'useSaved'; match: SavedAnswer }
+  | { type: 'useText'; text: string }
+  | { type: 'learning'; busy: boolean; error?: string | null }
   | { type: 'edit'; text: string }
   | { type: 'busy'; busy: 'regenerate' | 'save' | null }
   | { type: 'saved'; id: string }
@@ -36,10 +40,16 @@ function reducer(state: State, action: Action): State {
     case 'generate':
       return { step: 'generating' }
     case 'generated':
-      if (action.response.status === 'insufficient_information') return { step: 'insufficient', response: action.response }
+      if (action.response.status === 'insufficient_information') {
+        return { step: 'insufficient', response: action.response, learning: false, learnError: null }
+      }
       return { step: 'answer', response: action.response, text: action.response.answer, original: action.response.answer, savedId: null, busy: null, fillError: null }
     case 'useSaved':
       return { step: 'answer', response: null, text: action.match.answer, original: action.match.answer, savedId: action.match.id, busy: null, fillError: null }
+    case 'useText':
+      return { step: 'answer', response: null, text: action.text, original: action.text, savedId: null, busy: null, fillError: null }
+    case 'learning':
+      return state.step === 'insufficient' ? { ...state, learning: action.busy, learnError: action.error ?? null } : state
     case 'edit':
       return state.step === 'answer' ? { ...state, text: action.text, fillError: null } : state
     case 'busy':
@@ -53,6 +63,69 @@ function reducer(state: State, action: Action): State {
   }
 }
 
+const DEFAULT_STYLE: AnswerStyle = { length: 'auto', tone: 'professional' }
+
+/** Length / tone / instruction. Changes are staged; "Apply" regenerates once instead of on every click. */
+function StyleBar({ draft, applied, category, disabled, onChange, onApply }: {
+  draft: AnswerStyle
+  applied: AnswerStyle
+  category: string | null
+  disabled: boolean
+  onChange: (style: AnswerStyle) => void
+  onApply: () => void
+}) {
+  const current = resolveLength(draft.length, category)
+  return (
+    <div className="style-bar">
+      <div className="style-row">
+        <div className="segmented" role="radiogroup" aria-label="Length">
+          {LENGTHS.map((l) => (
+            <button
+              key={l.value}
+              role="radio"
+              aria-checked={current === l.value}
+              className={current === l.value ? 'on' : ''}
+              disabled={disabled}
+              onClick={() => onChange({ ...draft, length: l.value })}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+        <select
+          aria-label="Tone"
+          value={draft.tone}
+          disabled={disabled}
+          onChange={(e) => onChange({ ...draft, tone: e.target.value as AnswerStyle['tone'] })}
+        >
+          {TONES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+      <div className="style-row">
+        <input
+          className="instruction"
+          aria-label="Custom instruction"
+          placeholder="Optional instruction, e.g. mention my open-source work"
+          maxLength={500}
+          value={draft.instruction ?? ''}
+          disabled={disabled}
+          onChange={(e) => onChange({ ...draft, instruction: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !sameStyle(draft, applied)) {
+              e.preventDefault()
+              onApply()
+            }
+          }}
+        />
+        {!sameStyle(draft, applied) && (
+          <button className="btn small primary" disabled={disabled} onClick={onApply}>Apply</button>
+        )}
+      </div>
+      {draft.length === 'auto' && <span className="style-hint">{autoLabel(category)}</span>}
+    </div>
+  )
+}
+
 function boxOf(el: HTMLElement): Box {
   const r = el.getBoundingClientRect()
   return { top: r.top, left: r.left, width: r.width, height: r.height }
@@ -61,15 +134,24 @@ function boxOf(el: HTMLElement): Box {
 export function Popover({
   target,
   getJobContext,
+  defaultStyle = DEFAULT_STYLE,
+  useJobDescription = true,
   onClose,
   onFilled,
 }: {
   target: PopoverTarget
   getJobContext: () => JobContext
+  /** From popup settings; the user can change it per field. */
+  defaultStyle?: AnswerStyle
+  /** Off -> cover letters show a hint to turn it on. */
+  useJobDescription?: boolean
   onClose: (opts?: { refocus?: boolean }) => void
   onFilled: (message: string) => void
 }) {
   const [state, dispatch] = useReducer(reducer, { step: 'matching' })
+  // `style` is what requests use; `draft` is what the controls show until Apply.
+  const [style, setStyle] = useState<AnswerStyle>(defaultStyle)
+  const [draft, setDraft] = useState<AnswerStyle>(defaultStyle)
   const [position, setPosition] = useState<{ top: number; left: number; width: number } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -77,13 +159,19 @@ export function Popover({
   useEffect(() => () => void (alive.current = false), [])
 
   const request = useCallback(
-    () => ({ question: target.question, job_context: getJobContext(), field: target.field }),
-    [target, getJobContext],
+    (s: AnswerStyle = style, facts: string[] | null = null) => ({
+      question: target.question,
+      job_context: getJobContext(),
+      field: target.field,
+      style: s,
+      additional_facts: facts,
+    }),
+    [target, getJobContext, style],
   )
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (facts: string[] | null = null) => {
     dispatch({ type: 'generate' })
-    const result = await send('generate', request())
+    const result = await send('generate', request(style, facts))
     if (!alive.current) return
     if (result.ok) dispatch({ type: 'generated', response: result.data })
     else dispatch({ type: 'failed', error: result.error, retry: 'generate' })
@@ -102,9 +190,10 @@ export function Popover({
     if (!result.data.match) void generate()
   }, [target.question, generate])
 
+  // Only on open: later style changes regenerate via Apply, not by re-matching.
   useEffect(() => {
     void match()
-  }, [match])
+  }, [target.question])
 
   // Position: follow the field while the page scrolls or resizes.
   useLayoutEffect(() => {
@@ -137,10 +226,12 @@ export function Popover({
     if (state.step === 'answer') textareaRef.current?.focus()
   }, [state.step])
 
-  async function regenerate() {
+  async function regenerate(next: AnswerStyle = style) {
     if (state.step !== 'answer') return
     dispatch({ type: 'busy', busy: 'regenerate' })
-    const result = await send('regenerate', { ...request(), previous_answer: state.text })
+    setStyle(next)
+    // A saved answer has no previous generation to vary; regenerate still steers away from its text.
+    const result = await send('regenerate', { ...request(next), previous_answer: state.text })
     if (!alive.current) return
     if (result.ok) dispatch({ type: 'generated', response: result.data })
     else dispatch({ type: 'failed', error: result.error, retry: 'generate' })
@@ -179,6 +270,21 @@ export function Popover({
     onClose()
   }
 
+  // Ask-and-learn: save what the user gave, then answer with it.
+  async function learn(submit: MissingSubmit) {
+    const text = submit.saveToProfile ? null : directAnswer(submit)
+    dispatch({ type: 'learning', busy: true })
+    const result = await applyMissing(submit, target.question)
+    if (!alive.current) return
+    if (!result.ok) {
+      dispatch({ type: 'learning', busy: false, error: result.error })
+      return
+    }
+    // A preference given just for this form is the answer itself; no need to generate.
+    if (text) dispatch({ type: 'useText', text })
+    else void generate(result.facts)
+  }
+
   async function useSaved(saved: SavedAnswer) {
     dispatch({ type: 'useSaved', match: saved })
     void send('useSaved', { id: saved.id })
@@ -194,6 +300,7 @@ export function Popover({
     }
   }
 
+  const category = (state.step === 'answer' && state.response?.category) || localCategory(target.question)
   const maxLength = target.field.maxLength ?? null
   const textLength = state.step === 'answer' ? state.text.trim().length : 0
   const tooLong = maxLength != null && textLength > maxLength
@@ -254,15 +361,32 @@ export function Popover({
                 {textLength}{maxLength != null ? ` / ${maxLength}` : ''} characters
               </span>
             </div>
+            <StyleBar
+              draft={draft}
+              applied={style}
+              category={category}
+              disabled={state.busy !== null}
+              onChange={setDraft}
+              onApply={() => void regenerate(draft)}
+            />
+            {category === 'cover_letter' && !useJobDescription && (
+              <div className="notice hint">
+                Cover letters are better with the job description — enable “Use job descriptions” in the Ansly popup.
+              </div>
+            )}
             {state.fillError && <div className="notice error">{state.fillError}</div>}
           </>
         )}
 
         {state.step === 'insufficient' && (
-          <div className="notice warning">
-            <strong>Your profile doesn&apos;t have enough to answer this truthfully.</strong>
-            {state.response.missingInformation}
-          </div>
+          (state.response.missing ?? []).length > 0 ? (
+            <MissingForm items={state.response.missing} busy={state.learning} error={state.learnError} onSubmit={(s) => void learn(s)} />
+          ) : (
+            <div className="notice warning">
+              <strong>Your profile doesn&apos;t have enough to answer this truthfully.</strong>
+              {state.response.missingInformation}
+            </div>
+          )
         )}
 
         {state.step === 'error' && (
@@ -283,7 +407,7 @@ export function Popover({
         )}
         {state.step === 'answer' && (
           <>
-            <button className="btn" disabled={state.busy !== null} onClick={() => void regenerate()}>
+            <button className="btn" disabled={state.busy !== null} onClick={() => void regenerate()} title="Same settings, new attempt">
               {state.busy === 'regenerate' ? 'Regenerating…' : 'Regenerate'}
             </button>
             <button
@@ -304,7 +428,11 @@ export function Popover({
           <>
             <button className="btn" onClick={() => void generate()}>Try again</button>
             <span className="spacer" />
-            <button className="btn primary" onClick={() => void send('openWebApp', { path: '/profile' })}>Add information</button>
+            {(state.response.missing ?? []).length > 0 ? (
+              <button className="link" onClick={() => void send('openWebApp', { path: '/profile' })}>Edit profile on the web</button>
+            ) : (
+              <button className="btn primary" onClick={() => void send('openWebApp', { path: '/profile' })}>Add information</button>
+            )}
           </>
         )}
         {state.step === 'error' && (

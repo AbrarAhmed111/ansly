@@ -8,7 +8,7 @@ export interface ProfileSummary {
   missing: string[]
 }
 
-const TABLES = ['experiences', 'projects', 'skills', 'education', 'achievements'] as const
+const TABLES = ['experiences', 'projects', 'skills', 'education', 'achievements', 'profile_facts'] as const
 
 /** Reads the user's own profile from Supabase (row-level security scopes it to them). */
 export async function fetchProfileSummary(accessToken: string, fetchImpl: typeof fetch = fetch): Promise<ProfileSummary> {
@@ -20,8 +20,8 @@ export async function fetchProfileSummary(accessToken: string, fetchImpl: typeof
     return response.json()
   }
   const [profiles, ...sections] = await Promise.all([get('profiles'), ...TABLES.map(get)])
-  const [experiences, projects, skills, education, achievements] = sections
-  const full = { profile: profiles[0] ?? null, experiences, projects, skills, education, achievements } as FullProfile
+  const [experiences, projects, skills, education, achievements, profile_facts] = sections
+  const full = { profile: profiles[0] ?? null, experiences, projects, skills, education, achievements, profile_facts } as FullProfile
   const { percent, items } = profileCompleteness(full)
   return {
     name: full.profile?.full_name ?? null,

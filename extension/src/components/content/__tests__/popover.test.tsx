@@ -24,6 +24,7 @@ const ANSWERED: AnswerResponse = {
   confidence: 'high',
   usedSources: [{ type: 'project', id: 'p1', label: 'TaskFlow' }],
   missingInformation: null,
+  missing: [],
   category: 'project',
   intent: 'favorite_project',
   provider: 'Gemini #1',
@@ -41,11 +42,15 @@ let field: HTMLTextAreaElement
 let onClose: ReturnType<typeof vi.fn>
 let onFilled: ReturnType<typeof vi.fn>
 
-async function open(maxLength: number | null = null) {
-  const target: PopoverTarget = { el: field, question: 'What project are you most proud of?', field: { label: null, maxLength, kind: 'textarea' } }
+async function open(
+  maxLength: number | null = null,
+  extra: Partial<Parameters<typeof Popover>[0]> = {},
+  question = 'What project are you most proud of?',
+) {
+  const target: PopoverTarget = { el: field, question, field: { label: null, maxLength, kind: 'textarea' } }
   await act(async () => {
     root.render(
-      <Popover target={target} getJobContext={() => ({ company: 'Acme', role: 'Engineer' })} onClose={onClose} onFilled={onFilled} />,
+      <Popover target={target} getJobContext={() => ({ company: 'Acme', role: 'Engineer' })} onClose={onClose} onFilled={onFilled} {...extra} />,
     )
   })
   // Let the request chain settle.
@@ -187,5 +192,87 @@ describe('Popover', () => {
     await open(10)
     expect(button('Fill')?.disabled).toBe(true)
     expect(text()).toContain(`/ 10 characters`)
+  })
+
+  it('sends the default style and only regenerates on Apply', async () => {
+    responses.matchSaved = [ok({ match: null, score: 0 })]
+    responses.generate = [ok(ANSWERED)]
+    responses.regenerate = [ok({ ...ANSWERED, answer: 'Shorter.' })]
+    await open(null, { defaultStyle: { length: 'auto', tone: 'friendly' } })
+    expect(calls[1]!.payload).toMatchObject({ style: { length: 'auto', tone: 'friendly' } })
+    expect(text()).toContain('Standard · auto')
+    expect(button('Apply')).toBeUndefined()
+
+    await click('Concise')
+    expect(calls.at(-1)!.type).toBe('generate') // no request yet
+    const tone = container.querySelector('select[aria-label="Tone"]') as HTMLSelectElement
+    await act(async () => {
+      tone.value = 'technical'
+      tone.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await click('Apply')
+    expect(calls.at(-1)).toMatchObject({
+      type: 'regenerate',
+      payload: { previous_answer: ANSWERED.answer, style: { length: 'concise', tone: 'technical' } },
+    })
+    expect(button('Apply')).toBeUndefined()
+    expect(container.querySelector('[aria-checked="true"]')?.textContent).toBe('Concise')
+
+    // Plain Regenerate keeps the applied settings.
+    responses.regenerate = [ok(ANSWERED)]
+    await click('Regenerate')
+    expect(calls.at(-1)).toMatchObject({ type: 'regenerate', payload: { style: { length: 'concise', tone: 'technical' } } })
+  })
+
+  it('defaults cover letters to Detailed and suggests the job description', async () => {
+    responses.matchSaved = [ok({ match: null, score: 0 })]
+    responses.generate = [ok({ ...ANSWERED, category: 'cover_letter', intent: 'cover_letter' })]
+    await open(null, { useJobDescription: false }, 'Cover letter')
+    expect(text()).toContain('Detailed · auto for cover letters')
+    expect(container.querySelector('[aria-checked="true"]')?.textContent).toBe('Detailed')
+    expect(text()).toContain('Cover letters are better with the job description')
+  })
+
+  it('asks for missing information inline, saves it and regenerates', async () => {
+    responses.matchSaved = [ok({ match: null, score: 0 })]
+    responses.generate = [
+      ok({ ...ANSWERED, status: 'insufficient_information', answer: '', missingInformation: "Your profile doesn't mention Kubernetes.",
+        missing: [{ key: 'skill:kubernetes', prompt: 'Have you used Kubernetes?', input: 'skill', target: { type: 'skill', name: 'Kubernetes' } }] }),
+      ok({ ...ANSWERED, answer: "No, I haven't worked with Kubernetes." }),
+    ]
+    responses.saveMissing = [ok({ saved: [] })]
+    await open()
+    expect(text()).toContain("Ansly doesn't have this yet")
+    expect(text()).toContain('Have you used Kubernetes?')
+    await click("I don't have this")
+    await click('Save & answer')
+    expect(calls.find((c) => c.type === 'saveMissing')!.payload).toEqual({ items: [{
+      key: 'skill:kubernetes', target: { type: 'skill', name: 'Kubernetes' }, value: { have: false, years: null, level: null }, prompt: 'Have you used Kubernetes?',
+    }] })
+    expect(calls.at(-1)).toMatchObject({ type: 'generate', payload: { additional_facts: null } })
+    expect((container.querySelector('textarea.answer') as HTMLTextAreaElement).value).toBe("No, I haven't worked with Kubernetes.")
+  })
+
+  it('answers once without saving, using what the user said', async () => {
+    responses.matchSaved = [ok({ match: null, score: 0 })]
+    responses.generate = [
+      ok({ ...ANSWERED, status: 'insufficient_information', answer: '', missingInformation: 'x',
+        missing: [{ key: 'fact:leadership', prompt: 'Describe a time you led a team.', input: 'textarea', target: { type: 'fact', category: 'leadership' } }] }),
+      ok(ANSWERED),
+    ]
+    responses.saveAnswer = [ok({ id: 'sa' })]
+    await open()
+    const box = container.querySelector('.missing textarea') as HTMLTextAreaElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, 'I led the checkout rewrite.')
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const checks = [...container.querySelectorAll('.missing input[type=checkbox]')] as HTMLInputElement[]
+    await act(async () => checks[0]!.click()) // un-tick "Save to my profile"
+    await act(async () => checks[1]!.click()) // tick "Also reuse this exact answer"
+    await click('Answer')
+    expect(calls.some((c) => c.type === 'saveMissing')).toBe(false)
+    expect(calls.find((c) => c.type === 'saveAnswer')!.payload).toEqual({ question: 'What project are you most proud of?', answer: 'I led the checkout rewrite.' })
+    expect(calls.at(-1)).toMatchObject({ type: 'generate', payload: { additional_facts: ['Describe a time you led a team. I led the checkout rewrite.'] } })
   })
 })
