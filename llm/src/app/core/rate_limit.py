@@ -8,6 +8,8 @@ many short-lived instances of a serverless deployment.
   more than RATE_LIMIT_PER_MINUTE in a sliding minute.
 - Daily limit: counts the user's generate/regenerate events
   (DAILY_GENERATION_LIMIT).
+- Daily tailoring limit: counts tailoring_started events
+  (DAILY_TAILORING_LIMIT). Separate because a tailoring costs several LLM calls.
 """
 
 from datetime import datetime, timezone
@@ -29,15 +31,16 @@ async def check_rate_limit(rest: SupabaseRest, per_minute: int) -> None:
         )
 
 
+async def _used_today(rest: SupabaseRest, kinds: str) -> int:
+    start_of_day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    return await rest.count("usage_events", {"kind": f"in.({kinds})", "created_at": f"gte.{start_of_day.isoformat()}"})
+
+
 async def check_daily_limit(rest: SupabaseRest, limit: int, needed: int = 1) -> None:
     """Refuses when `needed` more generations would go over today's limit (fill all needs several)."""
     if needed <= 0:
         return
-    start_of_day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    used = await rest.count(
-        "usage_events",
-        {"kind": "in.(generate,regenerate)", "created_at": f"gte.{start_of_day.isoformat()}"},
-    )
+    used = await _used_today(rest, "generate,regenerate")
     remaining = max(limit - used, 0)
     if remaining <= 0:
         raise HTTPException(
@@ -49,4 +52,13 @@ async def check_daily_limit(rest: SupabaseRest, limit: int, needed: int = 1) -> 
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"These {needed} answers would go over your daily limit: {remaining} left today. "
             "Answer fewer fields at once, or try again after midnight UTC.",
+        )
+
+
+async def check_daily_tailoring_limit(rest: SupabaseRest, limit: int) -> None:
+    """Refuses a new resume tailoring once today's tailoring limit is used up."""
+    if await _used_today(rest, "tailoring_started") >= limit:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Daily limit of {limit} tailored resumes reached. It resets at midnight UTC.",
         )

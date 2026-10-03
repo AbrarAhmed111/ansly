@@ -130,7 +130,7 @@ class CreateSavedAnswerRequest(BaseModel):
 
 
 class TrackEventRequest(BaseModel):
-    kind: Literal["fill", "use_saved_answer", "fill_all"]
+    kind: Literal["fill", "use_saved_answer", "fill_all", "job_detected", "resume_previewed"]
     category: Optional[str] = Field(default=None, max_length=50)
 
 

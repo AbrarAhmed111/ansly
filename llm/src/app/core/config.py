@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # Usage limits (per user)
     RATE_LIMIT_PER_MINUTE: int = 10
     DAILY_GENERATION_LIMIT: int = 100
+    # Resume tailoring runs several LLM calls, so it has its own, smaller limit.
+    DAILY_TAILORING_LIMIT: int = 10
 
     # Gateway
     GATEWAY_MAX_ATTEMPTS: int = 10

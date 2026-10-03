@@ -61,6 +61,12 @@ class SupabaseRest:
         self._check(response)
         return response.json()
 
+    async def delete(self, table: str, filters: Dict[str, str]) -> List[Dict[str, Any]]:
+        async with self._client() as client:
+            response = await client.delete(f"/{table}", params=filters, headers={"Prefer": "return=representation"})
+        self._check(response)
+        return response.json()
+
     async def rpc(self, function: str, args: Optional[Dict[str, Any]] = None) -> Any:
         async with self._client() as client:
             response = await client.post(f"/rpc/{function}", json=args or {})
