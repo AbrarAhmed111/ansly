@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # Usage limits (per user)
     RATE_LIMIT_PER_MINUTE: int = 10
-    DAILY_GENERATION_LIMIT: int = 100
+    DAILY_GENERATION_LIMIT: int = 1000
     # Resume tailoring runs several LLM calls, so it has its own, smaller limit.
     DAILY_TAILORING_LIMIT: int = 10
     # Run a tailoring in the background after POST /tailorings. Off on Vercel, which freezes work after the

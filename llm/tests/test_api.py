@@ -130,7 +130,7 @@ async def test_all_providers_down_returns_503(client):
 async def test_per_minute_rate_limit(client):
     with patch("src.app.api.routes.answers.get_settings") as settings, mock_llm(ANSWERED):
         settings.return_value.RATE_LIMIT_PER_MINUTE = 2
-        settings.return_value.DAILY_GENERATION_LIMIT = 100
+        settings.return_value.DAILY_GENERATION_LIMIT = 1000
         codes = [(await client.post("/api/v1/answers/generate", json={"question": "Tell us about yourself"})).status_code
                  for _ in range(3)]
     assert codes == [200, 200, 429]
