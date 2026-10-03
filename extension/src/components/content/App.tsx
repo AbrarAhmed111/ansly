@@ -8,7 +8,7 @@ import { isOnScreen, sparklePosition, type Box } from '@/lib/geometry'
 import { extractJobContext, isCoverLetter } from '@/lib/job-context'
 import { extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
 import { send, type TabMessage } from '@/lib/messages'
-import type { Settings } from '@/lib/settings'
+import { firstTailorOffer, type Settings } from '@/lib/settings'
 import { Panel, type Row } from './Panel'
 import { Popover, type PopoverTarget } from './Popover'
 import { TailorCard } from './TailorCard'
@@ -145,6 +145,19 @@ export function App({ host, initialSettings, subscribe }: {
   const jobPage = useJobPage(enabled && settings.offerTailoring)
   const [dismissedJobs, setDismissedJobs] = useState<Set<string>>(new Set())
   const trackedJobs = useRef(new Set<string>())
+  // Per job: open the offer card by itself (first visit, full description on the page) or start as the pill.
+  const [autoOpen, setAutoOpen] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (!jobPage || jobPage.key in autoOpen) return
+    const key = jobPage.key
+    // Read locally only (nothing is sent): offer when the page has a description tailoring can use.
+    const usable = extractJob(document).ok
+    void (usable ? firstTailorOffer(key) : Promise.resolve(false)).then(
+      (first) => setAutoOpen((m) => ({ ...m, [key]: first })),
+      () => setAutoOpen((m) => ({ ...m, [key]: false })),
+    )
+  }, [jobPage, autoOpen])
 
   // One "job_detected" event per job shown (no job text is sent).
   useEffect(() => {
@@ -334,7 +347,7 @@ export function App({ host, initialSettings, subscribe }: {
         </div>
       )}
 
-      {jobPage && !dismissedJobs.has(jobPage.key) && (
+      {jobPage && !dismissedJobs.has(jobPage.key) && jobPage.key in autoOpen && (
         // Hidden (not unmounted) while the fill-all panel is open, so a running tailoring keeps its progress.
         <div hidden={panelOpen}>
           <TailorCard
@@ -342,6 +355,7 @@ export function App({ host, initialSettings, subscribe }: {
             job={jobPage.job}
             extract={() => extractJob(document)}
             stacked={detected.length > 0}
+            autoOpen={autoOpen[jobPage.key]}
             onDismiss={() => setDismissedJobs((s) => new Set(s).add(jobPage.key))}
           />
         </div>

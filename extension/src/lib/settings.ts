@@ -47,6 +47,18 @@ export const settingsItem = storage.defineItem<Settings>('sync:settings', {
  */
 export const sitesNoticeItem = storage.defineItem<boolean | null>('local:sitesNotice', { fallback: null })
 
+/** Jobs Ansly already offered tailoring for (the card opens by itself once per job, then stays a pill). */
+export const tailorOffersItem = storage.defineItem<string[]>('local:tailorOffers', { fallback: [] })
+const MAX_TAILOR_OFFERS = 300
+
+/** True the first time `key` is seen (and remembers it). */
+export async function firstTailorOffer(key: string): Promise<boolean> {
+  const seen = await tailorOffersItem.getValue()
+  if (seen.includes(key)) return false
+  await tailorOffersItem.setValue([...seen, key].slice(-MAX_TAILOR_OFFERS))
+  return true
+}
+
 export async function getSettings(): Promise<Settings> {
   return { ...DEFAULT_SETTINGS, ...(await settingsItem.getValue()) }
 }

@@ -33,6 +33,7 @@ export function TailorCard({
   job,
   extract,
   stacked,
+  autoOpen = false,
   onDismiss,
 }: {
   /** What the page shows (title and company only). */
@@ -41,9 +42,11 @@ export function TailorCard({
   extract: () => ExtractResult
   /** Sit above the fill-all pill. */
   stacked: boolean
+  /** First time this job is seen with a full description: open the offer instead of the small pill. */
+  autoOpen?: boolean
   onDismiss: () => void
 }) {
-  const [state, setState] = useState<State>({ step: 'pill' })
+  const [state, setState] = useState<State>({ step: autoOpen ? 'offer' : 'pill' })
   const [pasteUrl, setPasteUrl] = useState('/resume/tailor')
   const mounted = useRef(true)
   useEffect(() => () => void (mounted.current = false), [])
@@ -134,7 +137,16 @@ export function TailorCard({
           {job.company && <div className="muted">{job.company}</div>}
         </div>
 
-        {state.step === 'offer' && <div>Tailor your resume for this job?</div>}
+        {state.step === 'offer' && (
+          <div className="tailor-offer">
+            <span className="tailor-new">New</span>
+            <strong>Tailor your resume for this job</strong>
+            <span className="muted">
+              Ansly found the job description. It tailors your own Word resume to this role, keeping your design and
+              using only your real experience. You preview it before downloading.
+            </span>
+          </div>
+        )}
 
         {(state.step === 'checking' || state.step === 'running') && (
           <div className="loading">

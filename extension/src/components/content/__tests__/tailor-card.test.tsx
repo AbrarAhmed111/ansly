@@ -73,7 +73,7 @@ describe('TailorCard', () => {
     await render(extract)
     expect(container.textContent).toContain('Tailor resume')
     await click('Tailor your resume for')
-    expect(container.textContent).toContain('Tailor your resume for this job?')
+    expect(container.textContent).toContain('Tailor your resume for this job')
     expect(extract).not.toHaveBeenCalled()
     expect(calls).toEqual([])
   })
@@ -162,5 +162,17 @@ describe('TailorCard', () => {
     const { onDismiss } = await render()
     await click('Hide for this job')
     expect(onDismiss).toHaveBeenCalled()
+  })
+})
+
+describe('TailorCard first offer', () => {
+  it('opens as a clear offer the first time a job is seen, and minimizes to the pill', async () => {
+    await act(async () => root.render(<TailorCard job={JOB} extract={() => ({ ok: true, job: POSTING })} stacked={false} autoOpen onDismiss={vi.fn()} />))
+    expect(container.textContent).toContain('New')
+    expect(container.textContent).toContain('Ansly found the job description.')
+    expect(button('Tailor Resume')).toBeTruthy()
+    await act(async () => button('Minimize')!.click())
+    expect(container.textContent).not.toContain('Ansly found the job description.')
+    expect(button('Tailor your resume for')).toBeTruthy()
   })
 })

@@ -156,6 +156,8 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 1
   border-radius: 14px; box-shadow: var(--a-shadow); overflow: hidden; animation: pop-in .18s cubic-bezier(.32,.72,0,1);
 }
 .tailor-title { font-weight: 650; font-size: 14px; }
+.tailor-offer { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: rgb(var(--a-accent) / .08); border: 1px solid rgb(var(--a-accent) / .25); line-height: 1.5; }
+.tailor-new { align-self: flex-start; font-size: 11px; font-weight: 650; letter-spacing: .02em; padding: 1px 7px; border-radius: 999px; color: rgb(var(--a-accent-fg)); background: rgb(var(--a-accent)); }
 .tailor-ready { font-weight: 600; color: rgb(var(--a-success)); }
 .tailor-stats { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin: 0; font-size: 13px; }
 .tailor-stats dt { color: rgb(var(--a-muted)); }
