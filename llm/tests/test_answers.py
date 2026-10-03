@@ -311,3 +311,59 @@ def test_projects_are_in_the_context_for_most_questions():
     analysis = classify_question("Tell us about a project you are proud of")
     ctx = build_context(FakeRest().tables | {"profile": FakeRest().tables["profiles"][0]}, analysis)
     assert "PROJECT: TaskFlow" in ctx.text and "300 GitHub stars" in ctx.text
+
+
+def _cover_letter_profile():
+    """Eight projects; the AI one is last in the profile's own order, past the usual cut-off."""
+    filler = [{"id": f"p{i}", "name": f"Weekend game {i}", "description": "A small browser game built for fun.",
+               "highlights": [], "technologies": ["Canvas"]} for i in range(1, 7)]
+    return {
+        "profile": {"id": "u", "summary": "Engineer.", "links": {}},
+        "experiences": [
+            {"id": "e1", "company": "Retail Co", "title": "Support Engineer", "description": "Handled customer escalations.",
+             "highlights": [], "technologies": []},
+            {"id": "e2", "company": "Acme Labs", "title": "Software Engineer",
+             "description": "Full stack development of the customer dashboard: React frontend and Node.js APIs.",
+             "highlights": [], "technologies": ["React", "Node.js", "PostgreSQL"]},
+        ],
+        "projects": filler + [
+            {"id": "p7", "name": "OpenForms", "description": "Open source full-stack form builder I maintain, with 40 contributors.",
+             "highlights": [], "technologies": ["Next.js", "TypeScript"]},
+            {"id": "p8", "name": "DocChat", "description": "RAG assistant that answers questions over PDFs using large language models.",
+             "highlights": [], "technologies": ["Python", "LangChain", "OpenAI"]},
+        ],
+        "skills": [], "education": [], "achievements": [],
+    }
+
+
+def _order(ctx, kind):
+    return [line.split(": ", 1)[1] for line in ctx.text.splitlines() if line.split("] ", 1)[-1].startswith(kind + ":")]
+
+
+def test_cover_letter_leads_with_ai_projects_for_an_ai_job():
+    job = "Machine Learning Engineer. You will build LLM features: RAG pipelines, prompt evaluation, Python services."
+    ctx = build_context(_cover_letter_profile(), classify_question("Cover letter"), job_text=job)
+    assert _order(ctx, "PROJECT")[0] == "DocChat"
+    assert "most relevant to this job first" in ctx.text
+
+
+def test_cover_letter_leads_with_full_stack_and_open_source_work_for_a_full_stack_job():
+    job = "Full Stack Engineer: React and Node.js across the stack. Open source contributions are a plus."
+    ctx = build_context(_cover_letter_profile(), classify_question("Cover letter"), job_text=job)
+    assert _order(ctx, "EXPERIENCE")[0].startswith("Software Engineer at Acme Labs")
+    assert _order(ctx, "PROJECT")[0] == "OpenForms"
+
+
+def test_without_a_job_the_profile_order_is_kept():
+    ctx = build_context(_cover_letter_profile(), classify_question("Cover letter"))
+    assert _order(ctx, "PROJECT")[0] == "Weekend game 1"
+    assert "most relevant" not in ctx.text
+    assert len(_order(ctx, "PROJECT")) == 8  # cover letters see more of the profile
+
+
+def test_cover_letter_guidance_maps_job_needs_to_real_work():
+    analysis = classify_question("Cover letter")
+    ctx = build_context(_cover_letter_profile(), analysis)
+    message = build_user_message(analysis, ctx, JobContext(company="X", role="ML Engineer", description="LLM work"), None)
+    assert "main needs in the JOB CONTEXT" in message and "AI projects for AI needs" in message
+    assert "open-source projects for full-stack needs" in message

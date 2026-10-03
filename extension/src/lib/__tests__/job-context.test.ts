@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractJobContext, parseTitle } from '../job-context'
+import { extractJobContext, isCoverLetter, parseTitle } from '../job-context'
 
 function page(head: string, body = '') {
   document.head.innerHTML = head
@@ -79,5 +79,16 @@ describe('extractJobContext', () => {
     page('<title>x</title>')
     const ctx = extractJobContext(document, { includeDescription: false })
     expect(ctx.url).not.toContain('?')
+  })
+})
+
+describe('isCoverLetter', () => {
+  it('spots cover and motivation letter fields, so they always get the job description', () => {
+    for (const q of ['Cover letter', 'Covering Letter (optional)', 'Upload or paste your coverletter', 'Motivation letter', 'Letter of motivation']) {
+      expect(isCoverLetter(q), q).toBe(true)
+    }
+    for (const q of ['Why do you want to work here?', 'Tell us about yourself', '', null]) {
+      expect(isCoverLetter(q), String(q)).toBe(false)
+    }
   })
 })

@@ -132,7 +132,7 @@ export default function App() {
           />
           <Toggle
             label="Use job descriptions"
-            help="Send the job description with questions for more role-specific answers."
+            help="Send the job description with every question for more role-specific answers. Cover letters always use it."
             checked={settings.useJobDescription}
             onChange={(v) => void patch({ useJobDescription: v })}
           />
