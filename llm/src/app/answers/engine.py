@@ -24,6 +24,7 @@ from src.app.schemas.answers import (
     FieldContext,
     GenerateAnswerRequest,
     GenerateBatchRequest,
+    JobContext,
     MissingInfo,
     ProfileFieldTarget,
     SkillTarget,
@@ -67,6 +68,13 @@ LOGISTICS_ASK = {
     "relocation": ("willing_to_relocate", "boolean", "Are you willing to relocate?"),
     "work_mode": ("preferred_work_mode", "select", "Which work mode do you prefer?"),
 }
+
+
+def job_text(job: Optional[JobContext]) -> Optional[str]:
+    """What the job is about, for ranking the profile: its role and description."""
+    if job is None:
+        return None
+    return "\n".join(x for x in [job.role, job.description] if x) or None
 
 
 def _join(items: List[str]) -> str:
@@ -259,7 +267,7 @@ class AnswerEngine:
         settings = get_settings()
         analysis = _analyze(request.question, request.field)
         data = await fetch_profile_data(rest, analysis)
-        ctx = build_context(data, analysis, request.additional_facts)
+        ctx = build_context(data, analysis, request.additional_facts, job_text=job_text(request.job_context))
 
         early = precheck(analysis, ctx, request.field)
         if early is not None:
@@ -304,7 +312,7 @@ class AnswerEngine:
                                  target_skills=skills)
         data = await fetch_profile_data(rest, union)
         facts = [f for item in request.items for f in (item.additional_facts or [])]
-        ctx = build_context(data, union, facts, include_logistics=has_logistics)
+        ctx = build_context(data, union, facts, include_logistics=has_logistics, job_text=job_text(request.job_context))
 
         plan = BatchPlan(request=request, ctx=ctx, analyses=analyses)
         for item in request.items:

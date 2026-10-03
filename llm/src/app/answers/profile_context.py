@@ -15,6 +15,18 @@ from src.app.db.rest import SupabaseRest
 from .classifier import QuestionAnalysis
 
 SECTION_LIMITS = {"experiences": 6, "projects": 6, "skills": 60, "education": 4, "achievements": 8}
+# A cover letter picks from the whole profile: more rows reach the model, most job-relevant first.
+COVER_LETTER_LIMITS = {**SECTION_LIMITS, "experiences": 8, "projects": 10}
+# Words that say nothing about what a job or a project is about.
+RELEVANCE_STOPWORDS = set("""
+a an and are as at be been being but by can do for from has have how i if in into is it its may more most must
+not of on or our over per so such than that the their them they this to up us was we were what when where which
+while who will with within without would you your yours about across after all also any based both each etc
+experience experienced work working worked team teams role roles job jobs candidate company years year strong
+skills skill ability able knowledge understanding including include includes new using use used build built
+building develop developed developing developer development help helped part plus good great excellent
+responsible responsibilities requirements required preferred nice bonus looking join day make made well
+""".split())
 # Facts the user gave when Ansly asked (or on /profile/additional). Always fetched: they are few and short.
 FACTS_LIMIT = 30
 SECTION_ORDER = {
@@ -117,14 +129,48 @@ def _mentions(row: Dict[str, Any], skills: List[str]) -> bool:
     return any(canonicalize(s) in terms for s in skills)
 
 
+def relevance_terms(text: str) -> Set[str]:
+    """Canonical 1–3-word terms that carry meaning ("full stack" -> "fullstack", "machine learning" -> "ml")."""
+    tokens = [t.rstrip(".") for t in re.findall(r"[a-z0-9+#][a-z0-9+#./\-]*", (text or "").lower())]
+    tokens = [t for t in tokens if t and t not in RELEVANCE_STOPWORDS]
+    terms: Set[str] = set()
+    for n in (1, 2, 3):
+        for i in range(len(tokens) - n + 1):
+            term = canonicalize(" ".join(tokens[i:i + n]))
+            if len(term) > 1:
+                terms.add(term)
+    for t in tokens:
+        if "/" in t:
+            terms.update(canonicalize(part) for part in t.split("/") if part)
+    return terms
+
+
+def _row_text(row: Dict[str, Any]) -> str:
+    return " ".join(" ".join(map(str, v)) if isinstance(v, list) else str(v)
+                    for v in row.values() if isinstance(v, (str, list)))
+
+
+def rank_for_job(rows: List[Dict[str, Any]], job_terms: Set[str]) -> List[Dict[str, Any]]:
+    """Rows sharing the most terms with the job first; the profile's own order breaks ties."""
+    if not job_terms:
+        return rows
+    scores = [len(relevance_terms(_row_text(r)) & job_terms) for r in rows]
+    order = sorted(range(len(rows)), key=lambda i: -scores[i])
+    return [rows[i] for i in order]
+
+
 def build_context(
     data: Dict[str, Any],
     analysis: QuestionAnalysis,
     additional_facts: Optional[List[str]] = None,
     include_logistics: Optional[bool] = None,
+    job_text: Optional[str] = None,
 ) -> ProfileContext:
     """Formats fetched rows into prompt text. `data` maps section -> rows, plus "profile" -> row,
-    and "profile_facts" -> rows. `additional_facts` are what the candidate just told us without saving."""
+    and "profile_facts" -> rows. `additional_facts` are what the candidate just told us without saving.
+    `job_text` (the job's role and description) puts the most relevant experience and projects first."""
+    job_terms = relevance_terms(job_text) if job_text and job_text.strip() else set()
+    limits = COVER_LETTER_LIMITS if analysis.category == "cover_letter" else SECTION_LIMITS
     ctx = ProfileContext(text="")
     # "I don't have this skill" rows are knowledge, not skills: keep them out of the text and the corpus.
     skills = data.get("skills") or []
@@ -159,14 +205,18 @@ def build_context(
         corpus += [profile.get("headline") or "", profile.get("summary") or "", profile.get("additional_context") or ""]
 
     prefixes = {"experiences": "E", "projects": "P", "skills": "S", "education": "ED", "achievements": "A"}
+    if job_terms and any(s in analysis.sections for s in ("experiences", "projects", "achievements")):
+        out.append("(Experience, projects and achievements are listed most relevant to this job first.)")
     for section in analysis.sections:
         rows = data.get(section) or []
         if not rows:
             continue
-        # Rows that mention the skill being asked about go first.
+        # The work most relevant to the job first; rows that mention the skill being asked about before that.
+        if section != "skills":
+            rows = rank_for_job(rows, job_terms)
         if analysis.target_skills:
             rows = sorted(rows, key=lambda r: not _mentions(r, analysis.target_skills))
-        rows = rows[: SECTION_LIMITS[section]]
+        rows = rows[: limits[section]]
 
         if section == "skills":
             ref = "S"

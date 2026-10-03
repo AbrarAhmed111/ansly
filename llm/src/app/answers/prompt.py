@@ -61,10 +61,16 @@ INTENT_HINTS: Dict[str, str] = {
     "relocation": "Answer from the profile's relocation field only.",
     "work_mode": "Answer from the profile's preferred work mode only.",
     "cover_letter": (
-        "This is a cover letter field. Write 3–4 paragraphs: an opening tied to the role and company; one or two "
-        "paragraphs on the most relevant experience and projects from the profile; a short closing. "
-        "Use the company and role from JOB CONTEXT when given. No greeting or signature unless the question asks "
-        "for a complete letter; then open with \"Dear Hiring Manager,\" and sign off with the candidate's name from the profile."
+        "This is a cover letter field. Write it for this job: first work out the two or three main needs in the JOB "
+        "CONTEXT's description (for example AI/ML or LLM work, full-stack product development, open-source work, a "
+        "domain or industry). Then, for each need, cite the candidate's matching work from the profile by name: their "
+        "AI projects for AI needs; their professional full-stack work and open-source projects for full-stack needs; "
+        "and so on. Profile items are listed most relevant to the job first. Leave out work unrelated to what the job "
+        "needs, and never claim a need the profile doesn't support. Write 3–4 paragraphs: an opening tied to the role "
+        "and company; one or two paragraphs mapping the job's needs to that real work; a short closing. Use the "
+        "company and role from JOB CONTEXT when given; without a job description, build it around the candidate's "
+        "strongest work. No greeting or signature unless the question asks for a complete letter; then open with "
+        "\"Dear Hiring Manager,\" and sign off with the candidate's name from the profile."
     ),
 }
 
