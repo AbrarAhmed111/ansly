@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Logo } from '@/components/logo'
+import { SignedInSwitch } from '@/components/signed-in'
 import { Overline, buttonStyles } from '@/components/ui'
 
 /** Centered marketing-page column. */
@@ -21,7 +22,7 @@ export function SectionIntro({ eyebrow, title, children }: { eyebrow: string; ti
   )
 }
 
-export function SiteHeader({ signedIn }: { signedIn?: boolean }) {
+export function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-bg/75 backdrop-blur-lg">
       <Container className="flex h-16 items-center justify-between">
@@ -35,21 +36,24 @@ export function SiteHeader({ signedIn }: { signedIn?: boolean }) {
           <Link href="/privacy" className={buttonStyles({ variant: 'ghost', className: 'hidden sm:inline-flex' })}>
             Privacy
           </Link>
-          {signedIn ? (
-            <Link href="/dashboard" className={buttonStyles()}>
-              Open dashboard
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          ) : (
-            <>
-              <Link href="/login" className={buttonStyles({ variant: 'ghost' })}>
-                Sign in
+          <SignedInSwitch
+            signedIn={
+              <Link href="/dashboard" className={buttonStyles()}>
+                Open dashboard
+                <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="/login?mode=signup" className={buttonStyles()}>
-                Get started
-              </Link>
-            </>
-          )}
+            }
+            signedOut={
+              <>
+                <Link href="/login" className={buttonStyles({ variant: 'ghost' })}>
+                  Sign in
+                </Link>
+                <Link href="/login?mode=signup" className={buttonStyles()}>
+                  Get started
+                </Link>
+              </>
+            }
+          />
         </nav>
       </Container>
     </header>

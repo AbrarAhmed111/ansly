@@ -5,15 +5,16 @@ import { createClient } from '@/lib/supabase/server'
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  // Verified locally from the JWT (see middleware), not fetched from Supabase Auth on every navigation.
+  const { data } = await supabase.auth.getClaims()
+  const claims = data?.claims
+  if (!claims?.sub) redirect('/login')
 
-  const name = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : null
+  const metadata = (claims.user_metadata ?? {}) as Record<string, unknown>
+  const name = typeof metadata.full_name === 'string' ? metadata.full_name : null
 
   return (
-    <AppShell name={name} email={user.email ?? ''} userId={user.id} createdAt={user.created_at}>
+    <AppShell name={name} email={claims.email ?? ''} userId={claims.sub}>
       {children}
     </AppShell>
   )

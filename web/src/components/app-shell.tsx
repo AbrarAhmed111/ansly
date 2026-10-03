@@ -12,6 +12,7 @@ import { SECTION_ICONS } from '@/components/section-icons'
 import { ThemeToggle } from '@/components/theme'
 import { Avatar, Button, IconButton, IconTile, Kbd, Overline, buttonStyles } from '@/components/ui'
 import { SECTIONS } from '@/lib/sections'
+import { createClient } from '@/lib/supabase/client'
 
 interface NavItem {
   href: string
@@ -146,12 +147,18 @@ function NewUserExtensionNotice({ userId, createdAt }: { userId: string; created
   const storageKey = `ansly-extension-access-notice:${userId}`
 
   useEffect(() => {
-    if (!createdAt) return
-    const created = new Date(createdAt).getTime()
-    if (!Number.isFinite(created)) return
-    const isRecentSignup = Date.now() - created < 7 * 24 * 60 * 60 * 1000
-    if (!isRecentSignup || localStorage.getItem(storageKey)) return
-    setOpen(true)
+    if (localStorage.getItem(storageKey)) return
+    let alive = true
+    const show = (signedUpAt: string | undefined) => {
+      const created = signedUpAt ? new Date(signedUpAt).getTime() : NaN
+      if (alive && Number.isFinite(created) && Date.now() - created < 7 * 24 * 60 * 60 * 1000) setOpen(true)
+    }
+    // Without a server-provided date, read it from the browser's session (local, no request to Supabase).
+    if (createdAt) show(createdAt)
+    else void createClient().auth.getSession().then(({ data }) => show(data.session?.user.created_at))
+    return () => {
+      alive = false
+    }
   }, [createdAt, storageKey])
 
   const close = () => {

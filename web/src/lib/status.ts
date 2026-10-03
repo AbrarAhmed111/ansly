@@ -1,5 +1,8 @@
 import type { HealthResponse, ServiceStatus } from '@ansly/types'
 
+// Status is shared by all visitors: cache each check for a minute and never hang on a slow service.
+const fetchOptions = () => ({ next: { revalidate: 60 }, signal: AbortSignal.timeout(5000) })
+
 export interface StatusCheck {
   status: ServiceStatus
   detail?: string
@@ -14,7 +17,7 @@ export async function checkSupabase(): Promise<StatusCheck> {
   try {
     const res = await fetch(`${url.replace(/\/$/, '')}/auth/v1/health`, {
       headers: { apikey: key },
-      cache: 'no-store',
+      ...fetchOptions(),
     })
     return res.ok
       ? { status: 'ok' }
@@ -32,9 +35,7 @@ export async function checkApi(): Promise<
   if (!baseUrl) return { status: 'not_configured' }
 
   try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/health`, {
-      cache: 'no-store',
-    })
+    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/health`, fetchOptions())
     if (!res.ok) return { status: 'error', detail: `HTTP ${res.status}` }
     return { status: 'ok', health: (await res.json()) as HealthResponse }
   } catch (err) {

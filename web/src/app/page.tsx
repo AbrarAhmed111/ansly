@@ -15,31 +15,12 @@ import {
 import Image from 'next/image'
 import Link from 'next/link'
 import { LogoMark, LogoWithTagline } from '@/components/logo'
+import { SignedInSwitch } from '@/components/signed-in'
 import { Container, SectionIntro, SiteFooter, SiteHeader } from '@/components/site'
-import { Badge, Card, GridPattern, IconTile, Overline, StatusDot, buttonStyles, type Tone } from '@/components/ui'
-import { checkApi, checkSupabase, type StatusCheck } from '@/lib/status'
-import { createClient } from '@/lib/supabase/server'
+import { SystemStatus } from '@/components/system-status'
+import { Badge, Card, GridPattern, IconTile, Overline, buttonStyles } from '@/components/ui'
 
-export const dynamic = 'force-dynamic'
-
-const STATUS: Record<StatusCheck['status'], { label: string; tone: Tone }> = {
-  ok: { label: 'Operational', tone: 'success' },
-  error: { label: 'Unreachable', tone: 'danger' },
-  not_configured: { label: 'Not configured', tone: 'warning' },
-}
-
-function StatusRow({ name, check }: { name: string; check: StatusCheck }) {
-  const { label, tone } = STATUS[check.status]
-  return (
-    <li className="flex items-center justify-between gap-4 py-2.5">
-      <span className="text-muted">{name}</span>
-      <span className="inline-flex items-center gap-2 font-medium" title={check.detail}>
-        <StatusDot tone={tone} pulse={check.status === 'ok'} />
-        {label}
-      </span>
-    </li>
-  )
-}
+// Static: the page is the same for everyone. The signed-in CTA and system status load in the browser.
 
 const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: UserRound, title: 'Build your profile', body: 'Experience, projects and skills — once. Import from JSON to start fast.' },
@@ -60,6 +41,9 @@ const FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: FileText, title: 'Role-aware when you want it', body: 'Optionally include the job description for answers tailored to the company and role.' },
   { icon: Globe, title: 'Works where you apply', body: 'Detects open-ended questions on the major applicant tracking systems and company sites.' },
 ]
+
+const CTA_LINK =
+  'relative mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-neutral-0 px-5 text-body-lg font-medium text-brand-700 shadow-xs transition hover:bg-neutral-0/90'
 
 const PREVIEW_SOURCES = ['Experience · Nizam LLC', 'Project · OnTask', 'Skills · Next.js, PostgreSQL']
 
@@ -116,16 +100,10 @@ function ProductPreview() {
   )
 }
 
-export default async function Home() {
-  const supabase = await createClient()
-  const [{ data }, supabaseStatus, api] = await Promise.all([supabase.auth.getUser(), checkSupabase(), checkApi()])
-  const apiSupabase = api.health?.supabase ?? { status: 'not_configured' as const }
-  const signedIn = Boolean(data.user)
-  const primaryHref = signedIn ? '/dashboard' : '/login?mode=signup'
-
+export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
-      <SiteHeader signedIn={signedIn} />
+      <SiteHeader />
 
       <main className="flex-1">
         {/* Hero */}
@@ -164,10 +142,20 @@ export default async function Home() {
                 answer, it says so instead of making one up.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <Link href={primaryHref} className={buttonStyles({ size: 'lg' })}>
-                  {signedIn ? 'Open dashboard' : 'Get started — it’s free'}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                <SignedInSwitch
+                  signedIn={
+                    <Link href="/dashboard" className={buttonStyles({ size: 'lg' })}>
+                      Open dashboard
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  }
+                  signedOut={
+                    <Link href="/login?mode=signup" className={buttonStyles({ size: 'lg' })}>
+                      Get started — it’s free
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  }
+                />
                 <Link href="#how-it-works" className={buttonStyles({ size: 'lg', variant: 'secondary' })}>
                   See how it works
                 </Link>
@@ -236,21 +224,24 @@ export default async function Home() {
               <p className="relative mt-3 max-w-md text-body-lg opacity-80">
                 Build your profile once and let Ansly handle the repetitive questions.
               </p>
-              <Link
-                href={primaryHref}
-                className="relative mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-neutral-0 px-5 text-body-lg font-medium text-brand-700 shadow-xs transition hover:bg-neutral-0/90"
-              >
-                {signedIn ? 'Open dashboard' : 'Create your profile'}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              <SignedInSwitch
+                signedIn={
+                  <Link href="/dashboard" className={CTA_LINK}>
+                    Open dashboard
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                }
+                signedOut={
+                  <Link href="/login?mode=signup" className={CTA_LINK}>
+                    Create your profile
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                }
+              />
             </div>
             <Card className="rounded-2xl p-6">
               <h2 className="text-title">System status</h2>
-              <ul className="mt-2 divide-y divide-border">
-                <StatusRow name="Web → Supabase" check={supabaseStatus} />
-                <StatusRow name="Web → API" check={api} />
-                {api.status === 'ok' && <StatusRow name="API → Supabase" check={apiSupabase} />}
-              </ul>
+              <SystemStatus />
             </Card>
           </Container>
         </section>

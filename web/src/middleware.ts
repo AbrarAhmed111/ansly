@@ -5,9 +5,13 @@ import { supabaseKey, supabaseUrl } from '@/lib/supabase/env'
 
 const PROTECTED = ['/dashboard', '/profile', '/resume', '/saved-answers', '/settings', '/extension', '/playground']
 const AUTH_PAGES = ['/login']
+// Static pages that work the same signed in or out: no auth check, so they're served without waiting on Supabase.
+const PUBLIC = ['/', '/privacy', '/api/status']
 
 /** Refreshes the Supabase session cookie and guards signed-in pages. */
 export async function middleware(request: NextRequest) {
+  if (PUBLIC.includes(request.nextUrl.pathname)) return NextResponse.next()
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(supabaseUrl(), supabaseKey(), {
@@ -23,9 +27,10 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims refreshes an expired session, then verifies the JWT locally against the project's signing keys
+  // (falling back to the Auth server for legacy secrets), instead of a round trip to Supabase Auth per request.
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims ?? null
 
   const path = request.nextUrl.pathname
   if (!user && PROTECTED.some((p) => path === p || path.startsWith(`${p}/`))) {
