@@ -148,6 +148,93 @@ export function pageWidth(container: HTMLElement): number {
   return page?.offsetWidth || 816
 }
 
+// -- PDF ---------------------------------------------------------------------------
+
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+
+/**
+ * Print styles for the rendered pages: one sheet per page, the page's own size, no screen chrome.
+ * Exported for tests.
+ */
+export function printCss(className: string, width: string, height: string): string {
+  return `
+@page { size: ${width} ${height}; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.${className}-wrapper { display: block !important; background: transparent !important; padding: 0 !important; }
+.${className}-wrapper > section.${className} {
+  margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+  width: ${width} !important; min-height: 0 !important; height: calc(${height} - 1px) !important; overflow: hidden;
+  break-after: page; page-break-after: always;
+}
+.${className}-wrapper > section.${className}:last-of-type { break-after: auto; page-break-after: auto; }
+.ansly-page-label { display: none !important; }
+`
+}
+
+/**
+ * Saves the tailored resume as a PDF: lays it out exactly like the preview, then opens the browser's
+ * print dialog on just those pages, named after the file ("Save as PDF" is the default destination).
+ * There's no Word renderer on the server, so this is the PDF the preview shows, page for page, with
+ * real (selectable, ATS-readable) text.
+ */
+export async function saveAsPdf(tailoringId: string): Promise<void> {
+  const docs = await previewDocuments(tailoringId)
+  const name = docs.tailoredName.replace(/\.(docx|pdf)$/i, '')
+  if (docs.format === 'pdf') {
+    const url = URL.createObjectURL(new Blob([docs.tailored], { type: 'application/pdf' }))
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${name}.pdf` })
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    return
+  }
+
+  const className = 'docx-pdf'
+  const host = document.createElement('div')
+  host.setAttribute('aria-hidden', 'true')
+  host.style.cssText = 'position:fixed;left:-20000px;top:0;pointer-events:none;'
+  document.body.appendChild(host)
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+  try {
+    await renderDocx(docs.tailored, host, className)
+    const page = host.querySelector<HTMLElement>(`section.${className}`)
+    if (!page) throw new Error('The document could not be laid out')
+    const width = page.style.width || `${page.offsetWidth}px`
+    const height = page.style.minHeight || page.style.height || `${page.offsetHeight}px`
+
+    document.body.appendChild(frame)
+    const doc = frame.contentDocument
+    const win = frame.contentWindow
+    if (!doc || !win) throw new Error('Could not prepare the PDF')
+    doc.open()
+    doc.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(name)}</title>` +
+        `<style>${printCss(className, width, height)}</style></head><body>${host.innerHTML}</body></html>`,
+    )
+    doc.close()
+    await doc.fonts?.ready
+    await Promise.all(
+      Array.from(doc.images, (img) => (img.complete ? null : new Promise((done) => (img.onload = img.onerror = done)))),
+    )
+    // Chrome names the PDF after the top document's title.
+    const title = document.title
+    document.title = name
+    try {
+      win.focus()
+      win.print()
+    } finally {
+      document.title = title
+    }
+  } finally {
+    host.remove()
+    // print() returns when the dialog closes in most browsers; Safari returns at once, so give it time.
+    setTimeout(() => frame.remove(), 60_000)
+  }
+}
+
 /** Renders `data` into `container` (cleared first) and paginates it. Returns the page count. */
 export async function renderDocx(data: ArrayBuffer, container: HTMLElement, className: string): Promise<number> {
   const { renderAsync } = await loadRenderer()

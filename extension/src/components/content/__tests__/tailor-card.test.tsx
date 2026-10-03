@@ -102,6 +102,35 @@ describe('TailorCard', () => {
     expect(calls.at(-1)).toEqual({ type: 'downloadTailoring', payload: { id: 't1' } })
     await click('Preview Resume')
     expect(calls.at(-1)).toEqual({ type: 'openWebApp', payload: { path: '/resume/t1' } })
+    await click('Download PDF')
+    expect(calls.at(-1)).toEqual({ type: 'openWebApp', payload: { path: '/resume/t1?pdf=1' } })
+  })
+
+  it('keeps polling while the status stays the same, with progress that moves', async () => {
+    responses.getMasterResume = [ok(MASTER)]
+    responses.analyzeJob = [ok({ jobContextId: 'j1', analysis: { mustHave: [], niceToHave: [] } })]
+    responses.startTailoring = [ok({ id: 't1', status: 'queued' })]
+    responses.getTailoring = [
+      ok({ ...READY, status: 'tailoring' }),
+      ok({ ...READY, status: 'tailoring' }),
+      ok({ ...READY, status: 'tailoring' }),
+      ok(READY),
+    ]
+    await render()
+    await click('Tailor your resume for')
+    await click('Tailor Resume')
+    expect(container.textContent).toContain('Step 2 of 5')
+
+    await act(async () => vi.advanceTimersByTime(2000))
+    expect(container.textContent).toContain('Changing your title to fit the role…')
+    const first = Number(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'))
+    await act(async () => vi.advanceTimersByTime(2000))
+    await act(async () => vi.advanceTimersByTime(2000))
+    expect(container.textContent).toContain('Tailoring your summary…')
+    expect(Number(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'))).toBeGreaterThan(first)
+    await act(async () => vi.advanceTimersByTime(2000))
+    expect(calls.filter((c) => c.type === 'getTailoring')).toHaveLength(4)
+    expect(container.textContent).toContain('Your resume is ready.')
   })
 
   it('asks for a master resume first', async () => {

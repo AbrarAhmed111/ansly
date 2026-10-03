@@ -138,7 +138,10 @@ describe('ResumePreview', () => {
 })
 
 describe('TailoredReadyCard', () => {
-  const props = { previewOpen: false, leftOut: 0, downloading: false, onPreview: jest.fn(), onDownload: jest.fn() }
+  const props = {
+    previewOpen: false, leftOut: 0, downloading: false, savingPdf: false,
+    onPreview: jest.fn(), onDownload: jest.fn(), onPdf: jest.fn(),
+  }
 
   it('leads with the preview and says the formatting was preserved', () => {
     render(<TailoredReadyCard {...props} preview="loading" />)
@@ -146,9 +149,11 @@ describe('TailoredReadyCard', () => {
     expect(screen.getByText(/Your original formatting has been preserved/)).toBeTruthy()
     expect(screen.getByText('Preparing preview')).toBeTruthy()
     const buttons = screen.getAllByRole('button').map((b) => b.textContent)
-    expect(buttons).toEqual(['Preview Resume', 'Download DOCX'])
+    expect(buttons).toEqual(['Preview Resume', 'Download DOCX', 'Download PDF'])
     fireEvent.click(screen.getByRole('button', { name: 'Preview Resume' }))
     expect(props.onPreview).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Download PDF' }))
+    expect(props.onPdf).toHaveBeenCalled()
   })
 
   it('reports the preview as ready or unavailable, and changes left out', () => {

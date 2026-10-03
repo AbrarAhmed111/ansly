@@ -1,7 +1,7 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { CheckCircle2, Download, Eye, EyeOff, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, Download, Eye, EyeOff, FileDown, TriangleAlert } from 'lucide-react'
 import { Button, Card, Spinner, StepMarker } from '@/components/ui'
 import { plural } from '@/lib/format'
 
@@ -27,16 +27,20 @@ export function TailoredReadyCard({
   previewOpen,
   leftOut,
   downloading,
+  savingPdf,
   onPreview,
   onDownload,
+  onPdf,
 }: {
   preview: PreviewStage
   previewOpen: boolean
   /** Changes left out to protect the document's formatting. */
   leftOut: number
   downloading: boolean
+  savingPdf: boolean
   onPreview: () => void
   onDownload: () => void
+  onPdf: () => void
 }) {
   return (
     <Card className="relative overflow-hidden">
@@ -66,6 +70,9 @@ export function TailoredReadyCard({
           </Button>
           <Button size="lg" variant="secondary" icon={Download} onClick={onDownload} loading={downloading}>
             Download DOCX
+          </Button>
+          <Button size="lg" variant="secondary" icon={FileDown} onClick={onPdf} loading={savingPdf}>
+            Download PDF
           </Button>
         </div>
       </div>

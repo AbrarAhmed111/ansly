@@ -1,9 +1,11 @@
-import type { TailoringResponse, TailoringStatus } from '@ansly/types'
+import { TAILORING_STEP_COUNT, tailoringProgress, type TailoringResponse, type TailoringStatus } from '@ansly/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DetectedJob, ExtractResult } from '@/lib/job/detect'
 import { send, type ApiFailure } from '@/lib/messages'
 
 const POLL_MS = 2000
+// How often the progress bar and activity line move between polls.
+const TICK_MS = 500
 
 type State =
   | { step: 'pill' }
@@ -12,20 +14,18 @@ type State =
   | { step: 'no_master' }
   | { step: 'needs_review'; resumeId: string | null }
   | { step: 'not_enough' }
-  | { step: 'running'; status: TailoringStatus; id: string | null; requirements: number | null }
+  | {
+      step: 'running'
+      status: TailoringStatus
+      id: string | null
+      requirements: number | null
+      /** When the current status started (for the progress bar). */
+      since: number
+      /** Answered polls: each one schedules the next. */
+      polls: number
+    }
   | { step: 'ready'; result: TailoringResponse }
   | { step: 'error'; error: ApiFailure | null }
-
-const RUNNING_COPY: Record<TailoringStatus, string> = {
-  queued: 'Analyzing job…',
-  analyzing: 'Analyzing job…',
-  matching: 'Matching requirements with your experience…',
-  tailoring: 'Tailoring resume…',
-  validating: 'Checking every change against your experience…',
-  rendering: 'Applying changes to your Word document…',
-  ready: 'Your resume is ready.',
-  failed: 'Resume tailoring failed.',
-}
 
 const FAILED = 'Resume tailoring failed. Your original resume has not been changed.'
 
@@ -74,18 +74,21 @@ export function TailorCard({
     if (!resume) return setState({ step: 'no_master' })
     if (resume.parseStatus !== 'parsed') return setState({ step: 'needs_review', resumeId: resume.id })
 
-    setState({ step: 'running', status: 'analyzing', id: null, requirements: null })
+    setState({ step: 'running', status: 'analyzing', id: null, requirements: null, since: Date.now(), polls: 0 })
     const analyzed = await send('analyzeJob', { job: extracted.job })
     if (!analyzed.ok) return fail(analyzed.error)
     const requirements = analyzed.data.analysis.mustHave.length + analyzed.data.analysis.niceToHave.length
     const started = await send('startTailoring', { jobContextId: analyzed.data.jobContextId })
     if (!started.ok) return fail(started.error)
-    if (mounted.current) setState({ step: 'running', status: started.data.status, id: started.data.id, requirements })
+    if (!mounted.current) return
+    // The job is already analyzed: the run's next real work is matching.
+    const status = started.data.status === 'queued' ? 'matching' : started.data.status
+    setState({ step: 'running', status, id: started.data.id, requirements, since: Date.now(), polls: 0 })
   }, [extract, job, fail])
 
-  // Poll while the tailoring runs.
+  // Poll while the tailoring runs. Every answer, even an unchanged status, schedules the next poll.
   const runningId = state.step === 'running' ? state.id : null
-  const runningStatus = state.step === 'running' ? state.status : null
+  const polls = state.step === 'running' ? state.polls : 0
   useEffect(() => {
     if (!runningId) return
     const timer = setTimeout(async () => {
@@ -95,10 +98,27 @@ export function TailorCard({
       const data = result.data
       if (data.status === 'ready') setState({ step: 'ready', result: data })
       else if (data.status === 'failed') setState({ step: 'error', error: { code: 'server', message: data.error ?? FAILED } })
-      else setState((s) => (s.step === 'running' ? { ...s, status: data.status } : s))
+      else {
+        // A poll that comes back "queued" is the matching step that hasn't started yet.
+        const status = data.status === 'queued' ? 'matching' : data.status
+        setState((s) =>
+          s.step === 'running'
+            ? { ...s, status, polls: s.polls + 1, since: s.status === status ? s.since : Date.now() }
+            : s,
+        )
+      }
     }, POLL_MS)
     return () => clearTimeout(timer)
-  }, [runningId, runningStatus, fail])
+  }, [runningId, polls, fail])
+
+  // Moves the progress bar between polls.
+  const [now, setNow] = useState(() => Date.now())
+  const running = state.step === 'running'
+  useEffect(() => {
+    if (!running) return
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS)
+    return () => clearInterval(timer)
+  }, [running])
 
   const open = (path: string) => void send('openWebApp', { path })
 
@@ -148,16 +168,14 @@ export function TailorCard({
           </div>
         )}
 
-        {(state.step === 'checking' || state.step === 'running') && (
+        {state.step === 'checking' && (
           <div className="loading">
             <span className="spinner" />
-            <span>
-              {state.step === 'checking' ? 'Checking your master resume…' : RUNNING_COPY[state.status]}
-              {state.step === 'running' && state.requirements ? (
-                <span className="muted"> · {state.requirements} requirements detected</span>
-              ) : null}
-            </span>
+            <span>Checking your master resume…</span>
           </div>
+        )}
+        {state.step === 'running' && (
+          <Progress status={state.status} elapsed={now - state.since} requirements={state.requirements} />
         )}
 
         {state.step === 'no_master' && (
@@ -235,11 +253,38 @@ export function TailorCard({
             <button className="btn" onClick={() => void send('downloadTailoring', { id: state.result.id })}>
               Download DOCX
             </button>
+            <button
+              className="btn"
+              onClick={() => open(`/resume/${state.result.id}?pdf=1`)}
+              title="Opens your tailored resume to save it as a PDF"
+            >
+              Download PDF
+            </button>
             <button className="btn primary" onClick={() => open(`/resume/${state.result.id}`)}>
               Preview Resume
             </button>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function Progress({ status, elapsed, requirements }: { status: TailoringStatus; elapsed: number; requirements: number | null }) {
+  const { percent, activity, step } = tailoringProgress(status, elapsed)
+  return (
+    <div className="tailor-progress" aria-live="polite">
+      <div className="tailor-progress-head">
+        <span className="spinner" />
+        <span className="tailor-activity">{activity}</span>
+        <span className="muted tailor-percent">{percent}%</span>
+      </div>
+      <div className="tailor-bar" role="progressbar" aria-label="Tailoring progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+        <span style={{ width: `${percent}%` }} />
+      </div>
+      <div className="muted">
+        Step {step} of {TAILORING_STEP_COUNT}
+        {requirements ? ` · ${requirements} requirements detected` : ''}
       </div>
     </div>
   )

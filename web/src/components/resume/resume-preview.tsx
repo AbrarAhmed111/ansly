@@ -169,19 +169,34 @@ export function ResumePreview({
   const onFailed = useCallback((side: Side) => setFailed((f) => ({ ...f, [side]: true })), [])
 
   // Fit to width until the user zooms: the page is never wider than the screen.
+  // Only width changes count: zooming changes the content's height, and reacting to that (or to a scrollbar
+  // appearing because of it) made the zoom, and the side-by-side view, flicker back and forth.
   const columns = view === 'compare' ? 2 : 1
   useEffect(() => {
     const el = scroller.current
     if (!el || !fit) return
+    let lastWidth = -1
+    let frame = 0
     const apply = () => {
-      if (!el.clientWidth) return // not laid out yet
-      const available = (el.clientWidth - GUTTER * columns) / columns
-      setZoom(Math.max(ZOOM_MIN, Math.min(1, Math.round((available / width) * 100) / 100)))
+      const available = el.clientWidth
+      if (!available || available === lastWidth) return // not laid out yet, or only the height changed
+      lastWidth = available
+      const next = Math.max(ZOOM_MIN, Math.min(1, Math.floor(((available - GUTTER * columns) / columns / width) * 100) / 100))
+      setZoom((z) => (Math.abs(z - next) < 0.015 ? z : next))
     }
     apply()
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(apply)
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            cancelAnimationFrame(frame)
+            frame = requestAnimationFrame(apply)
+          })
     observer?.observe(el)
-    return () => observer?.disconnect()
+    return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+    }
   }, [fit, width, columns, docs])
 
   const zoomBy = (delta: number) => {
@@ -293,6 +308,8 @@ export function ResumePreview({
       <div
         ref={scroller}
         className="relative mt-3 max-h-[85vh] overflow-auto rounded-xl bg-surface-muted/70 ring-1 ring-inset ring-border"
+        // The scrollbar's space is always reserved, so it appearing never changes the width the pages fit to.
+        style={{ scrollbarGutter: 'stable' }}
       >
         {!docs && <PageSkeleton />}
         {docs && (
@@ -311,7 +328,7 @@ export function ResumePreview({
                   )}
                 >
                   {view === 'compare' && (
-                    <p className="sticky top-0 z-10 bg-surface-muted/90 py-2 text-center text-caption font-medium text-muted backdrop-blur">
+                    <p className="sticky top-0 z-10 border-b border-border bg-surface-muted py-2 text-center text-caption font-medium text-muted">
                       {side === 'original' ? 'Original' : 'Tailored'}
                     </p>
                   )}

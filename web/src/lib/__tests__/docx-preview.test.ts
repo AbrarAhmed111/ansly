@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { type Measure, paginate } from '../docx-preview'
+import { type Measure, paginate, printCss } from '../docx-preview'
 
 jest.mock('@/lib/api', () => ({ tailoringFiles: jest.fn() }))
 
@@ -79,5 +79,14 @@ describe('paginate', () => {
     paginate(w, measure)
     paginate(w, measure)
     expect(w.querySelectorAll('.ansly-page-label')).toHaveLength(2)
+  })
+})
+
+describe('printCss', () => {
+  it('prints one sheet per page at the document’s own size, without the preview chrome', () => {
+    const css = printCss('docx-pdf', '612pt', '792pt')
+    expect(css).toContain('@page { size: 612pt 792pt; margin: 0; }')
+    expect(css).toContain('break-after: page')
+    expect(css).toContain('.ansly-page-label { display: none !important; }')
   })
 })

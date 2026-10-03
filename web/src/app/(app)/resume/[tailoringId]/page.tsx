@@ -1,6 +1,13 @@
 'use client'
 
-import type { ResumeSection, TailoringResponse, TextDiff } from '@ansly/types'
+import {
+  TAILORING_STEP_COUNT,
+  tailoringProgress,
+  type ResumeSection,
+  type TailoringResponse,
+  type TailoringStatus,
+  type TextDiff,
+} from '@ansly/types'
 import { clsx } from 'clsx'
 import {
   ArrowLeft,
@@ -8,6 +15,7 @@ import {
   CircleDashed,
   CircleHelp,
   Download,
+  FileDown,
   ListChecks,
   RotateCcw,
   Trash2,
@@ -38,12 +46,13 @@ import {
 import { KEYS, deleteTailoring, getTailoring, startTailoring, tailoringFileUrl } from '@/lib/api'
 import { useCached } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/client'
-import { prefetchPreview, previewDocuments } from '@/lib/docx-preview'
+import { prefetchPreview, previewDocuments, saveAsPdf } from '@/lib/docx-preview'
 import { errorMessage, plural } from '@/lib/format'
 import { TAILORING_STEPS, formatDate, isRunning, stepState, wordDiff } from '@/lib/resume'
 
 const POLL_MS = 2000
 const SECTION_TITLES: Record<ResumeSection, string> = {
+  headline: 'Title',
   summary: 'Summary',
   experience: 'Experience',
   projects: 'Projects',
@@ -52,7 +61,7 @@ const SECTION_TITLES: Record<ResumeSection, string> = {
   achievements: 'Achievements',
   certifications: 'Certifications',
 }
-const SECTION_ORDER: ResumeSection[] = ['experience', 'projects', 'skills', 'summary', 'education', 'achievements', 'certifications']
+const SECTION_ORDER: ResumeSection[] = ['headline', 'experience', 'projects', 'skills', 'summary', 'education', 'achievements', 'certifications']
 
 function Diff({ diff }: { diff: TextDiff }) {
   const added = !diff.before
@@ -84,6 +93,20 @@ function Diff({ diff }: { diff: TextDiff }) {
       )}
     </div>
   )
+}
+
+/** The running card's progress bar: it moves within the current step, and says what that step is doing. */
+function useProgress(status: TailoringStatus | undefined) {
+  const [since, setSince] = useState(() => ({ status, at: Date.now() }))
+  const [now, setNow] = useState(() => Date.now())
+  if (since.status !== status) setSince({ status, at: Date.now() })
+  const running = status !== undefined && isRunning(status)
+  useEffect(() => {
+    if (!running) return
+    const timer = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(timer)
+  }, [running])
+  return status ? tailoringProgress(status, now - since.at) : null
 }
 
 async function fetchPageLimit(): Promise<number | null> {
@@ -167,6 +190,28 @@ export default function TailoringPage() {
     }
   }, [ready, tailoringId])
 
+  const progress = useProgress(data?.status)
+
+  const savePdf = useCallback(async () => {
+    setBusy('pdf')
+    try {
+      await saveAsPdf(tailoringId)
+    } catch (e) {
+      toast.error(`Couldn’t prepare the PDF: ${errorMessage(e)}`)
+    } finally {
+      setBusy(null)
+    }
+  }, [tailoringId])
+
+  // Opened from the extension's "Download PDF": save it as soon as it's ready, once.
+  const pdfRequested = useRef(false)
+  useEffect(() => {
+    if (!ready || pdfRequested.current || !new URLSearchParams(window.location.search).has('pdf')) return
+    pdfRequested.current = true
+    router.replace(`/resume/${tailoringId}`, { scroll: false })
+    void savePdf()
+  }, [ready, router, savePdf, tailoringId])
+
   const download = useCallback(async () => {
     setBusy('download')
     try {
@@ -242,6 +287,30 @@ export default function TailoringPage() {
               title="Tailoring your resume"
               description="Usually under a minute. Ansly edits a copy of your Word document; the original is never changed."
             />
+            {progress && (
+              <div className="mt-5" aria-live="polite">
+                <div className="flex items-center justify-between gap-3 text-body-sm">
+                  <span className="flex items-center gap-2 font-medium">
+                    <Spinner />
+                    {progress.activity}
+                  </span>
+                  <span className="tabular-nums text-muted">{progress.percent}%</span>
+                </div>
+                <div
+                  className="mt-2 h-2 overflow-hidden rounded-full bg-surface-muted ring-1 ring-inset ring-border"
+                  role="progressbar"
+                  aria-label="Tailoring progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progress.percent}
+                >
+                  <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out motion-reduce:transition-none" style={{ width: `${progress.percent}%` }} />
+                </div>
+                <p className="mt-1.5 text-caption text-subtle">
+                  Step {progress.step} of {TAILORING_STEP_COUNT}
+                </p>
+              </div>
+            )}
             <ol className="mt-5 space-y-3" aria-live="polite">
               {TAILORING_STEPS.map((step) => {
                 const state = stepState(data.status, step.status)
@@ -292,8 +361,10 @@ export default function TailoringPage() {
             previewOpen={previewOpen}
             leftOut={leftOut.length}
             downloading={busy === 'download'}
+            savingPdf={busy === 'pdf'}
             onPreview={togglePreview}
             onDownload={download}
+            onPdf={savePdf}
           />
 
           <div ref={previewRef} className="scroll-mt-6">
@@ -397,7 +468,7 @@ export default function TailoringPage() {
             <Card>
               <CardHeader
                 title="Unsupported requirements"
-                description="Your profile and resume have no evidence for these, so Ansly didn’t claim them. If you do have this experience, add it to your profile and tailor again."
+                description="Your profile and resume have no evidence for these. Required skills among them were added to your skills list for you to check; nothing else claims them. If you have this experience, add it to your profile and tailor again."
                 actions={
                   <Link href="/profile/skills?new=1" className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
                     Add to profile
@@ -448,6 +519,9 @@ export default function TailoringPage() {
             <div className="flex gap-2">
               <Button variant="secondary" icon={Download} onClick={download} loading={busy === 'download'}>
                 Download DOCX
+              </Button>
+              <Button variant="secondary" icon={FileDown} onClick={savePdf} loading={busy === 'pdf'}>
+                Download PDF
               </Button>
               <Button variant="ghost" icon={Trash2} onClick={remove}>
                 Delete
