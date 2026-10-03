@@ -104,6 +104,7 @@ def document(resume: StructuredResume, summary_in_text_box: bool = False) -> str
     out: List[str] = [
         para(logo() + run(c.name, '<w:b/><w:rFonts w:ascii="Garamond" w:hAnsi="Garamond"/><w:color w:val="2E5597"/><w:sz w:val="40"/>'),
              '<w:pPr><w:pStyle w:val="Title"/><w:jc w:val="center"/></w:pPr>'),
+        *([para(run(c.headline, f"<w:i/>{BODY_FONT}"), '<w:pPr><w:jc w:val="center"/></w:pPr>')] if c.headline else []),
         para(run(" | ".join(x for x in [c.email, c.phone, c.location] if x) + " | ") + link("github.com/example-sam", "rIdGitHub"),
              '<w:pPr><w:jc w:val="center"/></w:pPr>'),
     ]
