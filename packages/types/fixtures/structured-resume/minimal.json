@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "contact": {
+    "name": "Alex Chen",
+    "headline": null,
+    "email": "alex.chen@example.com",
+    "phone": null,
+    "location": null,
+    "links": []
+  },
+  "summary": null,
+  "experience": [
+    {
+      "id": "exp_1",
+      "company": "Fabrikam",
+      "title": "Intern",
+      "location": null,
+      "startDate": "Summer 2025",
+      "endDate": "Summer 2025",
+      "isCurrent": false,
+      "bullets": [{ "id": "exp_1_b1", "text": "Fixed bugs in the customer support portal." }],
+      "technologies": []
+    }
+  ],
+  "projects": [],
+  "skills": [{ "id": "skills_1", "label": null, "items": ["Java", "Git"] }],
+  "education": [],
+  "achievements": [],
+  "certifications": [],
+  "customSections": []
+}

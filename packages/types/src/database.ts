@@ -3,6 +3,11 @@
  * Dates are ISO strings (`YYYY-MM-DD`), timestamps are ISO date-times.
  */
 
+import type { JobAnalysis, JobSource } from './job'
+import type { MatchAnalysis } from './matching'
+import type { ResumeFileType, ResumeParseStatus, StructuredResume } from './resume'
+import type { TailoringPlan, TailoringStatus, ValidationReport } from './tailoring'
+
 export interface ProfileLinks {
   linkedin?: string
   github?: string
@@ -28,6 +33,8 @@ export interface Profile {
   salary_expectation: string | null
   willing_to_relocate: boolean | null
   preferred_work_mode: WorkMode | null
+  /** Page limit for tailored resumes (1–3, default 2). */
+  resume_page_limit: number
   created_at: string
   updated_at: string
 }
@@ -131,6 +138,15 @@ export type UsageEventKind =
   | 'save_answer'
   | 'use_saved_answer'
   | 'fill_all'
+  | 'resume_uploaded'
+  | 'resume_parse_failed'
+  | 'job_detected'
+  | 'tailoring_started'
+  | 'tailoring_completed'
+  | 'tailoring_failed'
+  | 'resume_previewed'
+  | 'resume_downloaded'
+  | 'tailoring_deleted'
 
 /** Everything that makes up a user's profile. */
 export interface FullProfile {
@@ -150,3 +166,61 @@ export type ProfileSection =
   | 'education'
   | 'achievements'
   | 'profile_facts'
+
+// ---------------------------------------------------------------------------
+// v1.2 resume tailoring
+// ---------------------------------------------------------------------------
+
+/** An uploaded resume. Replacing the master inserts a new version; old ones are kept. */
+export interface ResumeRow {
+  id: string
+  user_id: string
+  name: string
+  /** `{user_id}/masters/...` in the private `resumes` bucket. */
+  file_path: string
+  file_type: ResumeFileType
+  parsed_content: StructuredResume | null
+  parse_status: ResumeParseStatus
+  parse_error: string | null
+  version: number
+  is_master: boolean
+  /** Discrepancy keys the user chose to keep as they are. */
+  dismissed_discrepancies: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface JobContextRow {
+  id: string
+  user_id: string
+  title: string
+  company: string | null
+  location: string | null
+  employment_type: string | null
+  url: string | null
+  /** Job description text only; never page HTML. */
+  description: string
+  source: JobSource
+  analysis: JobAnalysis | null
+  created_at: string
+}
+
+export interface ResumeTailoringRow {
+  id: string
+  user_id: string
+  /** Null once that resume version was deleted; resume_version still records it. */
+  resume_id: string | null
+  resume_version: number
+  job_context_id: string
+  match_analysis: MatchAnalysis | null
+  tailoring_plan: TailoringPlan | null
+  tailored_content: StructuredResume | null
+  validation_report: ValidationReport | null
+  /** `{user_id}/tailored/...` in the private `resumes` bucket. */
+  output_file_path: string | null
+  pipeline_version: string
+  status: TailoringStatus
+  error: string | null
+  created_at: string
+  updated_at: string
+}

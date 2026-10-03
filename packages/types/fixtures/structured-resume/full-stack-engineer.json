@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "contact": {
+    "name": "Sam Rivera",
+    "headline": "Full Stack Engineer",
+    "email": "sam.rivera@example.com",
+    "phone": "+1 555 0100",
+    "location": "Austin, TX",
+    "links": [
+      { "label": "GitHub", "url": "https://github.com/example-sam" },
+      { "label": "LinkedIn", "url": "https://www.linkedin.com/in/example-sam" }
+    ]
+  },
+  "summary": "Full stack engineer building web applications with React and Node.js.",
+  "experience": [
+    {
+      "id": "exp_1",
+      "company": "Northwind Labs",
+      "title": "Software Engineer",
+      "location": "Remote",
+      "startDate": "Mar 2022",
+      "endDate": "Present",
+      "isCurrent": true,
+      "bullets": [
+        { "id": "exp_1_b1", "text": "Built web applications using React and Node.js." },
+        { "id": "exp_1_b2", "text": "Reduced API response times by 35% by adding PostgreSQL indexes and query caching." },
+        { "id": "exp_1_b3", "text": "Improved page load performance." }
+      ],
+      "technologies": ["React", "Node.js", "TypeScript", "PostgreSQL"]
+    },
+    {
+      "id": "exp_2",
+      "company": "Contoso Digital",
+      "title": "Junior Developer",
+      "location": "Austin, TX",
+      "startDate": "Jun 2020",
+      "endDate": "Feb 2022",
+      "isCurrent": false,
+      "bullets": [
+        { "id": "exp_2_b1", "text": "Maintained marketing sites and internal dashboards." },
+        { "id": "exp_2_b2", "text": "Wrote Python scripts to automate weekly reporting." }
+      ],
+      "technologies": ["JavaScript", "Python"]
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj_1",
+      "name": "TaskBoard",
+      "role": "Creator",
+      "url": "https://github.com/example-sam/taskboard",
+      "startDate": "2023",
+      "endDate": null,
+      "bullets": [
+        { "id": "proj_1_b1", "text": "Open-source collaboration tool for small teams with real-time updates." }
+      ],
+      "technologies": ["Next.js", "Supabase", "TypeScript"]
+    }
+  ],
+  "skills": [
+    { "id": "skills_1", "label": "Languages", "items": ["TypeScript", "JavaScript", "Python", "SQL"] },
+    { "id": "skills_2", "label": "Frameworks", "items": ["React", "Next.js", "Node.js", "FastAPI"] },
+    { "id": "skills_3", "label": "Data & Cloud", "items": ["PostgreSQL", "Supabase", "Docker", "AWS"] }
+  ],
+  "education": [
+    {
+      "id": "edu_1",
+      "institution": "State University",
+      "degree": "B.S.",
+      "fieldOfStudy": "Computer Science",
+      "startDate": "2016",
+      "endDate": "2020",
+      "grade": null,
+      "bullets": []
+    }
+  ],
+  "achievements": [
+    {
+      "id": "ach_1",
+      "title": "Hackathon winner",
+      "description": "First place, regional civic-tech hackathon.",
+      "date": "2021",
+      "url": null
+    }
+  ],
+  "certifications": [],
+  "customSections": [
+    {
+      "id": "custom_1",
+      "heading": "Languages",
+      "bullets": [{ "id": "custom_1_b1", "text": "English (native), Spanish (professional)" }]
+    }
+  ]
+}

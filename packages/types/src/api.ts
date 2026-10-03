@@ -1,6 +1,9 @@
 /**
  * Contracts for the `llm` FastAPI service.
  * Keep in sync with the Pydantic models in `llm/src/app/schemas`.
+ *
+ * v1.2 resume tailoring endpoints live next to their domain types:
+ * `resume.ts` (/resumes), `job.ts` (/jobs/analyze), `tailoring.ts` (/tailorings).
  */
 
 import type { Profile, SavedAnswer, Skill, SkillLevel, UsageEventKind } from './database'
@@ -199,7 +202,7 @@ export type UseSavedAnswerResponse = SavedAnswer
 
 /** `POST /api/v1/events` */
 export interface TrackEventRequest {
-  kind: Extract<UsageEventKind, 'fill' | 'use_saved_answer' | 'fill_all'>
+  kind: Extract<UsageEventKind, 'fill' | 'use_saved_answer' | 'fill_all' | 'job_detected' | 'resume_previewed'>
   category?: string | null
 }
 
