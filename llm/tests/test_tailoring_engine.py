@@ -11,6 +11,7 @@ from src.app.resume.matching.evidence import build_corpus
 from src.app.resume.matching.match import match_requirements, summarize
 from src.app.resume.tailoring.apply import apply_plan
 from src.app.resume.tailoring.changes import summarize_changes, text_diffs
+from src.app.resume.tailoring.job_fit import add_job_skills, fit_headline
 from src.app.resume.tailoring.plan import parse_plan
 from src.app.resume.validation.validate import user_warnings, validate
 from src.app.schemas.job import JobPosting
@@ -260,3 +261,36 @@ def test_profile_additional_context_is_evidence_for_tailoring():
     rows["profile"]["additional_context"] = "Mentored two junior developers at Northwind Labs."
     pr = build_corpus(rows, master()).by_id["PR"]
     assert "Mentored two junior developers" in pr.text
+
+
+# -- fitting the job ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("master_headline, proposed, role, own, expected", [
+    ("Full Stack AI Engineer", None, "Full Stack Engineer", [], "Full Stack Engineer"),
+    ("Full Stack AI Engineer", None, "Senior Frontend Developer (Remote) - Berlin", ["Software Engineer"],
+     "Frontend Developer"),
+    ("Full Stack AI Engineer", None, "Senior Frontend Developer", ["Senior Software Engineer"], "Senior Frontend Developer"),
+    ("Full Stack AI Engineer | Building LLM apps", None, "Frontend Developer", [], "Frontend Developer | Building LLM apps"),
+    ("Full Stack AI Engineer", "Frontend Engineer", "Frontend Developer", [], "Frontend Engineer"),
+    # A proposal that isn't a clean title falls back to the job's role.
+    ("Full Stack AI Engineer", "Engineer at Google since 2019 (10x)", "Frontend Developer", [], "Frontend Developer"),
+    ("Full Stack Engineer", None, "Full Stack Engineer", [], "Full Stack Engineer"),
+    (None, "Frontend Developer", "Frontend Developer", [], None),
+])
+def test_headline_follows_the_job_role(master_headline, proposed, role, own, expected):
+    assert fit_headline(master_headline, proposed, role, own) == expected
+
+
+@pytest.mark.asyncio
+async def test_required_skills_without_evidence_are_added_but_never_declined_ones():
+    c = corpus()
+    job = analysis()
+    job.must_have.append(type(job.must_have[0])(id="req_9", requirement="GraphQL", type="skill"))
+    gateway = FakeGateway({"You check a candidate's evidence": semantic_answer})
+    matches = await match_requirements(gateway, job, c)
+    resume = master()
+    group, added = add_job_skills(resume, job, matches, c)
+    # Kubernetes was declined; AWS EKS is only nice to have; React is already there.
+    assert added == ["GraphQL"]
+    assert "GraphQL" in next(g for g in resume.skills if g.id == group).items

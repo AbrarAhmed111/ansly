@@ -16,6 +16,7 @@ from src.app.main import app
 from src.app.resume.docx.package import DOCX_MIME, DocxPackage
 from src.app.resume.docx.text import paragraphs, visible_text
 from src.app.resume.pipeline import TailoringPipeline
+from src.app.schemas.job import JobRequirement
 from tests.docx_files import resume_docx
 from tests.fakes import USER_ID, FakeGateway, FakeRest, FakeStorage
 from tests.resume_files import CLASSIC_PARSED, LAYOUTS, make_layout_docx
@@ -275,21 +276,87 @@ async def test_adversarial_plan_never_reaches_the_document():
     assert any("rewrite" in w for w in result["warnings"])
 
 
+def _waiting_row(job_context_id: str, step_started_at=None) -> dict:
+    old = (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()
+    return {
+        "id": "t1", "user_id": USER_ID, "resume_id": "r1", "resume_version": 1, "job_context_id": job_context_id,
+        "status": "matching", "pipeline_version": "1.2.0", "match_analysis": None, "tailoring_plan": None,
+        "tailored_content": None, "validation_report": None, "output_file_path": None, "error": None,
+        "step_started_at": step_started_at, "created_at": old, "updated_at": old,
+    }
+
+
 @pytest.mark.asyncio
-async def test_a_stalled_run_is_resumed_by_polling(env):
+async def test_polling_runs_an_idle_tailoring_to_the_end(env):
     async with client_for(env) as client:
         job = (await client.post("/api/v1/jobs/analyze", json={"job": JOB})).json()
-        old = (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()
-        env.rest.tables["resume_tailorings"].append({
-            "id": "t1", "user_id": USER_ID, "resume_id": "r1", "resume_version": 1, "job_context_id": job["jobContextId"],
-            "status": "matching", "pipeline_version": "1.2.0", "match_analysis": None, "tailoring_plan": None,
-            "tailored_content": None, "validation_report": None, "output_file_path": None, "error": None,
-            "created_at": old, "updated_at": old,
-        })
+        env.rest.tables["resume_tailorings"].append(_waiting_row(job["jobContextId"]))
         polled = (await client.get("/api/v1/tailorings/t1")).json()
-        fresh = (await client.get("/api/v1/tailorings/t1")).json()
     assert polled["status"] == "ready"
-    assert fresh["status"] == "ready"
+    assert env.rest.tables["resume_tailorings"][0]["step_started_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_polling_leaves_a_step_another_worker_is_running(env):
+    async with client_for(env) as client:
+        job = (await client.post("/api/v1/jobs/analyze", json={"job": JOB})).json()
+        running = datetime.now(timezone.utc).isoformat()
+        env.rest.tables["resume_tailorings"].append(_waiting_row(job["jobContextId"], step_started_at=running))
+        polled = (await client.get("/api/v1/tailorings/t1")).json()
+    assert polled["status"] == "matching"
+    assert "You tailor a candidate's resume" not in env.gateway.calls
+
+
+@pytest.mark.asyncio
+async def test_polling_takes_over_a_step_whose_worker_went_quiet(env):
+    async with client_for(env) as client:
+        job = (await client.post("/api/v1/jobs/analyze", json={"job": JOB})).json()
+        frozen = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        env.rest.tables["resume_tailorings"].append(_waiting_row(job["jobContextId"], step_started_at=frozen))
+        polled = (await client.get("/api/v1/tailorings/t1")).json()
+    assert polled["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_without_background_work_polls_drive_the_run(env, monkeypatch):
+    from src.app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "TAILORING_BACKGROUND", False)
+    async with client_for(env) as client:
+        job = (await client.post("/api/v1/jobs/analyze", json={"job": JOB})).json()
+        started = (await client.post("/api/v1/tailorings", json={"jobContextId": job["jobContextId"]})).json()
+        assert env.rest.tables["resume_tailorings"][0]["status"] == "queued"
+        polled = (await client.get(f"/api/v1/tailorings/{started['id']}")).json()
+    assert polled["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_title_follows_the_job_and_missing_required_skills_are_added_for_review():
+    resume = master()
+    resume.contact.headline = "Full Stack AI Engineer"
+    tables = tables_with_master()
+    tables["resumes"][0]["parsed_content"] = resume.to_json()
+    env = Env(tables=tables, files={MASTER_PATH: resume_docx(resume)})
+    job_analysis = analysis()
+    job_analysis.role = "Senior Frontend Developer (Remote)"
+    job_analysis.must_have.append(JobRequirement(id="req_9", requirement="GraphQL", type="skill"))
+    env.gateway.handlers["You analyze a job posting"] = lambda user: job_analysis.model_dump(mode="json", by_alias=True)
+    async with client_for(env) as client:
+        result = await tailor(client)
+
+    assert result["status"] == "ready", result
+    labels = [c["label"] for c in result["changes"]]
+    assert "Title changed to Frontend Developer" in labels
+    assert "Added skills: GraphQL" in labels
+    assert any("GraphQL" in w and "Remove any" in w for w in result["warnings"])
+    assert {"Title", "Summary"} <= {d["itemLabel"] for d in result["detail"]["diffs"]}
+
+    row = env.rest.tables["resume_tailorings"][0]
+    text = " ".join(visible_text(p) for p in paragraphs(DocxPackage(env.storage.files[row["output_file_path"]]).body))
+    assert "Frontend Developer" in text and "Full Stack AI Engineer" not in text
+    assert "GraphQL" in text
+    # Kubernetes is required too, but the user said they don't have it.
+    assert "Kubernetes" not in text
 
 
 @pytest.mark.asyncio

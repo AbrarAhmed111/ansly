@@ -47,8 +47,14 @@ def _split(headline: str) -> Tuple[str, str]:
     return (headline[: match.start()], headline[match.start():]) if match else (headline, "")
 
 
-def clean_title(text: str, own_titles: List[str]) -> Optional[str]:
-    """The role's plain name, or None when nothing usable is left."""
+# A proposed title is rejected outright, not trimmed, if it says more than a role.
+NOT_A_TITLE = re.compile(r"\d|\b(?:at|for|since|with|years?)\b|[@()]|https?:", re.IGNORECASE)
+
+
+def clean_title(text: str, own_titles: List[str], strict: bool = False) -> Optional[str]:
+    """The role's plain name, or None when nothing usable is left. `strict`: None for anything but a plain title."""
+    if strict and NOT_A_TITLE.search(text or ""):
+        return None
     text = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", text or "")
     text, _ = _split(text.strip())
     own = {_bare(w) for t in own_titles for w in _words(t)}
@@ -69,7 +75,7 @@ def fit_headline(master: Optional[str], proposed: Optional[str], role: Optional[
     old_title, tagline = _split(master)
     candidate = None
     if proposed and proposed.strip() != master.strip():
-        candidate = clean_title(_split(proposed)[0], own_titles)
+        candidate = clean_title(_split(proposed)[0], own_titles, strict=True)
     if candidate is None and role:
         candidate = clean_title(role, own_titles)
     if candidate is None or canonicalize(candidate) == canonicalize(old_title):
