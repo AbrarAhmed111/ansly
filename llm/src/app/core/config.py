@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     DAILY_GENERATION_LIMIT: int = 100
     # Resume tailoring runs several LLM calls, so it has its own, smaller limit.
     DAILY_TAILORING_LIMIT: int = 10
+    # Run a tailoring in the background after POST /tailorings. Off on Vercel, which freezes work after the
+    # response: there each status poll runs the next steps instead.
+    TAILORING_BACKGROUND: bool = not os.environ.get("VERCEL")
 
     # Gateway
     GATEWAY_MAX_ATTEMPTS: int = 10
