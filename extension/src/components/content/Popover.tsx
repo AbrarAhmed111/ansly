@@ -141,6 +141,8 @@ export function Popover({
   useJobDescription = true,
   onClose,
   onFilled,
+  restCount = 0,
+  onAnswerRest,
 }: {
   target: PopoverTarget
   getJobContext: (questions?: string[]) => JobContext
@@ -150,6 +152,10 @@ export function Popover({
   useJobDescription?: boolean
   onClose: (opts?: { refocus?: boolean }) => void
   onFilled: (message: string) => void
+  /** Other empty long fields on the page (0: don't offer to answer them together). */
+  restCount?: number
+  /** Answers those fields in one request (through the fill-all panel). */
+  onAnswerRest?: () => void
 }) {
   const [state, dispatch] = useReducer(reducer, { step: 'matching' })
   // `style` is what requests use; `draft` is what the controls show until Apply.
@@ -160,6 +166,10 @@ export function Popover({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const alive = useRef(true)
   useEffect(() => () => void (alive.current = false), [])
+  // How long the user waited for an answer (opened -> answer shown), sent with "fill" as a latency signal.
+  const openedAt = useRef(performance.now())
+  const waitMs = useRef<number | null>(null)
+  const [restOffered, setRestOffered] = useState(true)
 
   const request = useCallback(
     (s: AnswerStyle = style, facts: string[] | null = null) => ({
@@ -223,7 +233,10 @@ export function Popover({
   }, [target.el])
 
   useEffect(() => {
-    if (state.step === 'answer') textareaRef.current?.focus()
+    if (state.step === 'answer') {
+      textareaRef.current?.focus()
+      waitMs.current ??= Math.round(performance.now() - openedAt.current)
+    }
   }, [state.step])
 
   async function regenerate(next: AnswerStyle = style) {
@@ -265,7 +278,12 @@ export function Popover({
       dispatch({ type: 'fillError', message: "This field didn't accept the text. Copy it and paste it in instead." })
       return
     }
-    void send('track', { kind: 'fill', category: state.response?.category ?? null })
+    void send('track', {
+      kind: 'fill',
+      category: state.response?.category ?? null,
+      duration_ms: waitMs.current,
+      edited: state.text.trim() !== state.original.trim(),
+    })
     onFilled('Answer filled — review it before submitting')
     onClose()
   }
@@ -325,6 +343,14 @@ export function Popover({
           <div className="loading" role="status">
             <span className="spinner" />
             {state.step === 'matching' ? 'Finding your answer…' : 'Writing your answer from your profile…'}
+          </div>
+        )}
+
+        {restOffered && onAnswerRest && restCount > 0 && state.step !== 'error' && (
+          <div className="notice hint">
+            {restCount} more long questions on this page are empty. Answer them together: one request instead of
+            one at a time.{' '}
+            <button className="link" onClick={() => { setRestOffered(false); onAnswerRest() }}>Answer the rest together</button>
           </div>
         )}
 

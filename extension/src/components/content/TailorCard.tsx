@@ -36,6 +36,7 @@ export function TailorCard({
   stacked,
   autoOpen = false,
   onDismiss,
+  onJobContextId,
 }: {
   /** What the page shows (title and company only). */
   job: DetectedJob
@@ -46,6 +47,8 @@ export function TailorCard({
   /** First time this job is seen with a full description: open the offer instead of the small pill. */
   autoOpen?: boolean
   onDismiss: () => void
+  /** The stored job id once the posting is analyzed, so later answers on this page count toward it. */
+  onJobContextId?: (id: string) => void
 }) {
   const [state, setState] = useState<State>({ step: autoOpen ? 'offer' : 'pill' })
   const [pasteUrl, setPasteUrl] = useState('/resume/tailor')
@@ -78,6 +81,7 @@ export function TailorCard({
     setState({ step: 'running', status: 'analyzing', id: null, requirements: null, since: Date.now(), polls: 0, retryAfterMs: null })
     const analyzed = await send('analyzeJob', { job: extracted.job })
     if (!analyzed.ok) return fail(analyzed.error)
+    onJobContextId?.(analyzed.data.jobContextId)
     const requirements = analyzed.data.analysis.mustHave.length + analyzed.data.analysis.niceToHave.length
     const started = await send('startTailoring', { jobContextId: analyzed.data.jobContextId })
     if (!started.ok) return fail(started.error)
@@ -86,7 +90,7 @@ export function TailorCard({
     const status = started.data.status === 'queued' ? 'matching' : started.data.status
     // The first poll comes quickly: where polls run the steps, it starts the matching step.
     setState({ step: 'running', status, id: started.data.id, requirements, since: Date.now(), polls: 0, retryAfterMs: 500 })
-  }, [extract, job, fail])
+  }, [extract, job, fail, onJobContextId])
 
   // Poll while the tailoring runs, at the server's pace. Every answer, even an unchanged status, schedules the next
   // poll. A hidden tab polls rarely unless its polls are running the steps; showing the tab again polls at once.

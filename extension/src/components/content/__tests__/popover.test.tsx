@@ -109,9 +109,28 @@ describe('Popover', () => {
 
     await click('Fill')
     expect(field.value).toBe('My edited answer.')
-    expect(calls.at(-1)).toEqual({ type: 'track', payload: { kind: 'fill', category: 'project' } })
+    // The user's wait and whether they edited the answer go with "fill" (no text).
+    expect(calls.at(-1)).toEqual({ type: 'track', payload: {
+      kind: 'fill', category: 'project', duration_ms: expect.any(Number), edited: true,
+    } })
     expect(onFilled).toHaveBeenCalled()
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('offers to answer the other open long questions together', async () => {
+    responses.resolve = [resolved(ANSWERED)]
+    const onAnswerRest = vi.fn()
+    await open(null, { restCount: 4, onAnswerRest })
+    expect(text()).toContain('4 more long questions on this page are empty')
+    await click('Answer the rest together')
+    expect(onAnswerRest).toHaveBeenCalledTimes(1)
+    expect(text()).not.toContain('more long questions')
+  })
+
+  it('makes no offer when nothing else is open', async () => {
+    responses.resolve = [resolved(ANSWERED)]
+    await open(null, { restCount: 0, onAnswerRest: vi.fn() })
+    expect(button('Answer the rest together')).toBeUndefined()
   })
 
   it('regenerates with the previous answer', async () => {

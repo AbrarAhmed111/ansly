@@ -46,7 +46,8 @@ function fieldId(elementId: string) {
   return scanAll(document).find((f) => f.controls[0]!.id === elementId)!.id
 }
 
-async function render(defaults: Partial<{ reviewBeforeFill: boolean; overwriteFilled: boolean }> = {}) {
+async function render(defaults: Partial<{ reviewBeforeFill: boolean; overwriteFilled: boolean }> = {},
+  run: { ids: string[]; nonce: number } | null = null) {
   const all = scanAll(document, (el) => container.contains(el))
   const fields = all.filter((f) => f.kind !== 'ignored')
   await act(async () => {
@@ -60,6 +61,7 @@ async function render(defaults: Partial<{ reviewBeforeFill: boolean; overwriteFi
         onClose={() => {}}
         onRowsChange={() => {}}
         onOpenField={() => {}}
+        run={run}
       />,
     )
   })
@@ -95,7 +97,6 @@ afterEach(() => act(() => root.unmount()))
 describe('Fill all panel', () => {
   function happyPath() {
     responses.getProfileValues = [ok({ full_name: 'Sam Rivera', email: 'sam@example.com' })]
-    responses.matchSavedBatch = [ok({ results: [] })]
     responses.generateBatch = [ok({ results: [
       result(fieldId('why')),
       result(fieldId('sp'), { answer: 'No', provider: null }),
@@ -117,8 +118,10 @@ describe('Fill all panel', () => {
     await render()
     await click('Fill all')
 
-    expect(calls.map((c) => c.type)).toEqual(['getProfileValues', 'matchSavedBatch', 'generateBatch', 'track'])
-    const batch = calls.find((c) => c.type === 'generateBatch')!.payload as { items: { id: string; field: { kind: string; options: string[] | null } }[] }
+    // Saved answers are resolved inside the batch request: no separate matching round trip.
+    expect(calls.map((c) => c.type)).toEqual(['generateBatch', 'getProfileValues', 'track'])
+    const batch = calls.find((c) => c.type === 'generateBatch')!.payload as { check_saved: boolean; items: { id: string; field: { kind: string; options: string[] | null } }[] }
+    expect(batch.check_saved).toBe(true)
     // The textarea that already has text is skipped by default.
     expect(batch.items.map((i) => i.field.kind)).toEqual(['open_text', 'choice_single', 'short_text'])
     expect(batch.items[1]!.field.options).toEqual(['Yes', 'No'])
@@ -165,7 +168,6 @@ describe('Fill all panel', () => {
 
   it('flags low-confidence answers and overwrites when asked', async () => {
     responses.getProfileValues = [ok({})]
-    responses.matchSavedBatch = [ok({ results: [] })]
     responses.generateBatch = [ok({ results: [
       result(fieldId('why')), result(fieldId('proj'), { confidence: 'low', answer: 'Low one' }),
       result(fieldId('sp'), { answer: 'Yes' }), result(fieldId('np'), { answer: 'Two weeks' }),
@@ -179,7 +181,6 @@ describe('Fill all panel', () => {
 
   it('shows the daily-limit message when the batch is refused', async () => {
     responses.getProfileValues = [ok({})]
-    responses.matchSavedBatch = [ok({ results: [] })]
     responses.generateBatch = [{ ok: false, error: { code: 'rate_limited', message: 'These 3 answers would go over your daily limit: 1 left today.' } }]
     await render()
     await click('Fill all')
@@ -198,18 +199,35 @@ describe('Fill all panel', () => {
     expect((document.getElementById('sp') as HTMLSelectElement).value).toBe('No')
   })
 
-  it('uses saved answers before generating', async () => {
+  it('fills saved answers the server matched, adapted ones included, and counts their use', async () => {
     responses.getProfileValues = [ok({})]
-    responses.matchSavedBatch = [ok({ results: [{ id: fieldId('why'), score: 0.9, match: { id: 'sa1', answer: 'My saved why.' } }] })]
-    responses.generateBatch = [ok({ results: [result(fieldId('sp'), { answer: 'No' }), result(fieldId('np'))] })]
+    responses.generateBatch = [ok({ results: [
+      result(fieldId('why'), { answer: 'My saved why, for Acme.', provider: 'Mock', savedAnswerId: 'sa1', adaptedFrom: 'sa1' }),
+      result(fieldId('sp'), { answer: 'No' }), result(fieldId('np'), { answer: 'Two weeks', savedAnswerId: 'sa2' }),
+    ] })]
     await render()
     await click('Fill all')
-    expect(value('why')).toBe('My saved why.')
-    const batch = calls.find((c) => c.type === 'generateBatch')!.payload as { items: { id: string }[] }
-    expect(batch.items.map((i) => i.id)).not.toContain(fieldId('why'))
+    expect(value('why')).toBe('My saved why, for Acme.')
+    expect(value('np')).toBe('Two weeks')
+    expect(text()).toContain('Saved answer, adapted to this job')
+    expect(calls.filter((c) => c.type === 'useSaved').map((c) => c.payload)).toEqual([{ id: 'sa1' }, { id: 'sa2' }])
   })
 
-  it('sends large forms as concurrent chunks, filling rows as each returns', async () => {
+  it('answers only the fields a popover hands over, in one request', async () => {
+    responses.generateBatch = [ok({ results: [result(fieldId('why'))] })]
+    await render({}, { ids: [fieldId('why')], nonce: 1 })
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
+    })
+    const batches = calls.filter((c) => c.type === 'generateBatch')
+    expect(batches).toHaveLength(1)
+    expect((batches[0]!.payload as { items: { id: string }[] }).items.map((i) => i.id)).toEqual([fieldId('why')])
+    expect(value('why')).toBe(`Answer for ${fieldId('why')}`)
+    expect(value('name')).toBe('')
+    expect(calls.some((c) => c.type === 'getProfileValues')).toBe(false)
+  })
+
+  it('sends a large form as one request (the server splits it into as few model calls as it can)', async () => {
     document.body.innerHTML =
       '<form id="form">' +
       Array.from({ length: 12 }, (_, i) => `<label for="q${i}">Question number ${i}?</label><textarea id="q${i}"></textarea>`).join('') +
@@ -217,12 +235,11 @@ describe('Fill all panel', () => {
     container = document.getElementById('ui')!
     root = createRoot(container)
     const ids = Array.from({ length: 12 }, (_, i) => fieldId(`q${i}`))
-    responses.matchSavedBatch = [ok({ results: [] })]
-    responses.generateBatch = [ok({ results: ids.slice(0, 10).map((id) => result(id)) }), ok({ results: ids.slice(10).map((id) => result(id)) })]
+    responses.generateBatch = [ok({ results: ids.map((id) => result(id)) })]
     await render()
     await click('Fill all')
     const batches = calls.filter((c) => c.type === 'generateBatch').map((c) => (c.payload as { items: unknown[] }).items.length)
-    expect(batches).toEqual([10, 2])
+    expect(batches).toEqual([12])
     expect(value('q0')).toBe(`Answer for ${ids[0]}`)
     expect(value('q11')).toBe(`Answer for ${ids[11]}`)
   })

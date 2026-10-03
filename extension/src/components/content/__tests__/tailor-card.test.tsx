@@ -54,8 +54,11 @@ afterEach(() => {
 
 async function render(extract: () => ExtractResult = () => ({ ok: true, job: POSTING })) {
   const onDismiss = vi.fn()
-  await act(async () => root.render(<TailorCard job={JOB} extract={extract} stacked={false} onDismiss={onDismiss} />))
-  return { onDismiss }
+  const onJobContextId = vi.fn()
+  await act(async () =>
+    root.render(<TailorCard job={JOB} extract={extract} stacked={false} onDismiss={onDismiss} onJobContextId={onJobContextId} />),
+  )
+  return { onDismiss, onJobContextId }
 }
 
 const button = (label: string) =>
@@ -83,11 +86,13 @@ describe('TailorCard', () => {
     responses.analyzeJob = [ok({ jobContextId: 'j1', analysis: { mustHave: new Array(12).fill({}), niceToHave: new Array(6).fill({}) } })]
     responses.startTailoring = [ok({ id: 't1', status: 'queued' })]
     responses.getTailoring = [ok({ ...READY, status: 'matching' }), ok(READY)]
-    await render()
+    const { onJobContextId } = await render()
     await click('Tailor your resume for')
     await click('Tailor Resume')
     expect(container.textContent).toContain('18 requirements detected')
     expect(calls.find((c) => c.type === 'analyzeJob')?.payload).toEqual({ job: POSTING })
+    // The page's answers can now count toward this job's tokens.
+    expect(onJobContextId).toHaveBeenCalledWith('j1')
 
     await act(async () => vi.advanceTimersByTime(2000))
     expect(container.textContent).toContain('Matching requirements with your experience…')

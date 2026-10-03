@@ -4,6 +4,7 @@ import { fieldKind } from '@/lib/detection/classify'
 import { extractQuestion } from '@/lib/detection/question'
 import { watchFields, type TrackedField } from '@/lib/detection/scan'
 import { diagnostics } from '@/lib/diagnostics'
+import { hasValue } from '@/lib/fill'
 import { isOnScreen, sparklePosition, type Box } from '@/lib/geometry'
 import { extractJobContext, isCoverLetter } from '@/lib/job-context'
 import { explainNoJob, extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
@@ -136,6 +137,9 @@ function toTarget(el: HTMLElement, question: string, tracked?: TrackedField): Po
   }
 }
 
+// Long fields still open besides the one being answered, before the popover offers to answer them together.
+const ANSWER_REST_MIN = 2
+
 const KIND_LABELS: Record<string, string> = {
   open_text: 'open text', short_text: 'short text', profile: 'profile', choice_single: 'choice', choice_multi: 'multi-choice',
   number: 'number', ignored: 'ignored',
@@ -153,10 +157,14 @@ export function App({ host, initialSettings, subscribe }: {
   // Once opened, the panel stays mounted (hidden) so its rows and Undo survive closing it.
   const [panelMounted, setPanelMounted] = useState(false)
   const [rows, setRows] = useState<Record<string, Row>>({})
+  // Fields the panel should fill now ("Answer the rest together").
+  const [run, setRun] = useState<{ ids: string[]; nonce: number } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   // The script only runs on enabled sites (or a one-time scan); this is the master switch.
   const enabled = settings.enabled
   const settingsRef = useRef(settings)
+  // The stored job for this page once the user tailored to it, so answers count toward that application's tokens.
+  const jobContextIdRef = useRef<{ url: string; id: string } | null>(null)
   settingsRef.current = settings
   const allRef = useRef(all)
   allRef.current = all
@@ -231,10 +239,13 @@ export function App({ host, initialSettings, subscribe }: {
 
   /** The job description goes along when the user opted in, and always for cover letters (they're written for the job). */
   const getJobContext = useCallback(
-    (questions: string[] = []): JobContext =>
-      extractJobContext(document, {
+    (questions: string[] = []): JobContext => {
+      const context = extractJobContext(document, {
         includeDescription: settingsRef.current.useJobDescription || questions.some(isCoverLetter),
-      }),
+      })
+      const stored = jobContextIdRef.current
+      return stored && stored.url === location.href ? { ...context, id: stored.id } : context
+    },
     [],
   )
 
@@ -292,6 +303,19 @@ export function App({ host, initialSettings, subscribe }: {
     document.addEventListener('mousedown', onDown, true)
     return () => document.removeEventListener('mousedown', onDown, true)
   }, [target, host])
+
+  /** Empty long-answer fields other than `el`, not already filled or being written by the panel. */
+  const openLongFields = useCallback((el: HTMLElement | null) => fields.filter((f) =>
+    f.kind === 'open_text' && !f.controls.includes(el as HTMLElement) && !hasValue(f.controls)
+    && !['filled', 'low', 'working', 'review'].includes(rows[f.id]?.status ?? 'idle')), [fields, rows])
+
+  const answerRest = useCallback((el: HTMLElement) => {
+    const ids = openLongFields(el).map((f) => f.id)
+    if (!ids.length) return
+    setRun({ ids, nonce: Date.now() })
+    setPanelMounted(true)
+    setPanelOpen(true)
+  }, [openLongFields])
 
   const openField = useCallback((f: TrackedField) => {
     f.el.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -371,6 +395,7 @@ export function App({ host, initialSettings, subscribe }: {
           onClose={() => setPanelOpen(false)}
           onRowsChange={setRows}
           onOpenField={openField}
+          run={run}
         />
         </div>
       )}
@@ -385,6 +410,7 @@ export function App({ host, initialSettings, subscribe }: {
             stacked={detected.length > 0}
             autoOpen={autoOpen[jobPage.key]}
             onDismiss={() => setDismissedJobs((s) => new Set(s).add(jobPage.key))}
+            onJobContextId={(id) => (jobContextIdRef.current = { url: location.href, id })}
           />
         </div>
       )}
@@ -398,6 +424,8 @@ export function App({ host, initialSettings, subscribe }: {
           useJobDescription={settings.useJobDescription}
           onClose={close}
           onFilled={showToast}
+          restCount={openLongFields(target.el).length >= ANSWER_REST_MIN ? openLongFields(target.el).length : 0}
+          onAnswerRest={() => answerRest(target.el)}
         />
       )}
       {toast && <div className="toast" role="status">{toast}</div>}

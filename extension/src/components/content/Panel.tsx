@@ -17,8 +17,10 @@ export interface Row {
   snapshot?: Snapshot
 }
 
-// Questions per generate request: one model call on the server (its BATCH_CHUNK).
-const GENERATE_CHUNK = 10
+// Questions per generate request (the API's limit). The server answers what it can without a model (profile
+// facts, saved answers, its cache) and writes the rest in as few model calls as it can (up to 6 questions each,
+// run side by side), so one request costs fewer calls than several smaller ones.
+const GENERATE_CHUNK = 50
 
 const PROFILE_LABELS: Record<ProfileKey, string> = {
   full_name: 'name', first_name: 'first name', last_name: 'last name', email: 'email', phone: 'phone number',
@@ -51,7 +53,10 @@ export async function fillAnswer(f: TrackedField, answer: string): Promise<boole
   return fillField(f.controls[0]!, answer).ok
 }
 
-export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJobContext, onClose, onRowsChange, onOpenField }: {
+/** What the panel is doing, shown while it works so a single long request doesn't look stuck. */
+type Progress = { step: 'profile' } | { step: 'answers'; count: number } | null
+
+export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJobContext, onClose, onRowsChange, onOpenField, run }: {
   /** Detected fields (not ignored), in page order. */
   fields: TrackedField[]
   ignoredCount: number
@@ -62,6 +67,8 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
   onRowsChange: (rows: Record<string, Row>) => void
   /** Opens the normal popover for a field (edit / regenerate one answer). */
   onOpenField: (f: TrackedField) => void
+  /** Fill just these fields now ("Answer the rest together" in a popover); a new nonce runs it again. */
+  run?: { ids: string[]; nonce: number } | null
 }) {
   const [rows, setRows] = useState<Record<string, Row>>({})
   const [length, setLength] = useState<AnswerLength>(defaults.length)
@@ -71,6 +78,7 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
   const [error, setError] = useState<string | null>(null)
   const [asking, setAsking] = useState<string | null>(null)
   const [learning, setLearning] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
+  const [progress, setProgress] = useState<Progress>(null)
   const rowsRef = useRef(rows)
   rowsRef.current = rows
   const alive = useRef(true)
@@ -94,8 +102,13 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
     if (result.status === 'insufficient_information') {
       return update(f.id, { status: 'needs', result, note: result.missingInformation ?? undefined })
     }
-    if (review) return update(f.id, { status: 'review', answer: result.answer, result })
-    return put(f, result.answer, result.confidence === 'low')
+    let note: string | undefined
+    if (result.savedAnswerId) {
+      void send('useSaved', { id: result.savedAnswerId })
+      note = result.adaptedFrom ? 'Saved answer, adapted to this job' : 'Saved answer'
+    }
+    if (review) return update(f.id, { status: 'review', answer: result.answer, result, note })
+    return put(f, result.answer, result.confidence === 'low', note)
   }
 
   async function generate(targets: TrackedField[], review: boolean, facts?: Record<string, string[] | null>) {
@@ -105,6 +118,7 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
       job_context: job,
       style: { length, tone },
       items: targets.map((f) => ({ id: f.id, question: f.question.text, field: fieldContext(f), additional_facts: facts?.[f.id] ?? null })),
+      check_saved: !facts,
     })
     if (!alive.current) return
     if (!result.ok) {
@@ -119,67 +133,62 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
     }
   }
 
-  async function fillAll() {
+  /** Fills every open field, or only `only` (the popover's "Answer the rest together"). */
+  async function fillAll(only?: Set<string>) {
     setRunning(true)
     setError(null)
     setAsking(null)
     const review = defaults.reviewBeforeFill
     const targets: TrackedField[] = []
     for (const f of fields) {
+      if (only && !only.has(f.id)) continue
       const status = rowsRef.current[f.id]?.status
       if (status === 'filled' || status === 'low') continue
       if (!overwrite && hasValue(f.controls)) update(f.id, { status: 'skipped', note: 'Already has an answer' })
       else targets.push(f)
     }
 
-    // Profile values and saved answers don't depend on each other: ask for both at once.
     const profile = targets.filter((f) => f.kind === 'profile')
-    let questions = targets.filter((f) => f.kind !== 'profile')
-    const text = questions.filter((f) => f.kind === 'open_text' || f.kind === 'short_text')
-    const [values, matches] = await Promise.all([
-      profile.length ? send('getProfileValues', null) : null,
-      text.length ? send('matchSavedBatch', { items: text.map((f) => ({ id: f.id, question: f.question.text })) }) : null,
-    ])
-    if (!alive.current) return
-
-    // 1. Profile fields: straight from the profile, no model.
-    if (values) {
-      if (!values.ok) {
-        setError(values.error.code === 'not_connected' ? 'Connect Ansly to your account first.' : values.error.message)
-        setRunning(false)
-        return
-      }
-      for (const f of profile) {
-        const value = f.profileKey ? values.data[f.profileKey] : undefined
-        if (value) await put(f, value, false, 'From your profile')
-        else update(f.id, { status: 'skipped', note: `Add your ${PROFILE_LABELS[f.profileKey!] ?? 'details'} to your profile` })
-      }
-    }
-
-    // 2. Saved answers for free-text questions.
-    if (matches) {
-      if (matches.ok) {
-        const matched = new Set<string>()
-        for (const m of matches.data.results) {
-          const f = text.find((t) => t.id === m.id)
-          if (!f || !m.match) continue
-          matched.add(f.id)
-          void send('useSaved', { id: m.match.id })
-          if (review) update(f.id, { status: 'review', answer: m.match.answer, note: 'Saved answer' })
-          else await put(f, m.match.answer, false, 'Saved answer')
-        }
-        questions = questions.filter((f) => !matched.has(f.id))
-      }
-    }
-
-    // 3. Everything else, in chunks of one model call each, side by side: rows fill in as each chunk returns
-    //    instead of all at the end.
+    const questions = targets.filter((f) => f.kind !== 'profile')
+    // The profile values (read locally) and the questions don't depend on each other: both start at once.
+    setProgress(questions.length ? { step: 'answers', count: questions.length } : { step: 'profile' })
+    questions.forEach((f) => update(f.id, { status: 'working', note: undefined }))
     const chunks: TrackedField[][] = []
     for (let i = 0; i < questions.length; i += GENERATE_CHUNK) chunks.push(questions.slice(i, i + GENERATE_CHUNK))
-    await Promise.all(chunks.map((chunk) => generate(chunk, review)))
+    // Saved answers, profile facts and the cache are resolved on the server in the same request; only the rest
+    // reach the model.
+    const answering = Promise.all(chunks.map((chunk) => generate(chunk, review)))
+
+    // Profile fields: straight from the profile, no model. They fill while the answers are written.
+    if (profile.length) {
+      const values = await send('getProfileValues', null)
+      if (!alive.current) return
+      if (!values.ok) {
+        setError(values.error.code === 'not_connected' ? 'Connect Ansly to your account first.' : values.error.message)
+      } else {
+        for (const f of profile) {
+          const value = f.profileKey ? values.data[f.profileKey] : undefined
+          if (value) await put(f, value, false, 'From your profile')
+          else update(f.id, { status: 'skipped', note: `Add your ${PROFILE_LABELS[f.profileKey!] ?? 'details'} to your profile` })
+        }
+      }
+    }
+
+    await answering
     void send('track', { kind: 'fill_all', category: null })
-    if (alive.current) setRunning(false)
+    if (alive.current) {
+      setRunning(false)
+      setProgress(null)
+    }
   }
+
+  // "Answer the rest together" from a popover: fill those fields, once per request.
+  const lastRun = useRef<number | null>(null)
+  useEffect(() => {
+    if (!run || run.nonce === lastRun.current || running) return
+    lastRun.current = run.nonce
+    void fillAll(new Set(run.ids))
+  }, [run, running])
 
   async function fillReviewed() {
     for (const f of fields) {
@@ -275,6 +284,14 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
         </label>
         {hasCoverLetter && !useJobDescription && (
           <div className="notice hint">Cover letters are better with the job description — enable “Use job descriptions” in the Ansly popup.</div>
+        )}
+        {progress && (
+          <div className="loading" role="status">
+            <span className="spinner" />
+            {progress.step === 'profile'
+              ? 'Filling from your profile…'
+              : `Answering ${progress.count} question${progress.count === 1 ? '' : 's'}: saved answers and your profile first, then one request for the rest…`}
+          </div>
         )}
         {error && <div className="notice error">{error}</div>}
       </div>
