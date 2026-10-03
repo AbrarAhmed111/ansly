@@ -35,6 +35,7 @@ const SAVED: SavedAnswer = {
   category: 'project', company: null, role: null, use_count: 2, last_used_at: null, created_at: '', updated_at: '',
 }
 const ok = (data: unknown): Result<unknown> => ({ ok: true, data })
+const resolved = (answer: unknown): Result<unknown> => ok({ savedMatch: null, score: 0, answer })
 
 let root: Root
 let container: HTMLElement
@@ -86,12 +87,11 @@ afterEach(() => act(() => root.unmount()))
 
 describe('Popover', () => {
   it('generates, lets the user edit, and fills the field', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [ok(ANSWERED)]
+    responses.resolve = [resolved(ANSWERED)]
     await open()
 
-    expect(calls.map((c) => c.type)).toEqual(['matchSaved', 'generate'])
-    expect(calls[1]!.payload).toMatchObject({
+    expect(calls.map((c) => c.type)).toEqual(['resolve'])
+    expect(calls[0]!.payload).toMatchObject({
       question: 'What project are you most proud of?',
       job_context: { company: 'Acme', role: 'Engineer' },
       field: { kind: 'textarea' },
@@ -115,8 +115,7 @@ describe('Popover', () => {
   })
 
   it('regenerates with the previous answer', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [ok(ANSWERED)]
+    responses.resolve = [resolved(ANSWERED)]
     responses.regenerate = [ok({ ...ANSWERED, answer: 'A different take.' })]
     await open()
     await click('Regenerate')
@@ -125,8 +124,7 @@ describe('Popover', () => {
   })
 
   it('saves as a preferred answer with job context', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [ok(ANSWERED)]
+    responses.resolve = [resolved(ANSWERED)]
     responses.saveAnswer = [ok({ ...SAVED, id: 'new-id' })]
     await open()
     await click('Save as preferred')
@@ -138,10 +136,10 @@ describe('Popover', () => {
   })
 
   it('offers a similar saved answer before generating', async () => {
-    responses.matchSaved = [ok({ match: SAVED, score: 0.9 })]
+    responses.resolve = [ok({ savedMatch: SAVED, score: 0.9, answer: null })]
     await open()
     expect(text()).toContain('A similar saved answer was found')
-    expect(calls.map((c) => c.type)).toEqual(['matchSaved'])
+    expect(calls.map((c) => c.type)).toEqual(['resolve'])
 
     await click('Use saved answer')
     expect((container.querySelector('textarea.answer') as HTMLTextAreaElement).value).toBe('My saved answer.')
@@ -149,7 +147,7 @@ describe('Popover', () => {
   })
 
   it('can generate a new answer instead of the saved one', async () => {
-    responses.matchSaved = [ok({ match: SAVED, score: 0.9 })]
+    responses.resolve = [ok({ savedMatch: SAVED, score: 0.9, answer: null })]
     responses.generate = [ok(ANSWERED)]
     await open()
     await click('Generate new answer')
@@ -157,8 +155,7 @@ describe('Popover', () => {
   })
 
   it('shows insufficient information with a link to the profile', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [ok({ ...ANSWERED, status: 'insufficient_information', answer: '', usedSources: [],
+    responses.resolve = [resolved({ ...ANSWERED, status: 'insufficient_information', answer: '', usedSources: [],
       missingInformation: "Your profile doesn't mention Kubernetes." })]
     await open()
     expect(text()).toContain("Your profile doesn't mention Kubernetes.")
@@ -167,44 +164,42 @@ describe('Popover', () => {
   })
 
   it('asks to connect when not signed in', async () => {
-    responses.matchSaved = [{ ok: false, error: { code: 'not_connected', message: 'Connect Ansly to your account.' } }]
+    responses.resolve = [{ ok: false, error: { code: 'not_connected', message: 'Connect Ansly to your account.' } }]
     await open()
     expect(text()).toContain('Ansly isn’t connected')
     await click('Connect Ansly')
     expect(calls.at(-1)).toEqual({ type: 'openWebApp', payload: { path: '/extension' } })
   })
 
-  it('shows errors with retry, and a failed saved-answer lookup still generates', async () => {
-    responses.matchSaved = [{ ok: false, error: { code: 'server', message: 'boom' } }]
-    responses.generate = [
+  it('shows errors with retry', async () => {
+    responses.resolve = [
       { ok: false, error: { code: 'unavailable', message: 'The AI providers are busy.' } },
-      ok(ANSWERED),
+      resolved(ANSWERED),
     ]
     await open()
     expect(text()).toContain('The AI providers are busy.')
     await click('Retry')
+    expect(calls.map((c) => c.type)).toEqual(['resolve', 'resolve'])
     expect((container.querySelector('textarea.answer') as HTMLTextAreaElement).value).toBe(ANSWERED.answer)
   })
 
   it('blocks filling an answer over the character limit', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [ok(ANSWERED)]
+    responses.resolve = [resolved(ANSWERED)]
     await open(10)
     expect(button('Fill')?.disabled).toBe(true)
     expect(text()).toContain(`/ 10 characters`)
   })
 
   it('sends the default style and only regenerates on Apply', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [ok(ANSWERED)]
+    responses.resolve = [resolved(ANSWERED)]
     responses.regenerate = [ok({ ...ANSWERED, answer: 'Shorter.' })]
     await open(null, { defaultStyle: { length: 'auto', tone: 'friendly' } })
-    expect(calls[1]!.payload).toMatchObject({ style: { length: 'auto', tone: 'friendly' } })
+    expect(calls[0]!.payload).toMatchObject({ style: { length: 'auto', tone: 'friendly' } })
     expect(text()).toContain('Standard · auto')
     expect(button('Apply')).toBeUndefined()
 
     await click('Concise')
-    expect(calls.at(-1)!.type).toBe('generate') // no request yet
+    expect(calls.at(-1)!.type).toBe('resolve') // no request yet
     const tone = container.querySelector('select[aria-label="Tone"]') as HTMLSelectElement
     await act(async () => {
       tone.value = 'technical'
@@ -225,8 +220,7 @@ describe('Popover', () => {
   })
 
   it('defaults cover letters to Detailed and suggests the job description', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [ok({ ...ANSWERED, category: 'cover_letter', intent: 'cover_letter' })]
+    responses.resolve = [resolved({ ...ANSWERED, category: 'cover_letter', intent: 'cover_letter' })]
     await open(null, { useJobDescription: false }, 'Cover letter')
     expect(text()).toContain('Detailed · auto for cover letters')
     expect(container.querySelector('[aria-checked="true"]')?.textContent).toBe('Detailed')
@@ -234,12 +228,9 @@ describe('Popover', () => {
   })
 
   it('asks for missing information inline, saves it and regenerates', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [
-      ok({ ...ANSWERED, status: 'insufficient_information', answer: '', missingInformation: "Your profile doesn't mention Kubernetes.",
-        missing: [{ key: 'skill:kubernetes', prompt: 'Have you used Kubernetes?', input: 'skill', target: { type: 'skill', name: 'Kubernetes' } }] }),
-      ok({ ...ANSWERED, answer: "No, I haven't worked with Kubernetes." }),
-    ]
+    responses.resolve = [resolved({ ...ANSWERED, status: 'insufficient_information', answer: '', missingInformation: "Your profile doesn't mention Kubernetes.",
+        missing: [{ key: 'skill:kubernetes', prompt: 'Have you used Kubernetes?', input: 'skill', target: { type: 'skill', name: 'Kubernetes' } }] })]
+    responses.generate = [ok({ ...ANSWERED, answer: "No, I haven't worked with Kubernetes." })]
     responses.saveMissing = [ok({ saved: [] })]
     await open()
     expect(text()).toContain("Ansly doesn't have this yet")
@@ -254,12 +245,9 @@ describe('Popover', () => {
   })
 
   it('answers once without saving, using what the user said', async () => {
-    responses.matchSaved = [ok({ match: null, score: 0 })]
-    responses.generate = [
-      ok({ ...ANSWERED, status: 'insufficient_information', answer: '', missingInformation: 'x',
-        missing: [{ key: 'fact:leadership', prompt: 'Describe a time you led a team.', input: 'textarea', target: { type: 'fact', category: 'leadership' } }] }),
-      ok(ANSWERED),
-    ]
+    responses.resolve = [resolved({ ...ANSWERED, status: 'insufficient_information', answer: '', missingInformation: 'x',
+        missing: [{ key: 'fact:leadership', prompt: 'Describe a time you led a team.', input: 'textarea', target: { type: 'fact', category: 'leadership' } }] })]
+    responses.generate = [ok(ANSWERED)]
     responses.saveAnswer = [ok({ id: 'sa' })]
     await open()
     const box = container.querySelector('.missing textarea') as HTMLTextAreaElement

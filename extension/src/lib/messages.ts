@@ -22,6 +22,7 @@ import type {
   ExtensionSession,
   GenerateAnswerRequest,
   MatchSavedAnswerResponse,
+  ResolveAnswerResponse,
   RegenerateAnswerRequest,
   SavedAnswer,
   TrackEventRequest,
@@ -53,6 +54,8 @@ export interface ConnectionState {
 
 export interface RequestMap {
   generate: { payload: GenerateAnswerRequest; response: AnswerResponse }
+  /** Saved-answer match, else generation, in one API request. */
+  resolve: { payload: GenerateAnswerRequest; response: ResolveAnswerResponse }
   regenerate: { payload: RegenerateAnswerRequest; response: AnswerResponse }
   matchSaved: { payload: { question: string }; response: MatchSavedAnswerResponse }
   saveAnswer: { payload: CreateSavedAnswerRequest; response: SavedAnswer }

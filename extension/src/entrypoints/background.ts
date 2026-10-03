@@ -1,4 +1,4 @@
-import type { ExtensionSession, TailoringDownloadResponse } from '@ansly/types'
+import type { AnswerResponse, ExtensionSession, MatchSavedAnswerResponse, ResolveAnswerResponse, TailoringDownloadResponse } from '@ansly/types'
 import { apiRequest, type ApiDeps } from '@/lib/api'
 import { WEB_URL } from '@/lib/config'
 import {
@@ -92,6 +92,15 @@ type Handlers = { [K in RequestType]: (payload: RequestMap[K]['payload']) => Pro
 
 const handlers: Handlers = {
   generate: (payload) => apiRequest(deps, 'POST', '/api/v1/answers/generate', payload),
+  async resolve(payload) {
+    const resolved = await apiRequest<ResolveAnswerResponse>(deps, 'POST', '/api/v1/answers/resolve', payload)
+    // An API deployed before /resolve existed: match, then generate, as two requests.
+    if (resolved.ok || resolved.error.code !== 'server' || resolved.error.message !== 'Not Found') return resolved
+    const matched = await apiRequest<MatchSavedAnswerResponse>(deps, 'POST', '/api/v1/saved-answers/match', { question: payload.question })
+    if (matched.ok && matched.data.match) return ok({ savedMatch: matched.data.match, score: matched.data.score, answer: null })
+    const generated = await apiRequest<AnswerResponse>(deps, 'POST', '/api/v1/answers/generate', payload)
+    return generated.ok ? ok({ savedMatch: null, score: 0, answer: generated.data }) : generated
+  },
   regenerate: (payload) => apiRequest(deps, 'POST', '/api/v1/answers/regenerate', payload),
   matchSaved: (payload) => apiRequest(deps, 'POST', '/api/v1/saved-answers/match', payload),
   saveAnswer: (payload) => apiRequest(deps, 'POST', '/api/v1/saved-answers', payload),

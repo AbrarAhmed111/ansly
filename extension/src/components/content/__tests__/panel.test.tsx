@@ -208,4 +208,22 @@ describe('Fill all panel', () => {
     const batch = calls.find((c) => c.type === 'generateBatch')!.payload as { items: { id: string }[] }
     expect(batch.items.map((i) => i.id)).not.toContain(fieldId('why'))
   })
+
+  it('sends large forms as concurrent chunks, filling rows as each returns', async () => {
+    document.body.innerHTML =
+      '<form id="form">' +
+      Array.from({ length: 12 }, (_, i) => `<label for="q${i}">Question number ${i}?</label><textarea id="q${i}"></textarea>`).join('') +
+      '</form><div id="ui"></div>'
+    container = document.getElementById('ui')!
+    root = createRoot(container)
+    const ids = Array.from({ length: 12 }, (_, i) => fieldId(`q${i}`))
+    responses.matchSavedBatch = [ok({ results: [] })]
+    responses.generateBatch = [ok({ results: ids.slice(0, 10).map((id) => result(id)) }), ok({ results: ids.slice(10).map((id) => result(id)) })]
+    await render()
+    await click('Fill all')
+    const batches = calls.filter((c) => c.type === 'generateBatch').map((c) => (c.payload as { items: unknown[] }).items.length)
+    expect(batches).toEqual([10, 2])
+    expect(value('q0')).toBe(`Answer for ${ids[0]}`)
+    expect(value('q11')).toBe(`Answer for ${ids[11]}`)
+  })
 })

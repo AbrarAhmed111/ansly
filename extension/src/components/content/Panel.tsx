@@ -17,6 +17,9 @@ export interface Row {
   snapshot?: Snapshot
 }
 
+// Questions per generate request: one model call on the server (its BATCH_CHUNK).
+const GENERATE_CHUNK = 10
+
 const PROFILE_LABELS: Record<ProfileKey, string> = {
   full_name: 'name', first_name: 'first name', last_name: 'last name', email: 'email', phone: 'phone number',
   location: 'location', city: 'location', headline: 'headline', linkedin: 'LinkedIn URL', github: 'GitHub URL',
@@ -129,10 +132,18 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
       else targets.push(f)
     }
 
-    // 1. Profile fields: straight from the profile, no model.
+    // Profile values and saved answers don't depend on each other: ask for both at once.
     const profile = targets.filter((f) => f.kind === 'profile')
-    if (profile.length) {
-      const values = await send('getProfileValues', null)
+    let questions = targets.filter((f) => f.kind !== 'profile')
+    const text = questions.filter((f) => f.kind === 'open_text' || f.kind === 'short_text')
+    const [values, matches] = await Promise.all([
+      profile.length ? send('getProfileValues', null) : null,
+      text.length ? send('matchSavedBatch', { items: text.map((f) => ({ id: f.id, question: f.question.text })) }) : null,
+    ])
+    if (!alive.current) return
+
+    // 1. Profile fields: straight from the profile, no model.
+    if (values) {
       if (!values.ok) {
         setError(values.error.code === 'not_connected' ? 'Connect Ansly to your account first.' : values.error.message)
         setRunning(false)
@@ -146,10 +157,7 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
     }
 
     // 2. Saved answers for free-text questions.
-    let questions = targets.filter((f) => f.kind !== 'profile')
-    const text = questions.filter((f) => f.kind === 'open_text' || f.kind === 'short_text')
-    if (text.length) {
-      const matches = await send('matchSavedBatch', { items: text.map((f) => ({ id: f.id, question: f.question.text })) })
+    if (matches) {
       if (matches.ok) {
         const matched = new Set<string>()
         for (const m of matches.data.results) {
@@ -164,8 +172,11 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
       }
     }
 
-    // 3. Everything else in one batch request.
-    if (questions.length) await generate(questions, review)
+    // 3. Everything else, in chunks of one model call each, side by side: rows fill in as each chunk returns
+    //    instead of all at the end.
+    const chunks: TrackedField[][] = []
+    for (let i = 0; i < questions.length; i += GENERATE_CHUNK) chunks.push(questions.slice(i, i + GENERATE_CHUNK))
+    await Promise.all(chunks.map((chunk) => generate(chunk, review)))
     void send('track', { kind: 'fill_all', category: null })
     if (alive.current) setRunning(false)
   }

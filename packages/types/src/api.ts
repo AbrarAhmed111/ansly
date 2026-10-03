@@ -169,6 +169,16 @@ export interface GenerateBatchResponse {
   results: BatchAnswerResult[]
 }
 
+/**
+ * `POST /api/v1/answers/resolve` (body: GenerateAnswerRequest): one request per field. Returns a similar
+ * saved answer when there is one (`answer` null), otherwise the generated answer (`savedMatch` null).
+ */
+export interface ResolveAnswerResponse {
+  savedMatch: SavedAnswer | null
+  score: number
+  answer: AnswerResponse | null
+}
+
 /** `POST /api/v1/saved-answers/match-batch` */
 export interface MatchSavedBatchRequest {
   items: { id: string; question: string }[]

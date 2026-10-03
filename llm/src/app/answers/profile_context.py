@@ -6,10 +6,13 @@ embeddings), formats them as a compact, source-tagged context for the prompt,
 and checks whether specific skills appear anywhere in the profile.
 """
 
+import asyncio
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+from src.app.core import metrics
+from src.app.core.ttl_cache import TTLCache
 from src.app.db.rest import SupabaseRest
 
 from .classifier import QuestionAnalysis
@@ -287,22 +290,46 @@ def build_context(
     return ctx
 
 
-async def fetch_profile_data(rest: SupabaseRest, analysis: QuestionAnalysis) -> Dict[str, Any]:
-    """Fetches the profile row plus the sections the question needs (and skills, for skill checks)."""
-    profiles = await rest.select("profiles", {"limit": "1"})
-    data: Dict[str, Any] = {"profile": profiles[0] if profiles else None}
+# Profile rows per (user id, table), so answering several fields in a row reads the profile once.
+# Short-lived because the web app edits the profile directly in Supabase; API writes drop it at once.
+PROFILE_CACHE_SECONDS = 30
+_profile_cache: TTLCache[List[Dict[str, Any]]] = TTLCache(PROFILE_CACHE_SECONDS, max_entries=2000)
+
+
+def invalidate_profile_cache(user_id: str) -> None:
+    _profile_cache.invalidate_user(user_id)
+
+
+async def _rows(rest: SupabaseRest, user_id: Optional[str], table: str, params: Dict[str, str]) -> List[Dict[str, Any]]:
+    key = (user_id, table)
+    if user_id:
+        cached = _profile_cache.get(key)
+        metrics.record_cache("profile", hit=cached is not None)
+        if cached is not None:
+            return cached
+    rows = await rest.select(table, params)
+    if user_id:
+        _profile_cache.set(key, rows)
+    return rows
+
+
+async def fetch_profile_data(rest: SupabaseRest, analysis: QuestionAnalysis,
+                             user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Fetches the profile row plus the sections the question needs (and skills, for skill checks), in parallel.
+    With `user_id`, recently fetched rows are reused (see PROFILE_CACHE_SECONDS)."""
     sections = list(analysis.sections)
     # Skill presence is checked against every section that can mention a technology.
     if analysis.target_skills:
         sections += [s for s in ("skills", "experiences", "projects", "achievements") if s not in sections]
+    queries: Dict[str, Tuple[str, Dict[str, str]]] = {"profile": ("profiles", {"limit": "1"})}
     for section in sections:
-        data[section] = await rest.select(
-            section, {"order": SECTION_ORDER[section], "limit": str(max(SECTION_LIMITS[section] * 3, 20))}
-        )
+        queries[section] = (section, {"order": SECTION_ORDER[section],
+                                      "limit": str(max(SECTION_LIMITS[section] * 3, 20))})
     if analysis.category != "logistics":
-        data["profile_facts"] = await rest.select(
-            "profile_facts", {"order": "updated_at.desc", "limit": str(FACTS_LIMIT)}
-        )
+        queries["profile_facts"] = ("profile_facts", {"order": "updated_at.desc", "limit": str(FACTS_LIMIT)})
+    results = await asyncio.gather(*(_rows(rest, user_id, table, params) for table, params in queries.values()))
+    data: Dict[str, Any] = dict(zip(queries, results))
+    data["profile"] = data["profile"][0] if data["profile"] else None
     return data
 
 

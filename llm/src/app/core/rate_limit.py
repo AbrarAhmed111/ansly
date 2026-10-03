@@ -36,11 +36,21 @@ async def _used_today(rest: SupabaseRest, kinds: str) -> int:
     return await rest.count("usage_events", {"kind": f"in.({kinds})", "created_at": f"gte.{start_of_day.isoformat()}"})
 
 
+async def generations_today(rest: SupabaseRest) -> int:
+    return await _used_today(rest, "generate,regenerate")
+
+
 async def check_daily_limit(rest: SupabaseRest, limit: int, needed: int = 1) -> None:
     """Refuses when `needed` more generations would go over today's limit (fill all needs several)."""
     if needed <= 0:
         return
-    used = await _used_today(rest, "generate,regenerate")
+    enforce_daily_limit(await generations_today(rest), limit, needed)
+
+
+def enforce_daily_limit(used: int, limit: int, needed: int = 1) -> None:
+    """check_daily_limit for a count the caller already has (fetched alongside other work)."""
+    if needed <= 0:
+        return
     remaining = max(limit - used, 0)
     if remaining <= 0:
         raise HTTPException(

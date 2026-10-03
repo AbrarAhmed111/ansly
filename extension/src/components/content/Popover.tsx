@@ -21,6 +21,7 @@ type State =
   | { step: 'error'; error: ApiFailure; retry: 'generate' | 'match' }
 
 type Action =
+  | { type: 'matching' }
   | { type: 'matched'; match: SavedAnswer | null }
   | { type: 'generate' }
   | { type: 'generated'; response: AnswerResponse }
@@ -35,6 +36,8 @@ type Action =
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
+    case 'matching':
+      return { step: 'matching' }
     case 'matched':
       return action.match ? { step: 'saved', match: action.match } : { step: 'generating' }
     case 'generate':
@@ -177,18 +180,15 @@ export function Popover({
     else dispatch({ type: 'failed', error: result.error, retry: 'generate' })
   }, [request])
 
+  // Saved-answer match and generation in one request: a saved answer comes back at once, otherwise the answer.
   const match = useCallback(async () => {
-    const result = await send('matchSaved', { question: target.question })
+    dispatch({ type: 'matching' })
+    const result = await send('resolve', request(style))
     if (!alive.current) return
-    if (!result.ok) {
-      // A broken saved-answer lookup shouldn't block generating; only auth problems stop here.
-      if (result.error.code === 'not_connected') dispatch({ type: 'failed', error: result.error, retry: 'match' })
-      else void generate()
-      return
-    }
-    dispatch({ type: 'matched', match: result.data.match })
-    if (!result.data.match) void generate()
-  }, [target.question, generate])
+    if (!result.ok) dispatch({ type: 'failed', error: result.error, retry: 'match' })
+    else if (result.data.savedMatch) dispatch({ type: 'matched', match: result.data.savedMatch })
+    else if (result.data.answer) dispatch({ type: 'generated', response: result.data.answer })
+  }, [request])
 
   // Only on open: later style changes regenerate via Apply, not by re-matching.
   useEffect(() => {
@@ -324,7 +324,7 @@ export function Popover({
         {(state.step === 'matching' || state.step === 'generating') && (
           <div className="loading" role="status">
             <span className="spinner" />
-            {state.step === 'matching' ? 'Checking your saved answers…' : 'Writing your answer from your profile…'}
+            {state.step === 'matching' ? 'Finding your answer…' : 'Writing your answer from your profile…'}
           </div>
         )}
 

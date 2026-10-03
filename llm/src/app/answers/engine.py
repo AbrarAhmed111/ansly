@@ -8,12 +8,17 @@ Batches (fill all) fetch the profile once, run the deterministic checks per
 question, and send the rest to the model in one call.
 """
 
+import asyncio
+import hashlib
+import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from src.app.core import metrics
 from src.app.core.config import get_settings
+from src.app.core.ttl_cache import TTLCache
 from src.app.db.rest import SupabaseRest
 from src.app.gateway import GatewayUnavailableError, LLMGateway
 from src.app.schemas.answers import (
@@ -45,8 +50,24 @@ from .prompt import BATCH_SYSTEM_PROMPT, SYSTEM_PROMPT, build_batch_message, bui
 
 logger = logging.getLogger("AnswerEngine")
 
-# Most questions one model call answers in a batch; larger batches are split.
+# Most questions one model call answers in a batch; larger batches are split into chunks run side by side.
 BATCH_CHUNK = 10
+CHUNK_CONCURRENCY = 3
+
+# Generated answers, reused when the same question is asked again with the same inputs (reopening a field's
+# popover). The key covers the request, the exact profile rows the answer was built from and the prompt, so a
+# changed profile, job or style always generates afresh. Regenerations never use it.
+ANSWER_CACHE_SECONDS = 600
+_answer_cache: TTLCache[AnswerResponse] = TTLCache(ANSWER_CACHE_SECONDS, max_entries=1000)
+_PROMPT_VERSION = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()[:12]
+
+
+def _answer_key(user_id: str, request: GenerateAnswerRequest, data: Dict[str, Any]) -> tuple:
+    payload = json.dumps(
+        {"prompt": _PROMPT_VERSION, "request": request.model_dump(mode="json"), "data": data},
+        sort_keys=True, default=str,
+    )
+    return (user_id, hashlib.sha256(payload.encode()).hexdigest())
 
 LOGISTICS_LABELS = {
     "salary": "your salary expectation",
@@ -164,6 +185,27 @@ def deterministic_choice(intent: str, value: Any, options: List[str]) -> Optiona
     return match_option(str(value), options)
 
 
+YES_NO_QUESTION = re.compile(r"^\W*(?:are|do|does|will|would|can|could|have|has|is|did|may)\b", re.IGNORECASE)
+WORK_MODE_LABELS = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "On-site", "flexible": "Flexible"}
+
+
+def logistics_text(intent: str, value: Any, question: str) -> Optional[str]:
+    """A one-line field's answer straight from the profile, or None when the wording needs the model. Only for
+    phrasings whose answer the stored value settles unambiguously (a "Do you have a visa?" is not "do you need
+    sponsorship", so it goes to the model)."""
+    yes_no = bool(YES_NO_QUESTION.match(question))
+    if intent in ("salary", "notice_period", "work_authorization"):
+        return str(value).strip() if isinstance(value, str) and not yes_no else None
+    if intent == "sponsorship" and isinstance(value, bool):
+        asks_need = re.search(r"\b(?:require|need)\w*\b.*\bsponsor", question, re.IGNORECASE)
+        return ("Yes" if value else "No") if yes_no and asks_need else None
+    if intent == "relocation" and isinstance(value, bool):
+        return ("Yes" if value else "No") if yes_no and re.search(r"\b(?:willing|open|able)\b", question, re.IGNORECASE) else None
+    if intent == "work_mode" and isinstance(value, str):
+        return WORK_MODE_LABELS.get(value) if not yes_no and re.search(r"\bprefer", question, re.IGNORECASE) else None
+    return None
+
+
 def precheck(analysis: QuestionAnalysis, ctx: ProfileContext, field: Optional[FieldContext] = None) -> Optional[AnswerResponse]:
     """Answers that need no model: questions the profile clearly cannot support, and choices it settles."""
     if analysis.category == "logistics":
@@ -178,6 +220,11 @@ def precheck(analysis: QuestionAnalysis, ctx: ProfileContext, field: Optional[Fi
             option = deterministic_choice(analysis.intent, value, field.options or [])
             if option:
                 return deterministic(analysis, option, ctx)
+        # A one-line text box ("Notice period", "Expected salary") takes the stored value as is: no model needed.
+        if field and field.kind in ("input", "short_text"):
+            text = logistics_text(analysis.intent, value, analysis.question)
+            if text:
+                return deterministic(analysis, text, ctx)
         return None
 
     if ctx.is_empty:
@@ -255,6 +302,7 @@ class BatchPlan:
     request: GenerateBatchRequest
     ctx: ProfileContext
     analyses: Dict[str, QuestionAnalysis]
+    user_id: Optional[str] = None
     results: Dict[str, BatchAnswer] = field(default_factory=dict)
     pending: List[BatchItem] = field(default_factory=list)
 
@@ -263,22 +311,42 @@ class AnswerEngine:
     def __init__(self, gateway: LLMGateway):
         self.gateway = gateway
 
+    @staticmethod
+    def analyze(request: GenerateAnswerRequest) -> QuestionAnalysis:
+        return _analyze(request.question, request.field)
+
     async def answer(
         self,
         rest: SupabaseRest,
         request: GenerateAnswerRequest,
         previous_answer: Optional[str] = None,
         instruction: Optional[str] = None,
+        *,
+        user_id: Optional[str] = None,
+        data: Optional[Dict[str, Any]] = None,
+        before_model: Optional[Callable[[], None]] = None,
     ) -> AnswerResponse:
+        """`data` is the profile from fetch_profile_data, when the caller already loaded it. `before_model` runs
+        only when the model is actually needed (e.g. the daily limit, which no-model answers don't use)."""
         settings = get_settings()
         analysis = _analyze(request.question, request.field)
-        data = await fetch_profile_data(rest, analysis)
+        if data is None:
+            data = await fetch_profile_data(rest, analysis, user_id)
         ctx = build_context(data, analysis, request.additional_facts, job_text=job_text(request.job_context))
 
         early = precheck(analysis, ctx, request.field)
         if early is not None:
             logger.info(f"Answered without LLM: {analysis.category}/{analysis.intent} -> {early.status}")
             return early
+
+        cache_key = _answer_key(user_id, request, data) if user_id and previous_answer is None else None
+        if cache_key is not None:
+            cached = _answer_cache.get(cache_key)
+            metrics.record_cache("answer", hit=cached is not None)
+            if cached is not None:
+                return cached.model_copy(update={"provider": None, "model": None, "tokens": None})
+        if before_model is not None:
+            before_model()
 
         user_message = build_user_message(
             analysis,
@@ -303,11 +371,15 @@ class AnswerEngine:
             max_tokens=settings.LLM_MAX_TOKENS,
             validate=lambda text: parse_answer(text, ctx.sources, max_length, request.field),
         )
-        return _response(analysis, ctx, result.value, result.provider, result.model, _tokens(result.usage))
+        response = _response(analysis, ctx, result.value, result.provider, result.model, _tokens(result.usage))
+        if cache_key is not None and response.status == "answered":
+            _answer_cache.set(cache_key, response)
+        return response
 
     # --- batches (fill all) -------------------------------------------------------
 
-    async def plan_batch(self, rest: SupabaseRest, request: GenerateBatchRequest) -> BatchPlan:
+    async def plan_batch(self, rest: SupabaseRest, request: GenerateBatchRequest,
+                         user_id: Optional[str] = None) -> BatchPlan:
         """Fetches the profile once and answers what needs no model. `plan.pending` is what's left."""
         analyses = {item.id: _analyze(item.question, item.field) for item in request.items}
         order = list(CATEGORY_SECTIONS["general"])
@@ -316,11 +388,11 @@ class AnswerEngine:
         has_logistics = any(a.category == "logistics" for a in analyses.values())
         union = QuestionAnalysis(question="", category="general", intent="general", sections=sections,
                                  target_skills=skills)
-        data = await fetch_profile_data(rest, union)
+        data = await fetch_profile_data(rest, union, user_id)
         facts = [f for item in request.items for f in (item.additional_facts or [])]
         ctx = build_context(data, union, facts, include_logistics=has_logistics, job_text=job_text(request.job_context))
 
-        plan = BatchPlan(request=request, ctx=ctx, analyses=analyses)
+        plan = BatchPlan(request=request, ctx=ctx, analyses=analyses, user_id=user_id)
         for item in request.items:
             early = precheck(analyses[item.id], ctx, item.field)
             if early is not None:
@@ -330,27 +402,36 @@ class AnswerEngine:
         return plan
 
     async def complete_batch(self, rest: SupabaseRest, plan: BatchPlan) -> List[BatchAnswer]:
-        """Generates the pending answers, BATCH_CHUNK per model call, falling back to one call per question."""
-        for start in range(0, len(plan.pending), BATCH_CHUNK):
-            chunk = plan.pending[start:start + BATCH_CHUNK]
-            parsed: Dict[str, Optional[ParsedAnswer]] = {}
-            provider = model = None
-            tokens = 0
-            try:
-                result = await self._generate_chunk(plan, chunk)
-                parsed, provider, model = result.value, result.provider, result.model
-                # One call answered the chunk: its tokens are shared by the answers it produced.
-                tokens = _tokens(result.usage) // max(1, sum(1 for item in chunk if parsed.get(item.id) is not None))
-            except GatewayUnavailableError as e:
-                logger.warning(f"Batch generation failed, answering one by one: {e}")
-            for item in chunk:
-                answer = parsed.get(item.id)
-                if answer is not None:
-                    response = _response(plan.analyses[item.id], plan.ctx, answer, provider, model, tokens)
-                    plan.results[item.id] = BatchAnswer(id=item.id, **response.model_dump(), tokens=tokens)
-                else:
-                    plan.results[item.id] = await self._single(rest, plan, item)
+        """Generates the pending answers, BATCH_CHUNK per model call (up to CHUNK_CONCURRENCY at once), falling back
+        to one call per question."""
+        limit = asyncio.Semaphore(CHUNK_CONCURRENCY)
+
+        async def run(chunk: List[BatchItem]) -> None:
+            async with limit:
+                await self._complete_chunk(rest, plan, chunk)
+
+        chunks = [plan.pending[i:i + BATCH_CHUNK] for i in range(0, len(plan.pending), BATCH_CHUNK)]
+        await asyncio.gather(*(run(chunk) for chunk in chunks))
         return [plan.results[item.id] for item in plan.request.items]
+
+    async def _complete_chunk(self, rest: SupabaseRest, plan: BatchPlan, chunk: List[BatchItem]) -> None:
+        parsed: Dict[str, Optional[ParsedAnswer]] = {}
+        provider = model = None
+        tokens = 0
+        try:
+            result = await self._generate_chunk(plan, chunk)
+            parsed, provider, model = result.value, result.provider, result.model
+            # One call answered the chunk: its tokens are shared by the answers it produced.
+            tokens = _tokens(result.usage) // max(1, sum(1 for item in chunk if parsed.get(item.id) is not None))
+        except GatewayUnavailableError as e:
+            logger.warning(f"Batch generation failed, answering one by one: {e}")
+        for item in chunk:
+            answer = parsed.get(item.id)
+            if answer is not None:
+                response = _response(plan.analyses[item.id], plan.ctx, answer, provider, model, tokens)
+                plan.results[item.id] = BatchAnswer(id=item.id, **response.model_dump(), tokens=tokens)
+            else:
+                plan.results[item.id] = await self._single(rest, plan, item)
 
     async def _generate_chunk(self, plan: BatchPlan, chunk: List[BatchItem]):
         settings = get_settings()
@@ -384,7 +465,7 @@ class AnswerEngine:
             additional_facts=item.additional_facts,
         )
         try:
-            response = await self.answer(rest, request)
+            response = await self.answer(rest, request, user_id=plan.user_id)
         except (GatewayUnavailableError, ValueError) as e:
             logger.warning(f"Could not answer batch item {item.id}: {e}")
             analysis = plan.analyses[item.id]

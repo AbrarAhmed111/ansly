@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from src.app.answers.profile_context import invalidate_profile_cache
 from src.app.api.deps import get_rest
 from src.app.core.auth import AuthUser, get_current_user
 from src.app.db.rest import SupabaseError, SupabaseRest
@@ -111,4 +112,7 @@ async def save_missing(
             saved.append({"key": item.key, "target": target.model_dump(), "row": row})
     except SupabaseError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not save to your profile: {e}") from e
+    finally:
+        # The next answer must see what was saved, even if this request failed part-way.
+        invalidate_profile_cache(user.id)
     return {"saved": saved}

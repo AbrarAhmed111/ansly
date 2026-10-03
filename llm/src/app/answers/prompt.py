@@ -98,6 +98,15 @@ TONE_HINTS: Dict[str, str] = {
     "technical": "technical: precise about technologies, systems and trade-offs that the profile mentions",
 }
 
+# How much of the job description each question type gets (share of JOB_DESCRIPTION_MAX_CHARS). Logistics are
+# answered from the profile alone; a skill check or a degree needs the role's gist, not the whole posting.
+JOB_DESCRIPTION_SHARE: Dict[str, float] = {"logistics": 0.0, "skill_check": 0.3, "education": 0.3, "achievement": 0.5}
+
+
+def job_description_budget(analyses: List[QuestionAnalysis], max_chars: int) -> int:
+    return int(max_chars * max((JOB_DESCRIPTION_SHARE.get(a.category, 1.0) for a in analyses), default=1.0))
+
+
 # Rough characters per word, used to fit a word target into a character limit.
 CHARS_PER_WORD = 6
 
@@ -186,7 +195,7 @@ def build_batch_message(
     for item_id, analysis, field in items:
         block = [f"QUESTION id={item_id}:\n{analysis.question}"] + _field_parts(analysis, field, style)
         parts.append("\n".join(block))
-    job_part = _job_part(job, job_description_max_chars)
+    job_part = _job_part(job, job_description_budget([analysis for _, analysis, _ in items], job_description_max_chars))
     if job_part:
         parts.append(job_part)
     parts.append("CANDIDATE PROFILE:\n" + (ctx.text or "(empty)"))
@@ -208,7 +217,7 @@ def build_user_message(
 ) -> str:
     parts: List[str] = [f"QUESTION:\n{analysis.question}"]
     parts += _field_parts(analysis, field, style)
-    job_part = _job_part(job, job_description_max_chars)
+    job_part = _job_part(job, job_description_budget([analysis], job_description_max_chars))
     if job_part:
         parts.append(job_part)
 

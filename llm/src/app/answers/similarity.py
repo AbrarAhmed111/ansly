@@ -9,7 +9,9 @@ folding common synonyms ("proud of" ~ "enjoyed most", "role" ~ "position").
 import math
 import re
 from collections import Counter
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
 from .classifier import classify_question
 
@@ -58,31 +60,54 @@ def tokens(text: str) -> List[str]:
     return out
 
 
-def _cosine(a: Iterable[str], b: Iterable[str]) -> float:
-    ca, cb = Counter(a), Counter(b)
-    if not ca or not cb:
+@dataclass(frozen=True)
+class _Features:
+    category: str
+    intent: str
+    skills: FrozenSet[str]
+    counts: Tuple[Tuple[str, int], ...]
+    norm: float
+
+
+@lru_cache(maxsize=4096)
+def _features(question: str) -> _Features:
+    """Classification and token counts for a question. Cached: a saved question is compared on every match."""
+    analysis = classify_question(question)
+    counts = Counter(tokens(question))
+    return _Features(analysis.category, analysis.intent, frozenset(analysis.target_skills),
+                     tuple(counts.items()), math.sqrt(sum(v * v for v in counts.values())))
+
+
+def _cosine(a: _Features, b: _Features) -> float:
+    if not a.norm or not b.norm:
         return 0.0
-    dot = sum(ca[t] * cb[t] for t in ca)
-    return dot / (math.sqrt(sum(v * v for v in ca.values())) * math.sqrt(sum(v * v for v in cb.values())))
+    small, large = (a, b) if len(a.counts) <= len(b.counts) else (b, a)
+    other = dict(large.counts)
+    dot = sum(count * other.get(token, 0) for token, count in small.counts)
+    return dot / (a.norm * b.norm)
 
 
-def similarity(q1: str, q2: str) -> float:
-    a1, a2 = classify_question(q1), classify_question(q2)
-    text_score = _cosine(tokens(q1), tokens(q2))
-    if a1.category != a2.category:
+def _similarity(f1: _Features, f2: _Features) -> float:
+    text_score = _cosine(f1, f2)
+    if f1.category != f2.category:
         return round(text_score * 0.8, 3)
     # Different skills asked about are different questions.
-    if (a1.target_skills or a2.target_skills) and set(a1.target_skills) != set(a2.target_skills):
+    if (f1.skills or f2.skills) and f1.skills != f2.skills:
         return round(text_score * 0.5, 3)
-    if a1.intent == a2.intent and a1.intent != "general":
+    if f1.intent == f2.intent and f1.intent != "general":
         return round(0.5 + 0.5 * text_score, 3)
     return round(0.2 + 0.6 * text_score, 3)
 
 
+def similarity(q1: str, q2: str) -> float:
+    return _similarity(_features(q1), _features(q2))
+
+
 def best_match(question: str, saved: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], float]:
     best, best_score = None, 0.0
+    asked = _features(question)
     for row in saved:
-        score = similarity(question, row["question"])
+        score = _similarity(asked, _features(row["question"]))
         if score > best_score:
             best, best_score = row, score
     if best_score < MATCH_THRESHOLD:

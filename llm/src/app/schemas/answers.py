@@ -3,7 +3,7 @@ Answer API Schemas.
 Keep in sync with packages/types/src/api.ts.
 """
 
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -117,6 +117,16 @@ class AnswerResponse(BaseModel):
     model: Optional[str] = None
     # Tokens the model used for this answer: recorded with the usage event, never sent to clients.
     tokens: Optional[int] = Field(default=None, exclude=True)
+
+
+class ResolveAnswerResponse(BaseModel):
+    """`POST /answers/resolve`: a similar saved answer if there is one, otherwise a generated answer."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    saved_match: Optional[Dict[str, Any]] = Field(default=None, serialization_alias="savedMatch")
+    score: float = 0.0
+    answer: Optional[AnswerResponse] = None
 
 
 class MatchSavedAnswerRequest(BaseModel):
