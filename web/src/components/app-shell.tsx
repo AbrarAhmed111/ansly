@@ -1,7 +1,7 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { BookmarkCheck, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, Wand2, type LucideIcon } from 'lucide-react'
+import { BookmarkCheck, FilePen, FileText, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -29,6 +29,13 @@ const GROUPS: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: 'Resume',
+    items: [
+      { href: '/resume', label: 'Master & tailored', icon: FileText },
+      { href: '/resume/tailor', label: 'Tailor for a job', icon: FilePen },
+    ],
+  },
+  {
     label: 'Workspace',
     items: [
       { href: '/playground', label: 'Try it', icon: Wand2 },
@@ -49,6 +56,8 @@ const COMMANDS: Command[] = [
     keywords: s.title,
   })),
   { label: 'Add saved answer', href: '/saved-answers?new=1', icon: Plus, group: 'Actions' },
+  { label: 'Upload master resume', href: '/resume/upload', icon: FileText, group: 'Actions', keywords: 'resume cv word docx' },
+  { label: 'Tailor resume for a job', href: '/resume/tailor', icon: FilePen, group: 'Actions', keywords: 'resume job description tailor' },
   { label: 'Try a question', href: '/playground', icon: Wand2, group: 'Actions', keywords: 'generate answer playground' },
 ]
 
@@ -66,8 +75,16 @@ function SearchButton({ onClick }: { onClick: () => void }) {
   )
 }
 
+const NAV_HREFS = GROUPS.flatMap((g) => g.items.map((i) => i.href))
+
+/** The nav item for a path: the longest matching href, so /resume/tailor doesn't also light up /resume. */
+function activeHref(path: string): string | undefined {
+  return NAV_HREFS.filter((href) => path === href || path.startsWith(`${href}/`)).sort((a, b) => b.length - a.length)[0]
+}
+
 function NavLinks() {
   const path = usePathname()
+  const current = activeHref(path)
   return (
     <nav className="space-y-5" aria-label="Main">
       {GROUPS.map((group, i) => (
@@ -77,7 +94,7 @@ function NavLinks() {
           )}
           <ul className="space-y-0.5">
             {group.items.map(({ href, label, icon: Icon }) => {
-              const active = path === href || path.startsWith(`${href}/`)
+              const active = href === current
               return (
                 <li key={href}>
                   <Link

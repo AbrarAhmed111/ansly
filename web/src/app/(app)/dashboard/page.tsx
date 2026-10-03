@@ -1,6 +1,6 @@
 import { profileCompleteness } from '@ansly/types'
 import { clsx } from 'clsx'
-import { ArrowRight, BookmarkCheck, MousePointerClick, Puzzle, RefreshCcw, Sparkles, Wand2, type LucideIcon } from 'lucide-react'
+import { ArrowRight, BookmarkCheck, FileText, MousePointerClick, Puzzle, RefreshCcw, Sparkles, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { SECTION_ICONS } from '@/components/section-icons'
@@ -29,7 +29,12 @@ async function weeklyUsage(supabase: Awaited<ReturnType<typeof createClient>>) {
   const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
   const { data } = await supabase.from('usage_events').select('kind').gte('created_at', since)
   const count = (kinds: string[]) => (data ?? []).filter((e) => kinds.includes(e.kind)).length
-  return { generated: count(['generate', 'regenerate']), filled: count(['fill']), reused: count(['use_saved_answer']) }
+  return {
+    generated: count(['generate', 'regenerate']),
+    filled: count(['fill']),
+    reused: count(['use_saved_answer']),
+    tailored: count(['tailoring_completed']),
+  }
 }
 
 /** Small side card: icon, title, one line, one action. */
@@ -82,10 +87,14 @@ export default async function DashboardPage() {
     )
   }
   const { percent, items } = profileCompleteness(profile)
-  const [{ count: savedCount }, usage] = await Promise.all([
+  const [{ count: savedCount }, usage, { count: masterCount }, { count: tailoredCount }] = await Promise.all([
     supabase.from('saved_answers').select('id', { count: 'exact', head: true }),
     weeklyUsage(supabase),
+    // Before the v1.2 migration these tables don't exist: count stays null and the cards still render.
+    supabase.from('resumes').select('id', { count: 'exact', head: true }).eq('is_master', true),
+    supabase.from('resume_tailorings').select('id', { count: 'exact', head: true }).eq('status', 'ready'),
   ])
+  const hasMaster = (masterCount ?? 0) > 0
   const name = profile.profile?.full_name?.split(' ')[0]
   const next = items.find((i) => !i.done)
   const doneCount = items.filter((i) => i.done).length
@@ -148,10 +157,11 @@ export default async function DashboardPage() {
 
       {/* Usage */}
       <h2 className="mt-8 text-title">Last 7 days</h2>
-      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+      <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Answers generated" value={usage.generated} icon={Sparkles} hint="Drafted by ✨ on forms" />
         <Stat label="Fields filled" value={usage.filled} icon={MousePointerClick} hint="Answers you approved" />
         <Stat label="Saved answers reused" value={usage.reused} icon={RefreshCcw} hint="Instant, no generation" />
+        <Stat label="Resumes tailored" value={usage.tailored} icon={FileText} hint="Truthful copies of your master" />
       </div>
 
       {/* Profile sections + side cards */}
@@ -182,6 +192,25 @@ export default async function DashboardPage() {
         </Card>
 
         <div className="space-y-4">
+          {hasMaster ? (
+            <ActionCard
+              icon={FileText}
+              title="Tailored resumes"
+              body="Tailor your master resume to a job, using only your real experience."
+              href="/resume/tailor"
+              cta="Tailor for a job"
+              aside={<span className="text-h1 tabular-nums">{tailoredCount ?? 0}</span>}
+            />
+          ) : (
+            <ActionCard
+              icon={FileText}
+              title="Upload your master resume"
+              body="Then tailor it to any job you open, in under a minute."
+              href="/resume/upload"
+              cta="Upload master resume"
+              primary
+            />
+          )}
           <ActionCard
             icon={Wand2}
             title="Try a question"
@@ -203,7 +232,7 @@ export default async function DashboardPage() {
             body="Connect it to use ✨ on any application form."
             href="/extension"
             cta="Set up extension"
-            primary
+            primary={hasMaster}
           />
         </div>
       </div>

@@ -1,14 +1,14 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { Download, FileJson, LogOut, Palette, Upload, UserRound, X } from 'lucide-react'
+import { Download, FileJson, FileText, LogOut, Palette, Upload, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import toast from 'react-hot-toast'
 import { EnabledSites } from '@/components/enabled-sites'
 import { ThemeToggle } from '@/components/theme'
-import { Alert, Avatar, Badge, Button, Card, CardHeader, ErrorText, IconButton, Overline, PageHeader } from '@/components/ui'
+import { Alert, Avatar, Badge, Button, Card, CardHeader, Checkbox, ErrorText, IconButton, Overline, PageHeader, SegmentedControl } from '@/components/ui'
 import { errorMessage, humanize, plural } from '@/lib/format'
-import { exportProfile, planImport, runImport, type ImportPlan } from '@/lib/profile-import'
+import { exportProfile, exportResumes, planImport, runImport, type ImportPlan } from '@/lib/profile-import'
 import { createClient } from '@/lib/supabase/client'
 
 export default function SettingsPage() {
@@ -19,6 +19,8 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [includeResumeContents, setIncludeResumeContents] = useState(false)
+  const [pageLimit, setPageLimit] = useState<'1' | '2' | '3' | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -29,12 +31,29 @@ export default function SettingsPage() {
         setEmail(data.user?.email ?? null)
         setUserId(data.user?.id ?? null)
       })
+    void createClient()
+      .from('profiles')
+      .select('resume_page_limit')
+      .maybeSingle()
+      .then(({ data }) => setPageLimit(data?.resume_page_limit ? (String(data.resume_page_limit) as '1' | '2' | '3') : '2'))
   }, [])
+
+  async function onPageLimit(value: '1' | '2' | '3') {
+    if (!userId) return
+    const previous = pageLimit
+    setPageLimit(value)
+    const { error: err } = await createClient().from('profiles').update({ resume_page_limit: Number(value) }).eq('id', userId)
+    if (err) {
+      setPageLimit(previous)
+      toast.error(err.message)
+    } else toast.success('Page limit saved')
+  }
 
   async function onExport() {
     setExporting(true)
     try {
-      const data = await exportProfile(createClient())
+      const supabase = createClient()
+      const data = { ...(await exportProfile(supabase)), ...(await exportResumes(supabase, includeResumeContents)) }
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -126,9 +145,30 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader
+            icon={FileText}
+            title="Tailored resume length"
+            description="Your tailored resume keeps your own document’s layout. The preview warns you when it runs past this many pages."
+            actions={
+              <SegmentedControl
+                label="Page limit"
+                options={[
+                  { value: '1', label: '1 page' },
+                  { value: '2', label: '2 pages' },
+                  { value: '3', label: '3 pages' },
+                ]}
+                value={pageLimit}
+                onChange={onPageLimit}
+              />
+            }
+            className="flex-wrap"
+          />
+        </Card>
+
+        <Card>
+          <CardHeader
             icon={Download}
             title="Export profile"
-            description="Download your whole profile and saved answers as JSON."
+            description="Download your whole profile, saved answers, resume details and tailoring history as JSON."
             actions={
               <Button variant="secondary" icon={Download} onClick={onExport} loading={exporting}>
                 Download JSON
@@ -136,6 +176,14 @@ export default function SettingsPage() {
             }
             className="flex-wrap"
           />
+          <div className="mt-4">
+            <Checkbox
+              id="export-resume-contents"
+              label="Include the text of your parsed and tailored resumes (files are never included)"
+              checked={includeResumeContents}
+              onChange={setIncludeResumeContents}
+            />
+          </div>
         </Card>
 
         <Card>

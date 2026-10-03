@@ -16,9 +16,10 @@ export default function PrivacyPage() {
 
         <div className="mt-10 space-y-5 text-fg/85 [&_h2]:!mt-12 [&_h2]:border-t [&_h2]:border-border [&_h2]:pt-8 [&_h2]:text-h3 [&_h2]:text-fg [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_li]:marker:text-subtle [&_ul]:space-y-2">
           <p>
-            Ansly helps you answer job application questions using information
-            you put in your Ansly profile. This page explains what the web app
-            and the browser extension collect, why, and what you control.
+            Ansly helps you answer job application questions and tailor your
+            resume to a job, using information you put in your Ansly profile and
+            resume. This page explains what the web app and the browser
+            extension collect, why, and what you control.
           </p>
 
           <h2>What we store</h2>
@@ -34,11 +35,27 @@ export default function PrivacyPage() {
             </li>
             <li>Answers you choose to save as preferred answers.</li>
             <li>
+              Resumes you upload (Word .docx files), the text Ansly reads from them,
+              and every version you upload. Files are kept in private storage
+              that only your account can access; downloads use links that
+              expire after a few minutes.
+            </li>
+            <li>
+              For each tailored resume: the job title, company, location, URL
+              and description text of the job; the requirements Ansly found;
+              how they matched your experience; what changed; and the tailored
+              copy of your Word document. Your original upload is never
+              modified. Previews are rendered in your browser; Ansly never
+              stores the job page itself.
+            </li>
+            <li>
               Usage events: the type of action (for example &quot;generated an
               answer&quot; or &quot;filled a field&quot;), the question
               category, the AI provider used, and a timestamp. Usage events
               never contain question or answer text. They are used for daily
-              usage limits and to show your own activity on the dashboard.
+              usage limits, to show your own activity on the dashboard, and to
+              measure how long tailoring takes. They never contain resume or job
+              text.
             </li>
           </ul>
 
@@ -59,8 +76,17 @@ export default function PrivacyPage() {
               descriptions&quot; in the extension settings.
             </li>
             <li>
+              On job pages (only on sites you&apos;ve enabled, and only if
+              &quot;Offer resume tailoring&quot; is on), the extension checks
+              whether the page is a job posting. It reads the job title,
+              company, location and description only when you click Tailor
+              Resume, and sends only those fields and the page URL. It never
+              sends page HTML, cookies or browsing history.
+            </li>
+            <li>
               The extension never reads or stores what you type into application
-              forms, and never submits an application.
+              forms, never uploads your resume to an application, and never
+              submits an application.
             </li>
           </ul>
 
@@ -71,6 +97,16 @@ export default function PrivacyPage() {
             provider (such as Google Gemini, Groq, OpenAI, Anthropic, Mistral,
             Cerebras or Cohere). These providers process the request to return
             an answer and do not receive your account details.
+          </p>
+
+          <h2>How resumes are tailored</h2>
+          <p>
+            To read your resume and tailor it, the Ansly API sends the resume
+            text, your profile, and the job description to the same AI model
+            providers. Your master resume is never changed: each tailoring is a
+            separate copy. Ansly checks every change against your own profile
+            and resume and removes any metric, technology, title or
+            certification it can&apos;t find there.
           </p>
 
           <h2>What we don&apos;t do</h2>
@@ -88,7 +124,14 @@ export default function PrivacyPage() {
               Edit or delete any part of your profile or saved answers at any
               time in the web app.
             </li>
-            <li>Export everything as JSON from Settings.</li>
+            <li>
+              Delete any uploaded resume version or tailored resume; its file is
+              deleted with it.
+            </li>
+            <li>
+              Export everything as JSON from Settings. Resume text is only
+              included if you choose; files never are.
+            </li>
             <li>
               Turn the extension off globally or for individual sites, or
               disconnect it, from the extension popup.
@@ -102,7 +145,9 @@ export default function PrivacyPage() {
           <h2>Security</h2>
           <p>
             Data is stored in Supabase (PostgreSQL) with row-level security, so
-            each account can only access its own rows. All traffic uses HTTPS.
+            each account can only access its own rows. Resume files are stored
+            in a private bucket where each account can only reach its own
+            folder. All traffic uses HTTPS.
           </p>
 
           <h2>Contact</h2>
