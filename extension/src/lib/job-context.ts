@@ -6,40 +6,14 @@
 
 import type { JobContext } from '@ansly/types'
 import { cleanText, visibleText } from './detection/question'
+import { findJobPosting } from './job/json-ld'
 
 const DESCRIPTION_MAX = 6000
-
-interface JobPostingLd {
-  '@type'?: string | string[]
-  title?: string
-  name?: string
-  description?: string
-  hiringOrganization?: { name?: string } | string
-}
 
 function htmlToText(html: string, doc: Document): string {
   const container = doc.createElement('div')
   container.innerHTML = html
   return visibleText(container)
-}
-
-function findJobPosting(doc: Document): JobPostingLd | null {
-  const isPosting = (node: unknown): node is JobPostingLd => {
-    if (!node || typeof node !== 'object') return false
-    const type = (node as JobPostingLd)['@type']
-    return Array.isArray(type) ? type.includes('JobPosting') : type === 'JobPosting'
-  }
-  for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
-    try {
-      const data = JSON.parse(script.textContent ?? '')
-      const nodes: unknown[] = Array.isArray(data) ? data : [data, ...(data?.['@graph'] ?? [])]
-      const posting = nodes.find(isPosting)
-      if (posting) return posting
-    } catch {
-      // Malformed JSON-LD is common; ignore it.
-    }
-  }
-  return null
 }
 
 const meta = (doc: Document, name: string) =>
