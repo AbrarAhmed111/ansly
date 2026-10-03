@@ -14,8 +14,8 @@
 import type { JobPosting } from '@ansly/types'
 import { indeedJobUrl, fromIndeed, isIndeedJob } from './adapters/indeed'
 import { fromLinkedIn, isLinkedInJob, linkedInJobUrl } from './adapters/linkedin'
-import { MIN_DESCRIPTION_CHARS, fromGeneric } from './generic'
-import { fromJsonLd } from './json-ld'
+import { DESCRIPTION_SELECTORS, MIN_DESCRIPTION_CHARS, fromGeneric, jobSignals, pageJobTitle } from './generic'
+import { fromJsonLd, largestDescriptionBlock } from './json-ld'
 import type { DetectedJob } from './types'
 
 export { MIN_DESCRIPTION_CHARS }
@@ -23,8 +23,10 @@ export type { DetectedJob }
 
 const DESCRIPTION_MAX = 20_000
 
-/** Job boards with their own adapter: only the adapter (or JSON-LD) decides there, never the generic heuristic. */
+/** Job boards with their own adapter: the adapter (or JSON-LD) decides there; the generic heuristic only backs it up on job URLs. */
 const ADAPTER_SITES = /(^|\.)(linkedin\.com|indeed\.[a-z.]+)$/
+const BOARD_DESCRIPTIONS =
+  '#job-details, [class*="jobs-description" i], [class*="job-details" i], #jobDescriptionText, [id*="jobDescription" i], [class*="jobsearch-jobDescription" i], [class*="description" i]'
 
 function detect(doc: Document, url: URL, withDescription: boolean): DetectedJob | null {
   const siteJob = fromLinkedIn(doc, url, withDescription) ?? fromIndeed(doc, url, withDescription)
@@ -35,7 +37,13 @@ function detect(doc: Document, url: URL, withDescription: boolean): DetectedJob 
     if (withDescription && !ld.description && siteJob?.description) return { ...ld, description: siteJob.description }
     return ld
   }
-  if (siteJob || ADAPTER_SITES.test(url.hostname)) return siteJob
+  if (siteJob) return siteJob
+  if (ADAPTER_SITES.test(url.hostname)) {
+    // The boards change their markup often. On an actual job URL (never the feed or search list alone),
+    // fall back to the page title and the board's description containers.
+    if (!isLinkedInJob(url) && !isIndeedJob(url)) return null
+    return fromGeneric(doc, withDescription, BOARD_DESCRIPTIONS)
+  }
   return fromGeneric(doc, withDescription)
 }
 
@@ -91,4 +99,24 @@ export function jobKey(doc: Document, href = doc.defaultView?.location.href ?? '
   } catch {
     return job.title
   }
+}
+
+/** Why the tailoring offer isn't shown on this page (for the detection debug setting). */
+export function explainNoJob(doc: Document, href = doc.defaultView?.location.href ?? ''): string {
+  let url: URL
+  try {
+    url = new URL(href)
+  } catch {
+    return 'not a web page'
+  }
+  if (ADAPTER_SITES.test(url.hostname) && !isLinkedInJob(url) && !isIndeedJob(url)) {
+    return 'on LinkedIn/Indeed, open a single job (its own page, or one selected in the search list)'
+  }
+  const { title } = pageJobTitle(doc)
+  if (!title) return 'no job title found (no usable <h1> or page title)'
+  const description = largestDescriptionBlock(doc, DESCRIPTION_SELECTORS)
+  if (description.length < MIN_DESCRIPTION_CHARS) {
+    return `no job description block found (largest candidate: ${description.length} characters, needs ${MIN_DESCRIPTION_CHARS})`
+  }
+  return `"${title}" and its ${description.length}-character description don't read like a job posting (${jobSignals(description)} posting phrases)`
 }

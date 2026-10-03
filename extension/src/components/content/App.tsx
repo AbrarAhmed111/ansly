@@ -6,7 +6,7 @@ import { watchFields, type TrackedField } from '@/lib/detection/scan'
 import { diagnostics } from '@/lib/diagnostics'
 import { isOnScreen, sparklePosition, type Box } from '@/lib/geometry'
 import { extractJobContext, isCoverLetter } from '@/lib/job-context'
-import { extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
+import { explainNoJob, extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
 import { send, type TabMessage } from '@/lib/messages'
 import { firstTailorOffer, type Settings } from '@/lib/settings'
 import { Panel, type Row } from './Panel'
@@ -21,7 +21,7 @@ const JOB_CHECK_ATTEMPTS = 8
  * The job posting on this page, if any (title and company only, read locally).
  * Re-checks when the URL or title changes, because job boards are single-page apps.
  */
-function useJobPage(active: boolean): { key: string; job: DetectedJob } | null {
+function useJobPage(active: boolean, debug = false): { key: string; job: DetectedJob } | null {
   const [page, setPage] = useState<{ key: string; job: DetectedJob } | null>(null)
   useEffect(() => {
     if (!active) {
@@ -41,12 +41,15 @@ function useJobPage(active: boolean): { key: string; job: DetectedJob } | null {
       const job = peekJob(document)
       const key = job ? jobKey(document) : null
       if (job && key) attempts = JOB_CHECK_ATTEMPTS
+      else if (debug && attempts === JOB_CHECK_ATTEMPTS) {
+        console.info(`[Ansly] No resume-tailoring offer on this page: ${explainNoJob(document)}`)
+      }
       setPage((prev) => (prev?.key === key ? prev : job && key ? { key, job } : null))
     }
     check()
     const timer = setInterval(check, JOB_CHECK_MS)
     return () => clearInterval(timer)
-  }, [active])
+  }, [active, debug])
   return page
 }
 
@@ -142,7 +145,7 @@ export function App({ host, initialSettings, subscribe }: {
   const allRef = useRef(all)
   allRef.current = all
   const lastContextTarget = useRef<Element | null>(null)
-  const jobPage = useJobPage(enabled && settings.offerTailoring)
+  const jobPage = useJobPage(enabled && settings.offerTailoring, settings.detectionDebug)
   const [dismissedJobs, setDismissedJobs] = useState<Set<string>>(new Set())
   const trackedJobs = useRef(new Set<string>())
   // Per job: open the offer card by itself (first visit, full description on the page) or start as the pill.
