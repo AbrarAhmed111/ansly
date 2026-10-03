@@ -7,16 +7,19 @@ and extracts its requirements.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from src.app.api.deps import get_gateway, get_rest
+from src.app.core import llm_usage
 from src.app.core.auth import AuthUser, get_current_user
 from src.app.core.concurrency import gather_all
 from src.app.core.config import get_settings
 from src.app.core.rate_limit import check_rate_limit
+from src.app.core.token_budget import job_key
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.gateway import GatewayUnavailableError, LLMGateway
 from src.app.resume.analysis.analyze import analyze_job, description_too_short, job_content_hash
+from src.app.resume.llm import Usage
 from src.app.schemas.job import AnalyzeJobRequest, AnalyzeJobResponse, JobAnalysis
 
 logger = logging.getLogger("JobsAPI")
@@ -24,6 +27,27 @@ logger = logging.getLogger("JobsAPI")
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 TOO_SHORT = "There's not enough job information to tailor your resume."
+
+
+async def _record_analysis(rest: SupabaseRest, job_context_id: str, job, usage: Usage,
+                           background: BackgroundTasks) -> None:
+    """The analysis's tokens, for tokens per application (after the response when possible). Analytics never fail
+    the request."""
+    key = job_key(job.url, job.company, job.title)
+    calls = llm_usage.drain()
+
+    async def write() -> None:
+        try:
+            await rest.insert("usage_events", {
+                "kind": "job_analyzed", "tokens": usage.tokens, "llm_calls": usage.calls,
+                "provider": ",".join(usage.providers)[:100] or None, "job_context_id": job_context_id,
+                "job_key": key,
+            })
+        except SupabaseError as e:
+            logger.warning(f"Could not record usage event job_analyzed: {e}")
+        await llm_usage.write_calls(rest, calls, key, job_context_id)
+
+    await llm_usage.defer(background, write)
 
 
 async def _analyzed_before(rest: SupabaseRest, content_hash: str):
@@ -42,6 +66,7 @@ async def _analyzed_before(rest: SupabaseRest, content_hash: str):
              summary="Store a job posting and extract its requirements")
 async def analyze(
     request: AnalyzeJobRequest,
+    background: BackgroundTasks,
     user: AuthUser = Depends(get_current_user),
     rest: SupabaseRest = Depends(get_rest),
     gateway: LLMGateway = Depends(get_gateway),
@@ -64,8 +89,10 @@ async def analyze(
         if earlier is not False:
             values["content_hash"] = content_hash
         row = await rest.insert("job_contexts", values)
-        analysis = await analyze_job(gateway, job)
+        usage = Usage()
+        analysis = await analyze_job(gateway, job, usage)
         await rest.update("job_contexts", {"id": f"eq.{row['id']}"}, {"analysis": analysis.model_dump(mode="json", by_alias=True)})
+        await _record_analysis(rest, row["id"], job, usage, background)
     except GatewayUnavailableError as e:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                             "All AI providers are busy right now. Please try again in a minute.") from e

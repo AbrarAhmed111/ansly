@@ -9,6 +9,8 @@ import hashlib
 import re
 from typing import Any, Dict, List, Optional
 
+from src.app.answers.job_digest import strip_boilerplate
+from src.app.core.token_budget import JOB_ANALYSIS
 from src.app.gateway import LLMGateway
 from src.app.resume.llm import Usage, call_json
 from src.app.schemas.job import JobAnalysis, JobPosting, JobRequirement
@@ -87,7 +89,7 @@ def job_content_hash(job: JobPosting) -> str:
 
 
 async def analyze_job(gateway: LLMGateway, job: JobPosting, usage: Optional[Usage] = None) -> JobAnalysis:
-    return await call_json(gateway, SYSTEM_PROMPT, _message(job), lambda data: to_analysis(data, job), usage=usage,
+    return await call_json(gateway, SYSTEM_PROMPT, _message(job), lambda data: to_analysis(data, job), JOB_ANALYSIS, usage=usage,
                            max_tokens=3000, temperature=0.0)
 
 
@@ -99,5 +101,6 @@ def _message(job: JobPosting) -> str:
         f"EMPLOYMENT TYPE: {job.employment_type}" if job.employment_type else "",
         "",
         "DESCRIPTION:",
-        job.description.strip()[:MAX_DESCRIPTION_CHARS],
+        # Benefits, compensation, EEO and interview-process sections state no requirements.
+        (strip_boilerplate(job.description).strip() or job.description.strip())[:MAX_DESCRIPTION_CHARS],
     ])

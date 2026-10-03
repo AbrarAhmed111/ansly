@@ -20,10 +20,13 @@ class Usage:
     tokens: int = 0
     calls: int = 0
     providers: List[str] = field(default_factory=list)
+    by_stage: Dict[str, int] = field(default_factory=dict)
 
-    def add(self, usage: Dict[str, int], provider: str) -> None:
+    def add(self, usage: Dict[str, int], provider: str, stage: str = "unknown") -> None:
+        tokens = int(usage.get("prompt_tokens", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
         self.calls += 1
-        self.tokens += int(usage.get("prompt_tokens", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
+        self.tokens += tokens
+        self.by_stage[stage] = self.by_stage.get(stage, 0) + tokens
         if provider not in self.providers:
             self.providers.append(provider)
 
@@ -33,18 +36,21 @@ async def call_json(
     system: str,
     user: str,
     parse: Callable[[Dict[str, Any]], T],
+    stage: str,
     usage: Optional[Usage] = None,
     max_tokens: int = 4096,
     temperature: float = 0.2,
 ) -> T:
-    """Runs one completion and returns `parse(json_object)`. `parse` raising ValueError tries the next provider."""
+    """Runs one completion and returns `parse(json_object)`. `parse` raising ValueError tries the next provider.
+    `stage` names the call for token logs and budgets (core/token_budget.py)."""
     result = await gateway.generate(
         system,
         [{"role": "user", "content": user}],
         temperature=temperature,
         max_tokens=max_tokens,
         validate=lambda text: parse(_extract_json(text)),
+        stage=stage,
     )
     if usage is not None:
-        usage.add(result.usage, result.provider)
+        usage.add(result.usage, result.provider, stage)
     return result.value

@@ -8,19 +8,23 @@ semantic requirements ("built SaaS platforms", "led small teams"), and must
 cite evidence ids that exist; an uncited claim is rejected.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from src.app.answers.profile_context import canonicalize
+from src.app.core.token_budget import MATCHING
 from src.app.gateway import LLMGateway
 from src.app.resume.llm import Usage, call_json
 from src.app.schemas.job import JobAnalysis, JobRequirement
 from src.app.schemas.matching import MatchSummary, RequirementMatch
 
 from .evidence import EvidenceCorpus, is_work_evidence
+from .select import line, select_evidence
 
 DETERMINISTIC_TYPES = {"skill", "certification"}
-EVIDENCE_TEXT_CHARS = 280
-MAX_EVIDENCE_IN_PROMPT = 150
+# Rendered evidence lines per matching prompt (~1,500 tokens).
+EVIDENCE_BUDGET_CHARS = 6000
+YEARS = re.compile(r"\byears?\b", re.IGNORECASE)
 
 SYSTEM_PROMPT = """You check a candidate's evidence against job requirements for a resume-tailoring tool. Be strict: a requirement is only supported by evidence that actually shows it.
 
@@ -48,13 +52,13 @@ def _deterministic(req: JobRequirement, priority: str, corpus: EvidenceCorpus) -
                             evidence_ids=(work or ids)[:6], method="deterministic", note=note)
 
 
-def _evidence_prompt(corpus: EvidenceCorpus) -> str:
-    lines = []
-    for e in corpus.items[:MAX_EVIDENCE_IN_PROMPT]:
-        text = e.text[:EVIDENCE_TEXT_CHARS]
-        skills = f" (technologies: {', '.join(e.skills)})" if e.skills else ""
-        lines.append(f"[{e.id}] {e.label}: {text}{skills}")
-    return "\n".join(lines)
+def _evidence_prompt(corpus: EvidenceCorpus, pending: List[tuple]) -> str:
+    """The evidence these requirements could rest on (matching/select.py), not the whole corpus. A years
+    requirement gets every dated role, since only the dates together can show it."""
+    must = [e.id for e in corpus.items if e.source == "experience"] \
+        if any(YEARS.search(req.requirement) for req, _ in pending) else []
+    chosen = select_evidence(corpus, [req.requirement for req, _ in pending], EVIDENCE_BUDGET_CHARS, must=must)
+    return "\n".join(line(e) for e in chosen)
 
 
 def parse_semantic(data: Dict[str, Any], pending: List[tuple], corpus: EvidenceCorpus) -> List[RequirementMatch]:
@@ -92,10 +96,10 @@ async def match_requirements(
             *[f"[{req.id}] ({req.type}, {priority}) {req.requirement}" for req, priority in pending],
             "",
             "EVIDENCE:",
-            _evidence_prompt(corpus),
+            _evidence_prompt(corpus, pending),
         ])
         for match in await call_json(gateway, SYSTEM_PROMPT, message,
-                                     lambda data: parse_semantic(data, pending, corpus), usage=usage,
+                                     lambda data: parse_semantic(data, pending, corpus), MATCHING, usage=usage,
                                      max_tokens=3000, temperature=0.0):
             results[match.requirement_id] = match
     for req, priority in pending:

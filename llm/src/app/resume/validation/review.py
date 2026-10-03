@@ -10,6 +10,7 @@ skipped with a warning rather than failing the tailoring.
 import logging
 from typing import Any, Dict, List, Optional
 
+from src.app.core.token_budget import VALIDATION
 from src.app.gateway import GatewayUnavailableError, LLMGateway
 from src.app.resume.llm import Usage, call_json
 from src.app.resume.matching.evidence import EvidenceCorpus
@@ -46,7 +47,7 @@ async def review_changes(gateway: LLMGateway, changes: List[TextChange], corpus:
     ids = [c.key for c in changes]
     try:
         flags = await call_json(gateway, SYSTEM_PROMPT, "\n\n---\n\n".join(blocks), lambda d: _parse(d, ids),
-                                usage=usage, max_tokens=1500, temperature=0.0)
+                                VALIDATION, usage=usage, max_tokens=1500, temperature=0.0)
     except GatewayUnavailableError as e:
         logger.warning(f"Hallucination review skipped: {e}")
         return [ValidationIssue(check="hallucination_review", outcome="warning",

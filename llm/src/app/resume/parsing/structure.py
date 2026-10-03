@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from pydantic import ValidationError
 
+from src.app.core.token_budget import RESUME_PARSE
 from src.app.gateway import LLMGateway
 from src.app.resume.llm import Usage, call_json
 from src.app.schemas.resume import StructuredResume
@@ -228,6 +229,6 @@ async def parse_resume(gateway: LLMGateway, text: str, usage: Optional[Usage] = 
     )
     resume = await call_json(
         gateway, SYSTEM_PROMPT, f"RESUME TEXT (section markers added by a parser):\n\n{marked}",
-        lambda data: to_structured(data, hints), usage=usage, max_tokens=8000, temperature=0.0,
+        lambda data: to_structured(data, hints), RESUME_PARSE, usage=usage, max_tokens=8000, temperature=0.0,
     )
     return assess(text, resume)

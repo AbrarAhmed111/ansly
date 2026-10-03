@@ -32,6 +32,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from src.app.core import llm_usage
+from src.app.core.token_budget import job_key
+from src.app.core.ttl_cache import TTLCache
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
 from src.app.gateway import GatewayUnavailableError, LLMGateway
@@ -129,6 +132,10 @@ def corpus_from(match_analysis: Dict[str, Any]) -> EvidenceCorpus:
     return EvidenceCorpus(items=stored.evidence, declined=set(stored.declined_skills))
 
 
+# job_context_id -> job_key ("" when the job has nothing to key it by).
+_job_keys: TTLCache[str] = TTLCache(3600, max_entries=2000)
+
+
 @dataclass
 class StepContext:
     rest: SupabaseRest
@@ -162,11 +169,38 @@ class TailoringPipeline:
                                     {**values, "step_started_at": None})
         return updated[0] if updated else None
 
+    async def _job_key(self, rest: SupabaseRest, job_context_id: Optional[str]) -> Optional[str]:
+        """The job's key (token_budget.job_key), read once per job and remembered."""
+        if not job_context_id:
+            return None
+        key = _job_keys.get((job_context_id,))
+        if key is None:
+            try:
+                jobs = await rest.select("job_contexts", {"id": f"eq.{job_context_id}", "select": "url,company,title",
+                                                          "limit": "1"})
+            except SupabaseError:
+                return None
+            if not jobs:
+                return None
+            key = job_key(jobs[0].get("url"), jobs[0].get("company"), jobs[0].get("title")) or ""
+            _job_keys.set((job_context_id,), key)
+        return key or None
+
+    async def _record_calls(self, rest: SupabaseRest, row: Dict[str, Any], calls: List[llm_usage.LLMCall]) -> None:
+        if calls:
+            job_context_id = row.get("job_context_id")
+            await llm_usage.write_calls(rest, calls, await self._job_key(rest, job_context_id), job_context_id)
+
     async def _event(self, rest: SupabaseRest, kind: str, row: Dict[str, Any], usage: Optional[Usage] = None) -> None:
-        event: Dict[str, Any] = {"kind": kind, "duration_ms": int(age_seconds(row.get("created_at")) * 1000)}
+        """A usage event for the run: tokens and calls are the whole run's (summed on the row step by step)."""
+        event: Dict[str, Any] = {"kind": kind, "duration_ms": int(age_seconds(row.get("created_at")) * 1000),
+                                 "tokens": int(row.get("tokens") or 0), "llm_calls": int(row.get("llm_calls") or 0),
+                                 "job_context_id": row.get("job_context_id")}
         if usage is not None:
-            event["tokens"] = usage.tokens
             event["provider"] = ",".join(usage.providers)[:100] or None
+        key = await self._job_key(rest, row.get("job_context_id"))
+        if key:
+            event["job_key"] = key
         try:
             await rest.insert("usage_events", event)
         except SupabaseError as e:
@@ -344,18 +378,29 @@ class TailoringPipeline:
         if claimed is None:
             return None
         started = time.monotonic()
-        try:
-            values = await getattr(self, f"_{status}")(ctx, claimed) if status != "queued" else {}
-        except PipelineError as e:
-            return await self.fail(ctx.rest, claimed, str(e))
-        except GatewayUnavailableError as e:
-            logger.error(f"Tailoring {row['id']} step {status}: all providers failed: {e}")
-            return await self.fail(ctx.rest, claimed)
-        except Exception as e:  # noqa: BLE001 — any failure ends the run safely; the master is never touched.
-            logger.exception(f"Tailoring {row['id']} step {status} failed: {type(e).__name__}: {e}")
-            return await self.fail(ctx.rest, claimed)
+        tokens_before, calls_before = ctx.usage.tokens, ctx.usage.calls
+        # The step's provider calls, written with the job they were for (failed steps' calls were billed too).
+        with llm_usage.collect() as calls:
+            try:
+                values = await getattr(self, f"_{status}")(ctx, claimed) if status != "queued" else {}
+            except PipelineError as e:
+                error: Optional[str] = str(e)
+            except GatewayUnavailableError as e:
+                logger.error(f"Tailoring {row['id']} step {status}: all providers failed: {e}")
+                error = FAILED_MESSAGE
+            except Exception as e:  # noqa: BLE001 — any failure ends the run safely; the master is never touched.
+                logger.exception(f"Tailoring {row['id']} step {status} failed: {type(e).__name__}: {e}")
+                error = FAILED_MESSAGE
+            else:
+                error = None
+        await self._record_calls(ctx.rest, claimed, calls)
+        if error is not None:
+            return await self.fail(ctx.rest, claimed, error)
         logger.info(f"Tailoring {row['id']}: {status} done in {int((time.monotonic() - started) * 1000)}ms")
         next_status = NEXT[status]
+        if ctx.usage.calls > calls_before:
+            values["tokens"] = int(claimed.get("tokens") or 0) + ctx.usage.tokens - tokens_before
+            values["llm_calls"] = int(claimed.get("llm_calls") or 0) + ctx.usage.calls - calls_before
         saved = await self._save(ctx.rest, claimed, {**values, "status": next_status})
         if saved is not None and next_status == "ready":
             await self._event(ctx.rest, "tailoring_completed", saved, ctx.usage)
