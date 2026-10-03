@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 
+from src.app.core import metrics
 from src.app.core.config import get_settings
 
 from .adapters import Completion, complete_anthropic, complete_openai_compatible
@@ -153,6 +154,8 @@ class LLMGateway:
                     )
 
                 usage = completion.usage
+                metrics.record_llm(deployment.default_model, duration_ms,
+                                   usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
                 logger.info(
                     f"✅ {deployment.name} succeeded in {duration_ms}ms | "
                     f"Tokens: {usage.get('prompt_tokens', 0)} in, {usage.get('completion_tokens', 0)} out"

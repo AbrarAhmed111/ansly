@@ -3,22 +3,51 @@ FastAPI Application Entrypoint.
 Initializes FastAPI, configures CORS, and mounts API routes.
 """
 
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.app.api.router import api_router
 from src.app.api.routes.health import router as health_router
+from src.app.core import metrics
 from src.app.core.config import get_settings
+from src.app.core.http import close_shared_client
 from src.app.core.logging import setup_logging
 
 settings = get_settings()
 setup_logging(settings.LOG_LEVEL)
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    await close_shared_client()
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
     description="Ansly answer engine: grounded answers to job application questions from the user's profile.",
+    lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def record_request_metrics(request: Request, call_next):
+    """Logs one timing line per API request (see core/metrics.py)."""
+    if not settings.PERF_LOG or not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    request_metrics = metrics.start_request()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        route = request.scope.get("route")
+        path = getattr(route, "path", request.url.path)
+        metrics.logger.info(request_metrics.summary(f"{request.method} {path}", status))
 
 # -----------------------------------------------------------------------------
 # CORS Middleware

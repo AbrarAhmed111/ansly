@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "Ansly LLM"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
+    # One structured timing line per API request (DB/LLM calls, tokens, cache hits; never user content).
+    PERF_LOG: bool = True
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 

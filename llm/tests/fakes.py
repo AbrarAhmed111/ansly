@@ -98,6 +98,10 @@ class FakeRest:
                 return False
             if value.startswith("neq.") and str(row.get(key)).lower() == value[4:].lower():
                 return False
+            if value == "not.is.null" and row.get(key) is None:
+                return False
+            if value == "is.null" and row.get(key) is not None:
+                return False
             if value.startswith("in.("):
                 options = value[4:-1].split(",")
                 if str(row.get(key)) not in options:
@@ -121,6 +125,10 @@ class FakeRest:
                   **TABLE_DEFAULTS.get(table, {}), **row}
         self.tables[table].append(stored)
         return copy.deepcopy(stored)
+
+    async def insert_many(self, table: str, rows: List[Dict[str, Any]]) -> None:
+        for row in rows:
+            await self.insert(table, row)
 
     async def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> List[Dict[str, Any]]:
         updated = []

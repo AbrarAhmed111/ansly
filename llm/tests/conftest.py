@@ -17,3 +17,14 @@ if STARTER_ROOT not in sys.path:
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def clear_caches():
+    """In-process caches are keyed by user id, and every test uses the same fake user."""
+    from src.app.answers import engine, profile_context, saved
+
+    profile_context._profile_cache.clear()
+    saved._cache.clear()
+    engine._answer_cache.clear()
+    yield
