@@ -10,6 +10,11 @@ import { findJobPosting } from './job/json-ld'
 
 const DESCRIPTION_MAX = 6000
 
+/** Cover/motivation letters are written for a job, so they always get its description (same rule as the API). */
+const COVER_LETTER = /\bcover(?:ing)?\s*letter\b|\bmotivation(?:al)? letter\b|\bletter of motivation\b/i
+
+export const isCoverLetter = (question: string | null | undefined) => COVER_LETTER.test(question ?? '')
+
 function htmlToText(html: string, doc: Document): string {
   const container = doc.createElement('div')
   container.innerHTML = html

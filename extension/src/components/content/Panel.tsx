@@ -54,7 +54,7 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
   ignoredCount: number
   defaults: { length: AnswerLength; tone: AnswerTone; reviewBeforeFill: boolean; overwriteFilled: boolean }
   useJobDescription: boolean
-  getJobContext: () => JobContext
+  getJobContext: (questions?: string[]) => JobContext
   onClose: () => void
   onRowsChange: (rows: Record<string, Row>) => void
   /** Opens the normal popover for a field (edit / regenerate one answer). */
@@ -97,7 +97,7 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
 
   async function generate(targets: TrackedField[], review: boolean, facts?: Record<string, string[] | null>) {
     targets.forEach((f) => update(f.id, { status: 'working', note: undefined }))
-    const job = getJobContext()
+    const job = getJobContext(targets.map((f) => f.question.text))
     const result = await send('generateBatch', {
       job_context: job,
       style: { length, tone },

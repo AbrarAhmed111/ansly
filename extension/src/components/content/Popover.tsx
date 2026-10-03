@@ -140,7 +140,7 @@ export function Popover({
   onFilled,
 }: {
   target: PopoverTarget
-  getJobContext: () => JobContext
+  getJobContext: (questions?: string[]) => JobContext
   /** From popup settings; the user can change it per field. */
   defaultStyle?: AnswerStyle
   /** Off -> cover letters show a hint to turn it on. */
@@ -161,7 +161,7 @@ export function Popover({
   const request = useCallback(
     (s: AnswerStyle = style, facts: string[] | null = null) => ({
       question: target.question,
-      job_context: getJobContext(),
+      job_context: getJobContext([target.question]),
       field: target.field,
       style: s,
       additional_facts: facts,

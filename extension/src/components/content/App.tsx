@@ -5,7 +5,7 @@ import { extractQuestion } from '@/lib/detection/question'
 import { watchFields, type TrackedField } from '@/lib/detection/scan'
 import { diagnostics } from '@/lib/diagnostics'
 import { isOnScreen, sparklePosition, type Box } from '@/lib/geometry'
-import { extractJobContext } from '@/lib/job-context'
+import { extractJobContext, isCoverLetter } from '@/lib/job-context'
 import { extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
 import { send, type TabMessage } from '@/lib/messages'
 import type { Settings } from '@/lib/settings'
@@ -188,8 +188,12 @@ export function App({ host, initialSettings, subscribe }: {
     return () => document.removeEventListener('contextmenu', onContext, true)
   }, [])
 
+  /** The job description goes along when the user opted in, and always for cover letters (they're written for the job). */
   const getJobContext = useCallback(
-    (): JobContext => extractJobContext(document, { includeDescription: settingsRef.current.useJobDescription }),
+    (questions: string[] = []): JobContext =>
+      extractJobContext(document, {
+        includeDescription: settingsRef.current.useJobDescription || questions.some(isCoverLetter),
+      }),
     [],
   )
 
