@@ -1,7 +1,7 @@
 """
 Prompt Construction.
 The system prompt carries the grounding rules; the user message carries the
-question, optional job context, and the retrieved profile.
+question, optional job context, and the evidence retrieved for the question.
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -9,35 +9,32 @@ from typing import Dict, List, Optional, Tuple
 from src.app.schemas.answers import AnswerStyle, FieldContext, JobContext
 
 from .classifier import QuestionAnalysis
+from .job_digest import digest
 from .profile_context import ProfileContext
 
-SYSTEM_PROMPT = """You write answers to job application questions on behalf of a candidate. The candidate will review and edit your answer before submitting it to a real employer, so truthfulness matters more than polish.
+# Shared rules, kept short: every answer call sends them. Stable text first, so providers can cache the prefix.
+_RULES = """You write job-application answers as the candidate, in first person. The candidate reviews them before a real employer sees them, so truth beats polish.
 
-Grounding rules:
-- Use only facts stated in the CANDIDATE PROFILE. Do not add employers, projects, skills, tools, metrics, dates, degrees, titles, or years of experience that are not there, and do not imply experience with anything the profile does not mention.
-- JOB CONTEXT describes the employer and the role, not the candidate. You may use it to explain why the candidate's real experience is relevant, but never present a job requirement as something the candidate has done.
-- If the profile does not contain enough to answer the question truthfully, set status to "insufficient_information", leave answer empty, and use missingInformation to tell the candidate directly, in one sentence addressed to them as "you" ("Your profile doesn't ..."), what to add to their profile. Do this instead of writing a vague, hedged, or partial answer.
-- For yes/no questions, answer "yes" only when the profile supports it.
+Grounding (always wins over STYLE):
+- Candidate facts come only from CANDIDATE EVIDENCE. Never add or imply employers, projects, skills, tools, metrics, dates, degrees, titles or years it doesn't state.
+- JOB CONTEXT is about the employer and role, not the candidate: use it to show relevance, never as something the candidate did.
+- If the evidence can't support a truthful answer, set status "insufficient_information", leave answer empty, put in missingInformation one sentence to the candidate ("Your profile doesn't ...") saying what to add, and in missingQuestion one short question whose answer would let you answer. Never write a vague or hedged answer instead.
+- Yes/no: "yes" only when the evidence supports it.
+- STYLE changes wording, never claims. Never add a fact to sound more enthusiastic, confident or detailed; if the evidence can't fill the length, write less. A character limit is hard.
 
-The grounding rules above always win over the STYLE section of the message: tone and length change how the answer is worded, never what it claims. Never add a fact to sound more enthusiastic, confident or detailed; if the profile can't fill the target length truthfully, write less.
+Writing: answer the question directly; natural and specific, no clichés or sales talk. Plain prose, paragraphs split by a blank line; no markdown, headings, bullets (unless asked) or placeholders. No company or role given: say "this role".
+"""
 
-Writing style:
-- First person, as the candidate. Natural and specific, not salesy; no clichés like "I am excited to apply" or "I am a passionate".
-- Follow the length target and tone in STYLE. Any character limit given is a hard limit and beats the length target.
-- Plain prose, in paragraphs separated by a blank line when there is more than one. No headings, no markdown, no bullet points unless the question asks for a list, and no placeholders such as [Company].
-- If no company or role is given, don't invent one; refer to "this role" or "your team" instead.
+_FIELDS = ('"status": "answered" | "insufficient_information", "answer": string, "confidence": "high" | "medium" | "low" '
+           '(how directly the evidence supports it), "usedSources": [evidence ids, e.g. "E1", "F2", "S"], '
+           '"missingInformation": string | null, "missingQuestion": string | null')
 
-Return only a JSON object with exactly these keys:
-{"status": "answered" | "insufficient_information", "answer": string, "confidence": "high" | "medium" | "low", "usedSources": [source ids from the profile, e.g. "E1", "P2", "S"], "missingInformation": string | null, "missingQuestion": string | null}
-confidence reflects how directly the profile supports the answer. When status is "insufficient_information", missingQuestion is one short question to ask the candidate whose answer would let you answer truthfully (e.g. "Describe a time you led a team: what was the situation and what did you do?"); otherwise null."""
+SYSTEM_PROMPT = _RULES + "\nReturn only a JSON object: {" + _FIELDS + "}"
 
-BATCH_SYSTEM_PROMPT = SYSTEM_PROMPT.split("Return only a JSON object")[0] + """Several questions from the same application form come at once, each with its own id, GUIDANCE and STYLE, and one shared CANDIDATE PROFILE.
-- Answer each question on its own terms.
-- Do not reuse the same example or project in more than one answer unless the question asks for it; the answers will be read together.
+BATCH_SYSTEM_PROMPT = _RULES + """
+Several questions from one form come at once, each with an id, GUIDANCE and STYLE, sharing one CANDIDATE EVIDENCE. Each question's EVIDENCE line lists the records retrieved for it: ground its answer in those first, and use another record only if it directly supports that answer. Answer each on its own terms. Do not reuse the same example or project in more than one answer unless asked; they are read together.
 
-Return only a JSON object: {"answers": [one object per question, in the same order]} where each object has exactly these keys:
-{"id": the question's id, "status": "answered" | "insufficient_information", "answer": string, "confidence": "high" | "medium" | "low", "usedSources": [source ids], "missingInformation": string | null, "missingQuestion": string | null}
-confidence reflects how directly the profile supports the answer. missingQuestion follows the same rule as for a single question: one short question to ask the candidate when the profile isn't enough, otherwise null."""
+Return only a JSON object: {"answers": [one object per question, in order, each {"id": the question's id, """ + _FIELDS + "}]}"
 
 INTENT_HINTS: Dict[str, str] = {
     "motivation_role": "Connect specific parts of the candidate's real experience to what this role involves.",
@@ -98,13 +95,20 @@ TONE_HINTS: Dict[str, str] = {
     "technical": "technical: precise about technologies, systems and trade-offs that the profile mentions",
 }
 
-# How much of the job description each question type gets (share of JOB_DESCRIPTION_MAX_CHARS). Logistics are
-# answered from the profile alone; a skill check or a degree needs the role's gist, not the whole posting.
-JOB_DESCRIPTION_SHARE: Dict[str, float] = {"logistics": 0.0, "skill_check": 0.3, "education": 0.3, "achievement": 0.5}
+# Characters of the job description each question type gets (capped by JOB_DESCRIPTION_MAX_CHARS). The
+# description is trimmed to the lines most relevant to the question (answers/job_digest.py), so this is a budget
+# for relevant text, not a cut-off. Logistics are answered from the profile alone; a skill check or a degree needs
+# the role's gist; motivation and cover letters need the company and the role's main needs.
+JOB_DESCRIPTION_CHARS: Dict[str, int] = {
+    "logistics": 0, "skill_check": 600, "education": 400, "achievement": 800, "behavioral": 600,
+    "strengths": 1000, "project": 1000, "experience": 1000, "general": 1000, "about_me": 1200,
+    "motivation": 1600, "cover_letter": 2400,
+}
+INTRO_CATEGORIES = {"motivation", "cover_letter", "about_me"}
 
 
 def job_description_budget(analyses: List[QuestionAnalysis], max_chars: int) -> int:
-    return int(max_chars * max((JOB_DESCRIPTION_SHARE.get(a.category, 1.0) for a in analyses), default=1.0))
+    return min(max_chars, max((JOB_DESCRIPTION_CHARS.get(a.category, 1000) for a in analyses), default=1000))
 
 
 # Rough characters per word, used to fit a word target into a character limit.
@@ -133,7 +137,7 @@ def _field_parts(analysis: QuestionAnalysis, field: Optional[FieldContext], styl
     if field and field.label and field.label.strip() and field.label.strip() != analysis.question:
         parts.append(f"FIELD LABEL:\n{field.label.strip()}")
 
-    guidance = [f"Question type: {analysis.category} / {analysis.intent}."]
+    guidance: List[str] = []
     if analysis.intent in INTENT_HINTS:
         guidance.append(INTENT_HINTS[analysis.intent])
     if analysis.target_skills:
@@ -159,7 +163,8 @@ def _field_parts(analysis: QuestionAnalysis, field: Optional[FieldContext], styl
         )
     elif field and field.single_line:
         guidance.append("This is a single-line field: answer in one or two short sentences.")
-    parts.append("GUIDANCE:\n" + " ".join(guidance))
+    if guidance:
+        parts.append("GUIDANCE:\n" + " ".join(guidance))
 
     if not (field and (field.is_choice or field.kind == "number")):
         max_length = field.max_length if field else None
@@ -170,7 +175,8 @@ def _field_parts(analysis: QuestionAnalysis, field: Optional[FieldContext], styl
     return parts
 
 
-def _job_part(job: Optional[JobContext], job_description_max_chars: int) -> Optional[str]:
+def _job_part(job: Optional[JobContext], analyses: List[QuestionAnalysis], max_chars: int) -> Optional[str]:
+    """Company, role and the parts of the description that matter for these questions."""
     if not (job and (job.company or job.role or job.description)):
         return None
     lines = []
@@ -178,8 +184,11 @@ def _job_part(job: Optional[JobContext], job_description_max_chars: int) -> Opti
         lines.append(f"Company: {job.company}")
     if job.role:
         lines.append(f"Role: {job.role}")
-    if job.description:
-        lines.append("Job description:\n" + job.description.strip()[:job_description_max_chars])
+    query = " ".join([a.question for a in analyses] + [s for a in analyses for s in a.target_skills])
+    description = digest(job.description, job_description_budget(analyses, max_chars), query,
+                         prefer_intro=any(a.category in INTRO_CATEGORIES for a in analyses))
+    if description:
+        lines.append("Job description (most relevant parts):\n" + description)
     return "JOB CONTEXT (about the employer, not the candidate):\n" + "\n".join(lines)
 
 
@@ -192,13 +201,16 @@ def build_batch_message(
 ) -> str:
     """One message for several questions: per-question blocks, then the shared job context and profile."""
     parts: List[str] = []
-    for item_id, analysis, field in items:
-        block = [f"QUESTION id={item_id}:\n{analysis.question}"] + _field_parts(analysis, field, style)
-        parts.append("\n".join(block))
-    job_part = _job_part(job, job_description_budget([analysis for _, analysis, _ in items], job_description_max_chars))
+    for i, (item_id, analysis, field) in enumerate(items):
+        block = [f"QUESTION id={item_id}:\n{analysis.question}"]
+        refs = ctx.question_refs[i] if i < len(ctx.question_refs) else []
+        if refs:
+            block.append("EVIDENCE: " + ", ".join(refs))
+        parts.append("\n".join(block + _field_parts(analysis, field, style)))
+    job_part = _job_part(job, [analysis for _, analysis, _ in items], job_description_max_chars)
     if job_part:
         parts.append(job_part)
-    parts.append("CANDIDATE PROFILE:\n" + (ctx.text or "(empty)"))
+    parts.append("CANDIDATE EVIDENCE:\n" + (ctx.text or "(empty)"))
     instruction = (style.instruction or "").strip() if style else ""
     if instruction:
         parts.append(f"CANDIDATE'S INSTRUCTION (applies to every answer, unless it conflicts with the grounding rules):\n{instruction}")
@@ -217,11 +229,11 @@ def build_user_message(
 ) -> str:
     parts: List[str] = [f"QUESTION:\n{analysis.question}"]
     parts += _field_parts(analysis, field, style)
-    job_part = _job_part(job, job_description_budget([analysis], job_description_max_chars))
+    job_part = _job_part(job, [analysis], job_description_max_chars)
     if job_part:
         parts.append(job_part)
 
-    parts.append("CANDIDATE PROFILE:\n" + (ctx.text or "(empty)"))
+    parts.append("CANDIDATE EVIDENCE:\n" + (ctx.text or "(empty)"))
 
     # The style's instruction (popover / panel) and regenerate's own instruction are the same thing.
     instruction = (instruction or "").strip() or ((style.instruction or "").strip() if style else "")

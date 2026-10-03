@@ -32,7 +32,7 @@ def client(rest):
 
 
 def mock_llm(payload: dict):
-    async def generate(system, messages, temperature=None, max_tokens=None, validate=None):
+    async def generate(system, messages, temperature=None, max_tokens=None, validate=None, stage=None, items=1):
         text = json.dumps(payload)
         return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1",
                              usage={"prompt_tokens": 120, "completion_tokens": 40})

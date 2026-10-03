@@ -95,9 +95,9 @@ def test_prompt_separates_job_context_from_profile():
         FieldContext(max_length=500, kind="textarea"),
     )
     assert "JOB CONTEXT (about the employer, not the candidate)" in message
-    assert message.index("JOB CONTEXT") < message.index("CANDIDATE PROFILE")
+    assert message.index("JOB CONTEXT") < message.index("CANDIDATE EVIDENCE")
     assert "at most 500 characters" in message
-    assert "Use only facts stated in the CANDIDATE PROFILE" in SYSTEM_PROMPT
+    assert "Candidate facts come only from CANDIDATE EVIDENCE" in SYSTEM_PROMPT
 
 
 @pytest.mark.parametrize("question", [
@@ -148,7 +148,7 @@ def test_tone_never_outranks_grounding(tone):
     assert f"Tone: {tone}:" in message
     assert "STYLE (wording only; the grounding rules still apply)" in message
     # Grounding lives in the system prompt and explicitly wins over style.
-    assert SYSTEM_PROMPT.index("Grounding rules") < SYSTEM_PROMPT.index("always win over the STYLE")
+    assert "Grounding (always wins over STYLE)" in SYSTEM_PROMPT
     assert "Never add a fact to sound more enthusiastic, confident or detailed" in SYSTEM_PROMPT
 
 
@@ -191,7 +191,7 @@ def test_fit_to_length_cuts_at_sentence():
 def _gateway_returning(payload: dict) -> AsyncMock:
     gateway = AsyncMock()
 
-    async def generate(system, messages, temperature=None, max_tokens=None, validate=None):
+    async def generate(system, messages, temperature=None, max_tokens=None, validate=None, stage=None, items=1):
         text = json.dumps(payload)
         return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1", usage={})
 
@@ -337,7 +337,8 @@ def _cover_letter_profile():
 
 
 def _order(ctx, kind):
-    return [line.split(": ", 1)[1] for line in ctx.text.splitlines() if line.split("] ", 1)[-1].startswith(kind + ":")]
+    return [line.split(": ", 1)[1].split(" (")[0].split(" — ")[0]
+            for line in ctx.text.splitlines() if line.split("] ", 1)[-1].startswith(kind + ":")]
 
 
 def test_cover_letter_leads_with_ai_projects_for_an_ai_job():
@@ -358,7 +359,8 @@ def test_without_a_job_the_profile_order_is_kept():
     ctx = build_context(_cover_letter_profile(), classify_question("Cover letter"))
     assert _order(ctx, "PROJECT")[0] == "Weekend game 1"
     assert "most relevant" not in ctx.text
-    assert len(_order(ctx, "PROJECT")) == 8  # cover letters see more of the profile
+    # Nothing in the question or a job says which work matters: a cover letter gets a bounded sample, not all 8.
+    assert 1 <= len(_order(ctx, "PROJECT")) <= 6
 
 
 def test_cover_letter_guidance_maps_job_needs_to_real_work():

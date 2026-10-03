@@ -66,7 +66,7 @@ SAMPLE_PROFILE: Dict[str, List[Dict[str, Any]]] = {
 TABLE_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "resumes": {"is_master": False, "dismissed_discrepancies": [], "parsed_content": None, "parse_error": None},
     "job_contexts": {"analysis": None},
-    "resume_tailorings": {"status": "queued", "match_analysis": None, "tailoring_plan": None, "tailored_content": None,
+    "resume_tailorings": {"status": "queued", "tokens": 0, "llm_calls": 0, "match_analysis": None, "tailoring_plan": None, "tailored_content": None,
                           "validation_report": None, "output_file_path": None, "error": None},
 }
 
@@ -85,7 +85,7 @@ class FakeRest:
         self.tables = copy.deepcopy(tables if tables is not None else SAMPLE_PROFILE)
         for name in ["profiles", "experiences", "projects", "skills", "education", "achievements",
                      "saved_answers", "usage_events", "profile_facts", "resumes", "job_contexts",
-                     "resume_tailorings"]:
+                     "resume_tailorings", "candidate_evidence", "llm_calls"]:
             self.tables.setdefault(name, [])
         self.rate_limit_hits = 0
 
@@ -129,6 +129,16 @@ class FakeRest:
     async def insert_many(self, table: str, rows: List[Dict[str, Any]]) -> None:
         for row in rows:
             await self.insert(table, row)
+
+    async def upsert(self, table: str, rows: List[Dict[str, Any]], on_conflict: str) -> None:
+        keys = [k.strip() for k in on_conflict.split(",")]
+        for row in rows:
+            row = {"user_id": USER_ID, **row}
+            existing = next((r for r in self.tables[table] if all(str(r.get(k)) == str(row.get(k)) for k in keys)), None)
+            if existing is not None:
+                existing.update(copy.deepcopy(row))
+            else:
+                await self.insert(table, row)
 
     async def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> List[Dict[str, Any]]:
         updated = []
@@ -190,7 +200,7 @@ class FakeGateway:
         self.handlers = handlers
         self.calls: List[str] = []
 
-    async def generate(self, system, messages, temperature=None, max_tokens=None, validate=None):
+    async def generate(self, system, messages, temperature=None, max_tokens=None, validate=None, stage=None, items=1):
         user = messages[-1]["content"]
         for phrase, handler in self.handlers.items():
             if phrase in system:

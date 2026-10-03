@@ -35,7 +35,7 @@ def _gateway(*payloads: dict) -> AsyncMock:
     queue = list(payloads)
     gateway = AsyncMock()
 
-    async def generate(system, messages, temperature=None, max_tokens=None, validate=None):
+    async def generate(system, messages, temperature=None, max_tokens=None, validate=None, stage=None, items=1):
         text = json.dumps(queue.pop(0) if len(queue) > 1 else queue[0])
         return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1",
                              usage={"prompt_tokens": 120, "completion_tokens": 40})
@@ -244,10 +244,10 @@ def test_batch_parse_requires_every_id():
         parse_batch(json.dumps({"answers": [{"id": "a", "status": "answered", "answer": "x"}]}), {}, {"a": None, "b": None})
 
 
-def test_batch_message_has_one_profile():
+def test_batch_message_has_one_evidence_block():
     analysis, ctx = _ctx()
     message = build_batch_message([("a", analysis, None), ("b", classify_question("Why us?"), None)], ctx, None, None)
-    assert message.count("CANDIDATE PROFILE") == 1
+    assert message.count("CANDIDATE EVIDENCE") == 1
 
 
 # --- API -------------------------------------------------------------------------------
@@ -266,7 +266,7 @@ def client(rest):
 
 
 def _mock_llm(payload: dict):
-    async def generate(system, messages, temperature=None, max_tokens=None, validate=None):
+    async def generate(system, messages, temperature=None, max_tokens=None, validate=None, stage=None, items=1):
         text = json.dumps(payload)
         return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1",
                              usage={"prompt_tokens": 120, "completion_tokens": 40})

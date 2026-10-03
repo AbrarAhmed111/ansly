@@ -4,11 +4,14 @@ Keep in sync with packages/types/src/api.ts.
 """
 
 from typing import Any, Dict, List, Literal, Optional, Union
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobContext(BaseModel):
+    # The stored job (POST /jobs/analyze's jobContextId), when the client has one: links answer usage to it.
+    id: Optional[UUID] = None
     company: Optional[str] = Field(default=None, max_length=200)
     role: Optional[str] = Field(default=None, max_length=200)
     description: Optional[str] = Field(default=None, max_length=50_000)
@@ -127,6 +130,8 @@ class ResolveAnswerResponse(BaseModel):
     saved_match: Optional[Dict[str, Any]] = Field(default=None, serialization_alias="savedMatch")
     score: float = 0.0
     answer: Optional[AnswerResponse] = None
+    # Set when `answer` is a saved answer adapted to this job (its id), instead of a newly generated one.
+    adapted_from: Optional[str] = Field(default=None, serialization_alias="adaptedFrom")
 
 
 class MatchSavedAnswerRequest(BaseModel):
@@ -144,6 +149,9 @@ class CreateSavedAnswerRequest(BaseModel):
 class TrackEventRequest(BaseModel):
     kind: Literal["fill", "use_saved_answer", "fill_all", "job_detected", "resume_previewed"]
     category: Optional[str] = Field(default=None, max_length=50)
+    # "fill": how long the user waited (field opened to answer shown), and whether they edited the answer first.
+    duration_ms: Optional[int] = Field(default=None, ge=0, le=3_600_000)
+    edited: Optional[bool] = None
 
 
 class BatchItem(BaseModel):
@@ -157,12 +165,20 @@ class GenerateBatchRequest(BaseModel):
     job_context: Optional[JobContext] = None
     style: Optional[AnswerStyle] = None
     items: List[BatchItem] = Field(min_length=1, max_length=50)
+    # Answer free-text questions from the user's saved answers first (adapted to this job when they were written
+    # for another one), so the client needn't match them separately.
+    check_saved: bool = False
 
 
 class BatchAnswer(AnswerResponse):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     # Set when this question couldn't be generated at all (the others still are).
     error: Optional[str] = None
+    # The saved answer this result came from: used as is, or adapted to this job (then adapted_from is set too).
+    saved_answer_id: Optional[str] = Field(default=None, serialization_alias="savedAnswerId")
+    adapted_from: Optional[str] = Field(default=None, serialization_alias="adaptedFrom")
 
 
 class GenerateBatchResponse(BaseModel):

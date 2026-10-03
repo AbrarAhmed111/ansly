@@ -27,6 +27,8 @@ export interface HealthResponse {
 }
 
 export interface JobContext {
+  /** The stored job (`jobContextId` from `POST /api/v1/jobs/analyze`), when known: links answer usage to it. */
+  id?: string | null
   company?: string | null
   role?: string | null
   /** Only sent when the user has opted in to sharing job descriptions. */
@@ -157,12 +159,17 @@ export interface GenerateBatchRequest {
   /** Page-level default. */
   style?: AnswerStyle | null
   items: { id: string; question: string; field?: FieldContext | null; additional_facts?: string[] | null }[]
+  /** Answer free-text questions from saved answers first (adapted when written for another job). */
+  check_saved?: boolean
 }
 
 export type BatchAnswerResult = AnswerResponse & {
   id: string
   /** Set when this question couldn't be generated at all (the others still were). */
   error?: string | null
+  /** The saved answer this result came from (used as is, or adapted: then `adaptedFrom` is set too). */
+  savedAnswerId?: string | null
+  adaptedFrom?: string | null
 }
 
 export interface GenerateBatchResponse {
@@ -177,6 +184,8 @@ export interface ResolveAnswerResponse {
   savedMatch: SavedAnswer | null
   score: number
   answer: AnswerResponse | null
+  /** Set when `answer` is a saved answer (this id) adapted to the current job instead of a new one. */
+  adaptedFrom?: string | null
 }
 
 /** `POST /api/v1/saved-answers/match-batch` */
@@ -214,6 +223,10 @@ export type UseSavedAnswerResponse = SavedAnswer
 export interface TrackEventRequest {
   kind: Extract<UsageEventKind, 'fill' | 'use_saved_answer' | 'fill_all' | 'job_detected' | 'resume_previewed'>
   category?: string | null
+  /** 'fill': the user's wait, field opened to answer shown (ms). */
+  duration_ms?: number | null
+  /** 'fill': whether the user changed the answer before filling it. */
+  edited?: boolean | null
 }
 
 export interface ApiError {

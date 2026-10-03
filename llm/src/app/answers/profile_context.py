@@ -73,10 +73,18 @@ class ProfileContext:
     text: str
     sources: Dict[str, Source] = field(default_factory=dict)
     profile: Dict[str, Any] = field(default_factory=dict)
+    # The fetched rows per section (all of them, not only those shown to the model), for structured lookups.
+    rows: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     corpus_terms: Set[str] = field(default_factory=set)
     # Skills the user said they don't have (skills.level = 'none'), canonicalized.
     declined_skills: Set[str] = field(default_factory=set)
     is_empty: bool = True
+    # Keyword retrieval found fewer than two records that clearly support the question(s): the engine may try
+    # semantic retrieval, and the text was already filled with the most job-relevant records.
+    low_confidence: bool = False
+    # When one context serves several questions (a batch): per question, in order, the evidence refs retrieved
+    # for it ("E1", "P2"...), so the model knows which shared records back which answer.
+    question_refs: List[List[str]] = field(default_factory=list)
 
     def declined(self, skill: str) -> bool:
         return canonicalize(skill) in self.declined_skills and not self.has_skill(skill)
@@ -142,9 +150,11 @@ def relevance_terms(text: str) -> Set[str]:
             term = canonicalize(" ".join(tokens[i:i + n]))
             if len(term) > 1:
                 terms.add(term)
+    # "CI/CD" counts as its parts; for ranking, so does "LLM-powered" (skill presence never splits hyphens).
     for t in tokens:
-        if "/" in t:
-            terms.update(canonicalize(part) for part in t.split("/") if part)
+        if "/" in t or "-" in t:
+            terms.update(canonicalize(part) for part in re.split(r"[/-]", t)
+                         if len(part) > 1 and part not in RELEVANCE_STOPWORDS)
     return terms
 
 
@@ -153,13 +163,181 @@ def _row_text(row: Dict[str, Any]) -> str:
                     for v in row.values() if isinstance(v, (str, list)))
 
 
-def rank_for_job(rows: List[Dict[str, Any]], job_terms: Set[str]) -> List[Dict[str, Any]]:
-    """Rows sharing the most terms with the job first; the profile's own order breaks ties."""
-    if not job_terms:
+def rank_for_job(rows: List[Dict[str, Any]], job_terms: Set[str],
+                 question_terms: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+    """Rows sharing the most terms with the question (weighted 3x) and the job first; the profile's own order
+    breaks ties."""
+    if not job_terms and not question_terms:
         return rows
-    scores = [len(relevance_terms(_row_text(r)) & job_terms) for r in rows]
+    row_terms = [relevance_terms(_row_text(r)) for r in rows]
+    scores = [3 * len(t & (question_terms or set())) + len(t & job_terms) for t in row_terms]
     order = sorted(range(len(rows)), key=lambda i: -scores[i])
     return [rows[i] for i in order]
+
+
+# Evidence retrieval: the model gets the few records that support the question, not a profile. Every experience,
+# project, achievement, education row and saved fact is a candidate record, scored by the terms it shares with the
+# question (and the skills it names), a bonus for a fact saved for this kind of question, and, capped, the job.
+# Only records that support the question are sent; no section is guaranteed a row. When fewer than two records
+# clearly do, the context is marked low_confidence and filled with the most job-relevant records instead of being
+# sent thin. Budgets are characters of rendered records (~4 per token).
+EVIDENCE_BUDGET_CHARS: Dict[str, int] = {
+    "skill_check": 1600, "education": 900, "logistics": 0, "achievement": 1600, "about_me": 3600,
+    "cover_letter": 4800,
+}
+DEFAULT_EVIDENCE_BUDGET_CHARS = 2400
+MAX_RECORDS: Dict[str, int] = {"skill_check": 3, "education": 2, "about_me": 5, "cover_letter": 6}
+DEFAULT_MAX_RECORDS = 4
+# Records per question when one context serves several questions (fill all).
+RECORDS_PER_QUESTION = 3
+BATCH_EVIDENCE_BUDGET_MAX = 6000
+# Questions about the candidate as a whole or about the job: the job decides what's relevant, so job overlap counts
+# as support, and the profile summary is shown.
+JOB_DRIVEN = {"about_me", "cover_letter", "motivation", "strengths", "general"}
+SKILLS_SHOWN = 12
+LINK_QUESTION = re.compile(r"\b(?:links?|url|github|linkedin|portfolio|website)\b", re.IGNORECASE)
+PREFIXES = {"experiences": "E", "projects": "P", "education": "ED", "achievements": "A", "profile_facts": "F"}
+
+
+# Words that frame a question rather than say what it's about ("Tell us about a time you ..."): matching them
+# finds "part-time" roles and "saves people time" facts.
+QUESTION_FILLER = set("""
+time times example examples tell describe share give walk us me approach approached learned learn lesson resolve
+resolved situation moment occasion greatest biggest favorite favourite proud yourself interested interest want
+why answer question please briefly detail details
+""".split())
+
+
+def question_relevance_terms(analysis: QuestionAnalysis) -> Set[str]:
+    return relevance_terms(" ".join([analysis.question, *analysis.target_skills])) - QUESTION_FILLER
+
+
+def profile_budget(analysis: QuestionAnalysis) -> int:
+    return EVIDENCE_BUDGET_CHARS.get(analysis.category, DEFAULT_EVIDENCE_BUDGET_CHARS)
+
+
+def batch_budget(analyses: List[QuestionAnalysis]) -> int:
+    if not analyses:
+        return 0
+    return min(BATCH_EVIDENCE_BUDGET_MAX, max(profile_budget(a) for a in analyses) + 800 * (len(analyses) - 1))
+
+
+@dataclass
+class _Record:
+    section: str
+    row: Dict[str, Any]
+    order: int
+    terms: Set[str]
+
+
+@dataclass
+class _Scored:
+    record: _Record
+    score: float
+    strong: bool
+
+
+def _records(data: Dict[str, Any], sections: List[str]) -> List[_Record]:
+    out: List[_Record] = []
+    for section in [s for s in ("experiences", "projects", "achievements", "education") if s in sections]:
+        for i, r in enumerate(data.get(section) or []):
+            out.append(_Record(section, r, i, relevance_terms(_row_text(r))))
+    for i, r in enumerate((data.get("profile_facts") or [])[:FACTS_LIMIT]):
+        out.append(_Record("profile_facts", r, i, relevance_terms(f"{r.get('prompt', '')} {r.get('answer') or ''}")))
+    return out
+
+
+def _score(rec: _Record, analysis: QuestionAnalysis, question_terms: Set[str], job_terms: Set[str],
+           boost: Dict[str, float]) -> _Scored:
+    q = len(rec.terms & question_terms)
+    j = len(rec.terms & job_terms)
+    skill = bool(analysis.target_skills) and rec.section != "profile_facts" and _mentions(rec.row, analysis.target_skills)
+    kind = rec.section == "profile_facts" and rec.row.get("category") in (analysis.intent, analysis.category) \
+        and analysis.intent != "general"
+    extra = boost.get(str(rec.row.get("id")), 0.0)
+    score = 4 * q + 0.5 * min(j, 8) + (6 if skill else 0) + (6 if kind else 0) + extra
+    strong = q > 0 or skill or kind or extra > 0 or (analysis.category in JOB_DRIVEN and j >= 3)
+    return _Scored(rec, score, strong)
+
+
+def _render(rec: _Record, ref: str) -> Tuple[str, str, str]:
+    """(prompt line, source type, source label) for one record: one compact line."""
+    r = rec.row
+    details = []
+    if r.get("description"):
+        details.append(str(r["description"]).strip())
+    if r.get("highlights"):
+        details.append("Highlights: " + "; ".join(str(h) for h in r["highlights"]))
+    if r.get("technologies"):
+        details.append("Tech: " + ", ".join(str(t) for t in r["technologies"]))
+    tail = (" — " + " | ".join(details)) if details else ""
+    if rec.section == "experiences":
+        label = f"{r['title']} at {r['company']}"
+        return f"[{ref}] EXPERIENCE: {label}{_date_range(r)}{tail}", "experience", label
+    if rec.section == "projects":
+        label = r["name"]
+        role = f", {r['role']}" if r.get("role") else ""
+        return f"[{ref}] PROJECT: {label}{_date_range(r)}{role}{tail}", "project", label
+    if rec.section == "education":
+        label = ", ".join(x for x in [r.get("degree"), r.get("field_of_study")] if x) or r["institution"]
+        label = f"{label} — {r['institution']}" if label != r["institution"] else label
+        grade = f", {r['grade']}" if r.get("grade") else ""
+        return f"[{ref}] EDUCATION: {label}{_date_range(r)}{grade}{tail}", "education", label
+    if rec.section == "achievements":
+        label = r["title"]
+        date = f" ({r['date'][:7]})" if r.get("date") else ""
+        return f"[{ref}] ACHIEVEMENT: {label}{date}{tail}", "achievement", label
+    answer = f" — {r['answer']}" if r.get("answer") else ""
+    return (f"[{ref}] FACT ({r.get('category') or 'general'}): {r['prompt']}{answer}", "fact",
+            str(r.get("prompt", ""))[:80])
+
+
+def _select(records: List[_Record], analyses: List[QuestionAnalysis], job_terms: Set[str], budget: int,
+            boost: Dict[str, float]) -> Tuple[List[_Record], bool, List[List[_Record]]]:
+    """The records to show, whether retrieval was confident, and the records retrieved for each question.
+    Several questions share one deduplicated set: a record two questions need is shown once."""
+    single = len(analyses) == 1
+    picked: List[_Record] = []
+    per_question: List[List[_Record]] = []
+    strong_total = 0
+    for analysis in analyses:
+        question_terms = question_relevance_terms(analysis)
+        scored = [_score(rec, analysis, question_terms, job_terms, boost) for rec in records
+                  if rec.section == "profile_facts" or rec.section in analysis.sections]
+        scored.sort(key=lambda s: (-s.score, s.record.order))
+        limit = MAX_RECORDS.get(analysis.category, DEFAULT_MAX_RECORDS) if single else RECORDS_PER_QUESTION
+        strong = [s.record for s in scored if s.strong][:limit]
+        strong_total += len(strong)
+        mine = list(strong)
+        if len(strong) < min(2, limit):
+            # Not enough clear support: add the most job-relevant records (saved facts included) rather than answer
+            # from too little.
+            mine += [s.record for s in scored if not s.strong][: limit - len(strong)]
+        picked += mine
+        per_question.append(mine)
+    low = strong_total < 2 * len(analyses) if not single else strong_total < 2
+    chosen: List[_Record] = []
+    used = 0
+    for record in picked:
+        if any(record is c for c in chosen):
+            continue
+        cost = len(_render(record, "X0")[0]) + 1
+        if chosen and used + cost > budget:
+            continue
+        chosen.append(record)
+        used += cost
+    return chosen, low, [[r for r in mine if any(r is c for c in chosen)] for mine in per_question]
+
+
+def _relevant_skills(skills: List[Dict[str, Any]], analyses: List[QuestionAnalysis], job_terms: Set[str]) -> List[Dict[str, Any]]:
+    wanted = {canonicalize(s) for a in analyses for s in a.target_skills}
+    question_terms = set().union(*(question_relevance_terms(a) for a in analyses)) if analyses else set()
+    broad = any(a.category in ("about_me", "cover_letter", "strengths") for a in analyses)
+    hits = [r for r in skills if canonicalize(r["name"]) in wanted | question_terms
+            or (broad and canonicalize(r["name"]) in job_terms)]
+    if broad and len(hits) < SKILLS_SHOWN:
+        hits += [r for r in skills if r not in hits][: SKILLS_SHOWN - len(hits)]
+    return hits[:SKILLS_SHOWN]
 
 
 def build_context(
@@ -168,12 +346,20 @@ def build_context(
     additional_facts: Optional[List[str]] = None,
     include_logistics: Optional[bool] = None,
     job_text: Optional[str] = None,
+    budget_chars: Optional[int] = None,
+    analyses: Optional[List[QuestionAnalysis]] = None,
+    boost: Optional[Dict[str, float]] = None,
 ) -> ProfileContext:
-    """Formats fetched rows into prompt text. `data` maps section -> rows, plus "profile" -> row,
-    and "profile_facts" -> rows. `additional_facts` are what the candidate just told us without saving.
-    `job_text` (the job's role and description) puts the most relevant experience and projects first."""
+    """Grounding data plus the evidence text for one question (or `analyses`, the questions one context serves).
+    `data` maps section -> rows, plus "profile" -> row and "profile_facts" -> rows. `additional_facts` are what
+    the candidate just told us without saving. `boost` raises rows by id (semantic retrieval's hits). Skill
+    presence and the empty-profile check always read every fetched row, not only the ones shown."""
+    targets = analyses if analyses is not None else [analysis]
     job_terms = relevance_terms(job_text) if job_text and job_text.strip() else set()
-    limits = COVER_LETTER_LIMITS if analysis.category == "cover_letter" else SECTION_LIMITS
+    question_terms = set().union(*(question_relevance_terms(a) for a in targets)) \
+        if targets else set()
+    budget = (profile_budget(analysis) if analyses is None else batch_budget(targets)) \
+        if budget_chars is None else budget_chars
     ctx = ProfileContext(text="")
     # "I don't have this skill" rows are knowledge, not skills: keep them out of the text and the corpus.
     skills = data.get("skills") or []
@@ -183,18 +369,27 @@ def build_context(
     corpus: List[str] = []
     profile = data.get("profile") or {}
     ctx.profile = profile
+    ctx.rows = {s: data.get(s) or [] for s in SECTION_LIMITS}
+    all_facts = (data.get("profile_facts") or [])[:FACTS_LIMIT]
 
     if profile:
         ref = "PR"
         ctx.sources[ref] = Source(ref, "profile", profile.get("id", ""), "Profile")
-        out.append(f"[{ref}] PROFILE")
-        for label, key in [("Name", "full_name"), ("Headline", "headline"), ("Location", "location"),
-                           ("Summary", "summary"), ("More about the candidate", "additional_context")]:
-            out += _lines(label, profile.get(key))
-        links = {k: v for k, v in (profile.get("links") or {}).items() if v}
-        if links:
-            out.append("  Links: " + ", ".join(f"{k}: {v}" for k, v in links.items()))
-        if analysis.category == "logistics" if include_logistics is None else include_logistics:
+        if targets:
+            name = " — ".join(str(x) for x in [profile.get("full_name"), profile.get("headline")] if x)
+            out.append(f"[{ref}] CANDIDATE: {name or 'the candidate'}")
+            broad = any(a.category in JOB_DRIVEN for a in targets)
+            if broad:
+                out += _lines("Location", profile.get("location"))
+                out += _lines("Summary", profile.get("summary"))
+            extra = profile.get("additional_context") or ""
+            if extra and (broad or relevance_terms(extra) & question_terms
+                          or any(_mentions({"x": extra}, a.target_skills) for a in targets if a.target_skills)):
+                out += _lines("More about the candidate", extra)
+            links = {k: v for k, v in (profile.get("links") or {}).items() if v}
+            if links and any(LINK_QUESTION.search(a.question) for a in targets):
+                out.append("  Links: " + ", ".join(f"{k}: {v}" for k, v in links.items()))
+        if any(a.category == "logistics" for a in targets) if include_logistics is None else include_logistics:
             for label, key in [("Work authorization", "work_authorization"),
                                ("Requires visa sponsorship", "requires_sponsorship"),
                                ("Notice period / availability", "notice_period"),
@@ -207,65 +402,42 @@ def build_context(
                 out += _lines(label, value)
         corpus += [profile.get("headline") or "", profile.get("summary") or "", profile.get("additional_context") or ""]
 
-    prefixes = {"experiences": "E", "projects": "P", "skills": "S", "education": "ED", "achievements": "A"}
-    if job_terms and any(s in analysis.sections for s in ("experiences", "projects", "achievements")):
-        out.append("(Experience, projects and achievements are listed most relevant to this job first.)")
-    for section in analysis.sections:
-        rows = data.get(section) or []
-        if not rows:
-            continue
-        # The work most relevant to the job first; rows that mention the skill being asked about before that.
-        if section != "skills":
-            rows = rank_for_job(rows, job_terms)
-        if analysis.target_skills:
-            rows = sorted(rows, key=lambda r: not _mentions(r, analysis.target_skills))
-        rows = rows[: limits[section]]
+    if data["skills"]:
+        ctx.sources["S"] = Source("S", "skill", "", "Skills")
+    open_targets = [a for a in targets if a.category != "logistics"]
+    if open_targets:
+        if any("skills" in a.sections for a in open_targets):
+            shown = _relevant_skills(data["skills"], open_targets, job_terms)
+            if shown:
+                parts = []
+                for r in shown:
+                    detail = ", ".join(x for x in [r.get("level"), f"{r['years']:g} yrs" if r.get("years") else None] if x)
+                    parts.append(f"{r['name']} ({detail})" if detail else r["name"])
+                out.append("[S] SKILLS: " + "; ".join(parts))
 
-        if section == "skills":
-            ref = "S"
-            ctx.sources[ref] = Source(ref, "skill", "", "Skills")
-            parts = []
-            for r in rows:
-                detail = ", ".join(x for x in [r.get("level"), f"{r['years']:g} yrs" if r.get("years") else None] if x)
-                parts.append(f"{r['name']} ({detail})" if detail else r["name"])
-            out.append(f"[{ref}] SKILLS: " + "; ".join(parts))
-            continue
+        sections = sorted({s for a in open_targets for s in a.sections})
+        records = _records({**data, "profile_facts": all_facts}, sections)
+        chosen, ctx.low_confidence, per_question = _select(records, open_targets, job_terms, budget, boost or {})
+        if job_terms and any(a.category == "cover_letter" for a in open_targets):
+            out.append("(Experience and projects are listed most relevant to this job first.)")
+        order = ["experiences", "projects", "achievements", "education", "profile_facts"]
+        counters: Dict[str, int] = {}
+        refs: Dict[int, str] = {}
+        for section in order:
+            for rec in [r for r in chosen if r.section == section]:
+                counters[section] = counters.get(section, 0) + 1
+                ref = f"{PREFIXES[section]}{counters[section]}"
+                refs[id(rec)] = ref
+                line, type_name, label = _render(rec, ref)
+                out.append(line)
+                ctx.sources[ref] = Source(ref, type_name, rec.row.get("id", ""), label)
+        # Logistics questions get no evidence of their own (they're answered from the profile's fields).
+        mapped = iter(per_question)
+        ctx.question_refs = [[refs[id(r)] for r in next(mapped)] if a.category != "logistics" else []
+                             for a in targets]
 
-        for i, r in enumerate(rows, start=1):
-            ref = f"{prefixes[section]}{i}"
-            if section == "experiences":
-                label = f"{r['title']} at {r['company']}"
-                out.append(f"[{ref}] EXPERIENCE: {label}{_date_range(r)}")
-                out += _lines("Location", r.get("location"))
-                type_name = "experience"
-            elif section == "projects":
-                label = r["name"]
-                out.append(f"[{ref}] PROJECT: {label}{_date_range(r)}")
-                out += _lines("Role", r.get("role"))
-                out += _lines("URL", r.get("url"))
-                type_name = "project"
-            elif section == "education":
-                label = ", ".join(x for x in [r.get("degree"), r.get("field_of_study")] if x) or r["institution"]
-                label = f"{label} — {r['institution']}" if label != r["institution"] else label
-                out.append(f"[{ref}] EDUCATION: {label}{_date_range(r)}")
-                out += _lines("Grade", r.get("grade"))
-                type_name = "education"
-            else:
-                label = r["title"]
-                out.append(f"[{ref}] ACHIEVEMENT: {label}" + (f" ({r['date'][:7]})" if r.get("date") else ""))
-                type_name = "achievement"
-            out += _lines("Description", r.get("description"))
-            out += _lines("Highlights", r.get("highlights"))
-            out += _lines("Technologies", r.get("technologies"))
-            ctx.sources[ref] = Source(ref, type_name, r.get("id", ""), label)
-
-    facts = (data.get("profile_facts") or [])[:FACTS_LIMIT]
-    for i, r in enumerate(facts, start=1):
-        ref = f"F{i}"
-        out.append(f"[{ref}] FACT ({r.get('category') or 'general'}): {r['prompt']}")
-        out += _lines("Answer", r.get("answer"))
-        ctx.sources[ref] = Source(ref, "fact", r.get("id", ""), r["prompt"][:80])
-        corpus.append(r.get("answer") or "")
+    # Skill presence reads every saved fact, not only the ones shown to the model.
+    corpus += [r.get("answer") or "" for r in all_facts]
     for i, fact in enumerate(additional_facts or [], start=1):
         if not fact.strip():
             continue
@@ -284,7 +456,7 @@ def build_context(
         not any(data.get(s) for s in SECTION_LIMITS)
         and not (profile.get("summary") or "").strip()
         and not (profile.get("additional_context") or "").strip()
-        and not facts
+        and not all_facts
         and not any(f.strip() for f in additional_facts or [])
     )
     return ctx
