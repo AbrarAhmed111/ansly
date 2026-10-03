@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { classifyField } from '../detection/classify'
 import { cleanText, extractQuestion, humanizeName } from '../detection/question'
 import { scanAll, scanFields, watchFields } from '../detection/scan'
@@ -250,5 +250,98 @@ describe('watching for dynamically loaded fields', () => {
     await new Promise((r) => setTimeout(r, 50))
     stop()
     expect(seen.at(-1)).toEqual(['What is your notice period?'])
+  })
+
+  it('ignores mutations that cannot change fields', async () => {
+    load('<div id="clock">10:00</div><label for="a">Why us?</label><textarea id="a"></textarea><div id="carousel" class="a"></div>')
+    let scans = 0
+    const stop = watchFields(document, () => scans++, { debounceMs: 10 })
+    document.getElementById('clock')!.textContent = '10:01'
+    document.getElementById('carousel')!.className = 'b'
+    document.getElementById('carousel')!.appendChild(document.createElement('span'))
+    await new Promise((r) => setTimeout(r, 50))
+    stop()
+    expect(scans).toBe(1) // only the initial scan
+  })
+
+  it('rescans when a label is relabelled', async () => {
+    load('<label for="a" id="l">Loading…</label><textarea id="a"></textarea>')
+    const seen: string[][] = []
+    const stop = watchFields(document, (fields) => seen.push(fields.map((f) => f.question.text)), { debounceMs: 10 })
+    document.getElementById('l')!.textContent = 'Why do you want this job?'
+    await new Promise((r) => setTimeout(r, 50))
+    stop()
+    expect(seen.at(-1)).toEqual(['Why do you want this job?'])
+  })
+
+  it('waits while the tab is hidden and catches up when it is shown', async () => {
+    load('<form id="f"></form>')
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    let scans = 0
+    const stop = watchFields(document, () => scans++, { debounceMs: 10 })
+    document.getElementById('f')!.innerHTML = '<label for="n">Why us?</label><textarea id="n"></textarea>'
+    await new Promise((r) => setTimeout(r, 50))
+    expect(scans).toBe(0)
+    hidden.mockReturnValue(false)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await new Promise((r) => setTimeout(r, 50))
+    stop()
+    hidden.mockRestore()
+    expect(scans).toBe(1)
+  })
+
+  it('finds fields in shadow roots added later', async () => {
+    load('<div id="mount"></div>')
+    const seen: string[][] = []
+    const stop = watchFields(document, (fields) => seen.push(fields.map((f) => f.question.text)), { debounceMs: 10 })
+    const host = document.createElement('div')
+    host.attachShadow({ mode: 'open' }).innerHTML = '<label for="q">Why do you want this job?</label><textarea id="q"></textarea>'
+    document.getElementById('mount')!.appendChild(host)
+    await new Promise((r) => setTimeout(r, 50))
+    stop()
+    expect(seen.at(-1)).toEqual(['Why do you want this job?'])
+  })
+
+  it('rescans when a <dialog> opens (LinkedIn Easy Apply)', async () => {
+    load('<dialog id="d"><label for="w">Why do you want this job?</label><textarea id="w"></textarea></dialog>')
+    const seen: string[][] = []
+    const stop = watchFields(document, (fields) => seen.push(fields.filter((f) => f.eligible).map((f) => f.question.text)), { debounceMs: 10 })
+    document.getElementById('d')!.setAttribute('open', '')
+    await new Promise((r) => setTimeout(r, 50))
+    stop()
+    expect(seen.at(-1)).toEqual(['Why do you want this job?'])
+  })
+
+  it('finds fields in a shadow root that appeared without a DOM change once the user interacts', async () => {
+    load('<div id="host"></div>')
+    const seen: string[][] = []
+    const stop = watchFields(document, (fields) => seen.push(fields.map((f) => f.question.text)), { debounceMs: 10 })
+    const shadow = document.getElementById('host')!.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<label for="q">Why do you want this job?</label><textarea id="q"></textarea>'
+    shadow.getElementById('q')!.dispatchEvent(new FocusEvent('focusin', { bubbles: true, composed: true }))
+    await new Promise((r) => setTimeout(r, 50))
+    stop()
+    expect(seen.at(-1)).toEqual(['Why do you want this job?'])
+  })
+})
+
+describe('LinkedIn Easy Apply dialog', () => {
+  it('detects fields in an open dialog even when the app around it is aria-hidden', () => {
+    load(`<div id="app" aria-hidden="true">
+      <dialog open aria-labelledby="h"><h2 id="h">Apply to Burq</h2>
+        <label for="why">Why do you want to work at Burq?</label><textarea id="why"></textarea>
+        <div aria-hidden="true"><input id="decoy" type="text" aria-label="Hidden helper"></div>
+      </dialog>
+    </div>`)
+    const fields = scanFields(document)
+    expect(fields.map((f) => f.question.text)).toEqual(['Why do you want to work at Burq?'])
+  })
+
+  it('skips the resume file picker', () => {
+    load(`<dialog open><p>Resume*</p><fieldset role="radiogroup">
+      <input id="r1" type="radio" name="g" aria-label="Abrar Ahmed Resume.pdf" checked><label for="r1"></label>
+      <input id="r2" type="radio" name="g" aria-label="Resume (Backend).docx"><label for="r2"></label>
+    </fieldset></dialog>`)
+    expect(scanAll(document).map((f) => [f.kind, f.skipReason])).toEqual([['ignored', 'file']])
   })
 })

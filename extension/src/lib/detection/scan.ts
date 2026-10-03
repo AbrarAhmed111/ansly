@@ -2,6 +2,11 @@
  * Scanning: finds every candidate field in a document (including open shadow
  * roots), groups radios / checkboxes into one field each, classifies them, and
  * keeps the list in sync as the page changes (MutationObserver, debounced).
+ *
+ * Job sites are large, busy pages, so watching is selective: only mutations that
+ * can add, remove, show/hide or relabel a field trigger a rescan, nothing runs in
+ * a hidden tab, and shadow roots are found incrementally instead of by walking
+ * the whole document on every scan.
  */
 
 import { classifyField, classifyGroup, type FieldClassification } from './classify'
@@ -31,19 +36,25 @@ function idFor(el: HTMLElement): string {
   return id
 }
 
-/** The document plus every open shadow root under it. */
-export function allRoots(root: Document | ShadowRoot | Element): (Document | ShadowRoot | Element)[] {
-  const roots: (Document | ShadowRoot | Element)[] = [root]
-  const walk = (node: Document | ShadowRoot | Element) => {
-    node.querySelectorAll('*').forEach((el) => {
-      if (el.shadowRoot && el.tagName !== 'ANSLY-ROOT') {
-        roots.push(el.shadowRoot)
-        walk(el.shadowRoot)
-      }
-    })
+type Scope = Document | ShadowRoot | Element
+
+/** Adds every open shadow root under `node` (including node's own) to `into`. */
+function collectShadowRoots(node: Scope, into: ShadowRoot[]) {
+  const visit = (el: Element) => {
+    if (el.shadowRoot && el.tagName !== 'ANSLY-ROOT') {
+      into.push(el.shadowRoot)
+      collectShadowRoots(el.shadowRoot, into)
+    }
   }
-  walk(root)
-  return roots
+  if (node instanceof Element) visit(node)
+  node.querySelectorAll('*').forEach(visit)
+}
+
+/** The document plus every open shadow root under it. */
+export function allRoots(root: Scope): Scope[] {
+  const roots: ShadowRoot[] = []
+  collectShadowRoots(root, roots)
+  return [root, ...roots]
 }
 
 /** Topmost contenteditable only: rich editors nest editable children. */
@@ -65,7 +76,8 @@ function groupAnchor(controls: HTMLElement[]): HTMLElement {
   return controls.length > 1 ? commonAncestor(controls) : (first.closest('label') ?? first)
 }
 
-export function scanAll(root: Document | ShadowRoot | Element, ignore?: (el: Element) => boolean): TrackedField[] {
+/** `roots`: `root` and its shadow roots, when the caller already knows them (see allRoots). */
+export function scanAll(root: Scope, ignore?: (el: Element) => boolean, roots: Scope[] = allRoots(root)): TrackedField[] {
   const fields: TrackedField[] = []
   const radioGroups = new Map<string, HTMLElement[]>()
   const checkboxGroups = new Map<string, HTMLElement[]>()
@@ -78,7 +90,7 @@ export function scanAll(root: Document | ShadowRoot | Element, ignore?: (el: Ele
     return container ? `${kind}:c:${idFor(container as HTMLElement)}` : `${kind}:e:${idFor(el)}`
   }
 
-  for (const scope of allRoots(root)) {
+  for (const scope of roots) {
     scope.querySelectorAll(FIELD_SELECTOR).forEach((node) => {
       const el = node as HTMLElement
       if (ignore?.(el)) return
@@ -136,26 +148,71 @@ export function scanFields(root: Document | ShadowRoot | Element, ignore?: (el: 
 /** Fields Ansly can fill (everything but ignored). */
 export const detected = (fields: TrackedField[]) => fields.filter((f) => f.kind !== 'ignored')
 
-const OBSERVED_ATTRIBUTES = ['hidden', 'style', 'class', 'disabled', 'readonly', 'aria-hidden', 'contenteditable', 'type', 'role', 'aria-expanded']
+// `open`: a <dialog> or <details> showing its content (LinkedIn Easy Apply opens in a <dialog>).
+const OBSERVED_ATTRIBUTES = ['hidden', 'style', 'class', 'disabled', 'readonly', 'aria-hidden', 'inert', 'open', 'contenteditable', 'type', 'role', 'aria-expanded']
+// Elements whose appearance can add, remove or relabel a field.
+const RELEVANT_SELECTOR = `${FIELD_SELECTOR}, label, legend, fieldset, form`
+// Shadow roots attached without a DOM mutation (late custom-element upgrades) are found by a full walk this often.
+const FULL_WALK_MS = 5000
+// However busy the page, a pending rescan runs within this long.
+const MAX_WAIT_MS = 1000
+// More added nodes than this in one batch: rediscover shadow roots with a full walk instead.
+const MAX_TRACKED_ADDITIONS = 500
+
+/** Whether an added or removed node can change the field list. Text-only changes can't (labels are checked by target). */
+function touchesFields(node: Node): boolean {
+  if (node.nodeType !== Node.ELEMENT_NODE) return false
+  const el = node as Element
+  return Boolean(el.shadowRoot) || el.matches(RELEVANT_SELECTOR) || el.querySelector(RELEVANT_SELECTOR) !== null
+}
+
+function isRelevant(m: MutationRecord): boolean {
+  const target = m.target as Element
+  if (m.type === 'attributes') return target.matches?.(FIELD_SELECTOR) || target.querySelector?.(FIELD_SELECTOR) != null
+  // A label's own text changing relabels its field.
+  if (target.closest?.('label, legend')) return true
+  return [...m.addedNodes].some(touchesFields) || [...m.removedNodes].some(touchesFields)
+}
+
+export interface ScanStats {
+  durationMs: number
+  roots: number
+  fields: number
+}
 
 /**
  * Calls `onChange` with every classified field (including ignored ones) now and
- * whenever the DOM changes (debounced). Watches open shadow roots too. Returns a
- * function that stops observing.
+ * whenever the DOM changes in a way that can affect fields (debounced, at most
+ * MAX_WAIT_MS late, paused while the tab is hidden). Watches open shadow roots
+ * too. Returns a function that stops observing.
  */
 export function watchFields(
   doc: Document,
   onChange: (fields: TrackedField[]) => void,
-  options: { debounceMs?: number; ignore?: (el: Element) => boolean } = {},
+  options: { debounceMs?: number; ignore?: (el: Element) => boolean; onScan?: (stats: ScanStats) => void } = {},
 ): () => void {
-  const { debounceMs = 300, ignore } = options
+  const { debounceMs = 300, ignore, onScan } = options
   let timer: ReturnType<typeof setTimeout> | undefined
+  let firstPending = 0
+  let dirtyWhileHidden = false
   const observed = new WeakSet<Node>()
+  let shadowRoots: ShadowRoot[] = []
+  let lastFullWalk = -Infinity
+  let added: Element[] = []
+  let fullWalkNeeded = false
 
   const observer = new MutationObserver((mutations) => {
-    // Ignore mutations inside our own UI.
-    if (mutations.every((m) => ignore?.(m.target as Element))) return
-    schedule()
+    let relevant = timer !== undefined
+    for (const m of mutations) {
+      if (ignore?.(m.target as Element)) continue
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue
+        if (added.length < MAX_TRACKED_ADDITIONS) added.push(node as Element)
+        else fullWalkNeeded = true
+      }
+      relevant ||= isRelevant(m)
+    }
+    if (relevant) schedule()
   })
   const observe = (node: Node) => {
     if (observed.has(node)) return
@@ -163,20 +220,66 @@ export function watchFields(
     // childList + subtree catches multi-step forms (LinkedIn Easy Apply) swapping their content.
     observer.observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: OBSERVED_ATTRIBUTES })
   }
+  const updateShadowRoots = () => {
+    const now = performance.now()
+    if (fullWalkNeeded || now - lastFullWalk > FULL_WALK_MS) {
+      shadowRoots = []
+      collectShadowRoots(doc, shadowRoots)
+      lastFullWalk = now
+    } else {
+      shadowRoots = shadowRoots.filter((r) => r.host.isConnected)
+      for (const el of added) if (el.isConnected) collectShadowRoots(el, shadowRoots)
+      shadowRoots = [...new Set(shadowRoots)]
+    }
+    added = []
+    fullWalkNeeded = false
+    shadowRoots.forEach(observe)
+  }
   const run = () => {
-    const roots = allRoots(doc)
-    roots.forEach((r) => r instanceof ShadowRoot && observe(r))
-    onChange(scanAll(doc, ignore))
+    timer = undefined
+    firstPending = 0
+    if (doc.hidden) {
+      dirtyWhileHidden = true
+      return
+    }
+    const started = performance.now()
+    updateShadowRoots()
+    const fields = scanAll(doc, ignore, [doc, ...shadowRoots])
+    onScan?.({ durationMs: performance.now() - started, roots: shadowRoots.length + 1, fields: fields.length })
+    onChange(fields)
   }
   const schedule = () => {
+    const now = performance.now()
+    firstPending ||= now
     clearTimeout(timer)
-    timer = setTimeout(run, debounceMs)
+    timer = setTimeout(run, Math.max(0, Math.min(debounceMs, firstPending + MAX_WAIT_MS - now)))
+  }
+  const onVisibility = () => {
+    if (!doc.hidden && dirtyWhileHidden) {
+      dirtyWhileHidden = false
+      schedule()
+    }
+  }
+  // A shadow root attached without a DOM mutation (and so unobserved) shows up when the user interacts with it:
+  // focusing a field or clicking inside it. Rediscover roots right away then.
+  const onInteraction = (e: Event) => {
+    const root = (e.composedPath()[0] as Node | undefined)?.getRootNode?.()
+    if (root instanceof ShadowRoot && !shadowRoots.includes(root) && !ignore?.(root.host)) {
+      fullWalkNeeded = true
+      schedule()
+    }
   }
 
   observe(doc.documentElement)
+  doc.addEventListener('visibilitychange', onVisibility)
+  doc.addEventListener('focusin', onInteraction, true)
+  doc.addEventListener('click', onInteraction, true)
   run()
   return () => {
     clearTimeout(timer)
     observer.disconnect()
+    doc.removeEventListener('visibilitychange', onVisibility)
+    doc.removeEventListener('focusin', onInteraction, true)
+    doc.removeEventListener('click', onInteraction, true)
   }
 }

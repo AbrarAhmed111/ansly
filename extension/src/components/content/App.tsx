@@ -31,6 +31,8 @@ function useJobPage(active: boolean, debug = false): { key: string; job: Detecte
     let signature = ''
     let attempts = 0
     const check = () => {
+      // A hidden tab can wait: the check runs again when it is shown.
+      if (document.hidden) return
       const next = `${window.location.href}|${document.title}`
       if (next !== signature) {
         signature = next
@@ -48,13 +50,21 @@ function useJobPage(active: boolean, debug = false): { key: string; job: Detecte
     }
     check()
     const timer = setInterval(check, JOB_CHECK_MS)
-    return () => clearInterval(timer)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', check)
+    }
   }, [active, debug])
   return page
 }
 
-/** Re-renders on scroll/resize (one frame at a time) so buttons follow their fields. */
-function useLayoutTick(active: boolean) {
+/**
+ * Re-renders (one frame at a time) when fields may have moved, so buttons follow them: on scroll and resize, when
+ * the page or a field changes size (accordions, async content), and after CSS transitions/animations. No polling:
+ * an idle page costs nothing.
+ */
+function useLayoutTick(active: boolean, elements: HTMLElement[]) {
   const [, setTick] = useState(0)
   useEffect(() => {
     if (!active) return
@@ -65,15 +75,21 @@ function useLayoutTick(active: boolean) {
     }
     window.addEventListener('scroll', bump, true)
     window.addEventListener('resize', bump)
-    // Layout can also shift without scrolling (accordions, async content).
-    const interval = setInterval(bump, 700)
+    document.addEventListener('transitionend', bump, true)
+    document.addEventListener('animationend', bump, true)
+    const observer = new ResizeObserver(bump)
+    observer.observe(document.documentElement)
+    if (document.body) observer.observe(document.body)
+    elements.forEach((el) => observer.observe(el))
     return () => {
       cancelAnimationFrame(frame)
-      clearInterval(interval)
+      observer.disconnect()
       window.removeEventListener('scroll', bump, true)
       window.removeEventListener('resize', bump)
+      document.removeEventListener('transitionend', bump, true)
+      document.removeEventListener('animationend', bump, true)
     }
-  }, [active])
+  }, [active, elements])
 }
 
 // Stable React keys for page elements.
@@ -179,7 +195,15 @@ export function App({ host, initialSettings, subscribe }: {
       setPanelMounted(false)
       return
     }
-    return watchFields(document, setAll, { ignore: (el) => host.contains(el) || el === host })
+    return watchFields(document, setAll, {
+      ignore: (el) => host.contains(el) || el === host,
+      // Detection debug mode (popup) reports what each scan cost.
+      onScan: (stats) => {
+        if (settingsRef.current.detectionDebug) {
+          console.debug(`[Ansly] scan: ${stats.fields} fields in ${stats.roots} root(s), ${stats.durationMs.toFixed(1)}ms`)
+        }
+      },
+    })
   }, [enabled, host])
 
   const fields = useMemo(() => all.filter((f) => f.eligible), [all])
@@ -187,7 +211,8 @@ export function App({ host, initialSettings, subscribe }: {
   const ignoredCount = all.length - detected.length
   const filledIds = Object.entries(rows).filter(([, r]) => ['filled', 'low', 'failed'].includes(r.status))
 
-  useLayoutTick(enabled && (fields.length > 0 || target !== null || filledIds.length > 0 || settings.detectionDebug))
+  const trackedElements = useMemo(() => fields.map((f) => f.el), [fields])
+  useLayoutTick(enabled && (fields.length > 0 || target !== null || filledIds.length > 0 || settings.detectionDebug), trackedElements)
 
   // "Copy diagnostics" in the popup reads this (no field values, only structure).
   useEffect(() => {

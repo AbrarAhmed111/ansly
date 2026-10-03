@@ -100,7 +100,12 @@ export function fieldKind(el: Element): FieldElementKind | null {
 }
 
 export function isHidden(el: HTMLElement): boolean {
-  if (el.hidden || el.closest('[hidden], [aria-hidden="true"], [inert]')) return true
+  if (el.hidden) return true
+  const hiddenAncestor = el.closest('[hidden], [aria-hidden="true"], [inert]')
+  // An open modal <dialog> is shown on top of everything, even when the page marks the app it sits in as
+  // aria-hidden / inert while it is open (LinkedIn Easy Apply): only what's hidden inside the dialog counts.
+  const dialog = el.closest('dialog[open]')
+  if (hiddenAncestor && (!dialog || dialog.contains(hiddenAncestor))) return true
   const view = el.ownerDocument.defaultView
   if (!view) return false
   if (view.getComputedStyle(el).visibility === 'hidden') return true
@@ -220,6 +225,8 @@ export function choiceOptions(el: HTMLElement): string[] | undefined {
   return options.length ? options : undefined
 }
 
+const DOCUMENT_FILE = /\.(pdf|docx?|rtf|txt|odt)\s*$/i
+
 /** Classifies a group of radios / checkboxes (native or role=radio / role=checkbox) as one field. */
 export function classifyGroup(anchor: HTMLElement, controls: HTMLElement[], multiple: boolean): FieldClassification {
   const question = extractGroupQuestion(anchor, controls)
@@ -234,6 +241,8 @@ export function classifyGroup(anchor: HTMLElement, controls: HTMLElement[], mult
   if (EEO.test(question.text) && question.text.length < 200) return ignored(b, 'eeo')
   const options = controls.map(optionLabel)
   if (multiple && options.every((o) => CONSENT.test(o))) return ignored(b, 'consent')
+  // Picking one of the user's uploaded resume files (LinkedIn Easy Apply) is a file choice, not a question.
+  if (options.length && options.every((o) => DOCUMENT_FILE.test(o))) return ignored(b, 'file')
   return { ...b, kind: multiple ? 'choice_multi' : 'choice_single', options, eligible: false }
 }
 
