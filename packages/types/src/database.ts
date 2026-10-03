@@ -149,6 +149,72 @@ export type UsageEventKind =
   | 'resume_previewed'
   | 'resume_downloaded'
   | 'tailoring_deleted'
+  | 'job_analyzed'
+  | 'adapt_saved_answer'
+
+/** `job_token_usage` view: model tokens spent per job application (one row per posting). */
+export interface JobTokenUsage {
+  user_id: string
+  /** Hash of the posting's URL (or company + role); no job text is stored. */
+  job_key: string
+  job_context_id: string | null
+  /** Job analysis + resume tailoring. */
+  tailoring_tokens: number
+  /** Generated, regenerated and adapted answers. */
+  answer_tokens: number
+  total_tokens: number
+  llm_calls: number
+  first_at: string
+  last_at: string
+}
+
+/** `application_usage` view: provider-reported tokens, calls and cost per job application, by stage. */
+export interface ApplicationUsage {
+  user_id: string
+  job_key: string
+  job_context_id: string | null
+  job_analysis_tokens: number
+  matching_tokens: number
+  tailoring_tokens: number
+  validation_tokens: number
+  answer_tokens: number
+  regeneration_tokens: number
+  adaptation_tokens: number
+  /** Every model call but embeddings: tokens per application. */
+  total_tokens: number
+  cached_input_tokens: number
+  thinking_tokens: number
+  llm_calls: number
+  failed_calls: number
+  single_answer_calls: number
+  batch_calls: number
+  regenerations: number
+  tailoring_calls: number
+  job_analysis_cost_usd: number
+  matching_cost_usd: number
+  tailoring_cost_usd: number
+  validation_cost_usd: number
+  answer_cost_usd: number
+  regeneration_cost_usd: number
+  adaptation_cost_usd: number
+  generation_cost_usd: number
+  /** Calls on models without a configured price (their cost isn't in the totals). */
+  unpriced_calls: number
+  query_embedding_tokens: number
+  profile_embedding_tokens: number
+  embedding_cost_usd: number
+  total_cost_usd: number
+  llm_ms: number
+  first_at: string
+  last_at: string
+  usage_pattern:
+    | 'tailoring_fill_all'
+    | 'tailoring_manual_answers'
+    | 'tailoring_only'
+    | 'fill_all_heavy'
+    | 'single_answer_heavy'
+    | 'other'
+}
 
 /** Everything that makes up a user's profile. */
 export interface FullProfile {

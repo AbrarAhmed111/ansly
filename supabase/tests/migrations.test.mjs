@@ -6,6 +6,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
+import { vector } from '@electric-sql/pglite/vector'
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
 
@@ -64,7 +65,7 @@ async function asUser(userId, fn) {
 }
 
 before(async () => {
-  db = new PGlite()
+  db = new PGlite({ extensions: { vector } })
   await db.exec(SUPABASE_STUB)
   const files = (await readdir(migrationsDir)).filter((f) => f.endsWith('.sql')).sort()
   assert.ok(files.length > 0, 'no migrations found')
@@ -499,4 +500,157 @@ test('job contexts can be found again by content hash, per user', async () => {
   assert.equal(mine.rows.length, 1)
   const theirs = await asUser(BOB, (tx) => tx.query(`select id from public.job_contexts where content_hash = 'h1'`))
   assert.equal(theirs.rows.length, 0)
+})
+
+const vec = (first) => `[${[first, ...new Array(767).fill(0)].join(',')}]`
+
+test('candidate evidence embeddings are private and matched per user', async () => {
+  const source = '00000000-0000-0000-0000-0000000000e1'
+  await asUser(ALICE, (tx) =>
+    tx.query(
+      `insert into public.candidate_evidence (source_type, source_id, content_hash, embedding, embedding_model)
+       values ('experience', $1, 'h', $2, 'm1')`,
+      [source, vec(1)],
+    ),
+  )
+  const mine = await asUser(ALICE, (tx) =>
+    tx.query(`select source_id, similarity from public.match_candidate_evidence($1, 'm1', 5)`, [vec(1)]),
+  )
+  assert.equal(mine.rows.length, 1)
+  assert.equal(mine.rows[0].source_id, source)
+  assert.ok(Math.abs(mine.rows[0].similarity - 1) < 1e-6)
+  const other = await asUser(ALICE, (tx) =>
+    tx.query(`select * from public.match_candidate_evidence($1, 'another-model', 5)`, [vec(1)]),
+  )
+  assert.equal(other.rows.length, 0)
+  await asUser(BOB, async (tx) => {
+    assert.equal((await tx.query('select * from public.candidate_evidence')).rows.length, 0)
+    assert.equal((await tx.query(`select * from public.match_candidate_evidence($1, 'm1', 5)`, [vec(1)])).rows.length, 0)
+    assert.equal((await tx.query('delete from public.candidate_evidence')).affectedRows, 0)
+  })
+  await assert.rejects(
+    asUser(BOB, (tx) =>
+      tx.query(
+        `insert into public.candidate_evidence (user_id, source_type, source_id, content_hash, embedding, embedding_model)
+         values ($1, 'experience', $2, 'h', $3, 'm1')`,
+        [ALICE, source, vec(1)],
+      ),
+    ),
+    /row-level security/,
+  )
+  await assert.rejects(
+    db.transaction(async (tx) => {
+      await tx.exec('set local role anon')
+      await tx.query('select * from public.candidate_evidence')
+    }),
+    /permission denied/,
+  )
+})
+
+test('job_token_usage totals tokens per job, per user', async () => {
+  const jobId = await asUser(ALICE, async (tx) =>
+    (await tx.query(`insert into public.job_contexts (title, description, source) values ('Eng', 'Build', 'manual') returning id`)).rows[0].id,
+  )
+  await asUser(ALICE, (tx) =>
+    tx.query(
+      `insert into public.usage_events (kind, tokens, llm_calls, job_key, job_context_id) values
+         ('job_analyzed', 1200, 1, 'k1', $1),
+         ('tailoring_completed', 5000, 3, 'k1', $1),
+         ('generate', 900, 1, 'k1', null),
+         ('adapt_saved_answer', 400, 1, 'k1', null),
+         ('generate', 700, 1, 'k2', null)`,
+      [jobId],
+    ),
+  )
+  const { rows } = await asUser(ALICE, (tx) =>
+    tx.query(`select job_key, job_context_id, tailoring_tokens, answer_tokens, total_tokens, llm_calls
+              from public.job_token_usage order by job_key`),
+  )
+  assert.deepEqual(rows.map((r) => [r.job_key, r.job_context_id, Number(r.tailoring_tokens), Number(r.answer_tokens),
+    Number(r.total_tokens), Number(r.llm_calls)]), [
+    ['k1', jobId, 6200, 1300, 7500, 6],
+    ['k2', null, 0, 700, 700, 1],
+  ])
+  const theirs = await asUser(BOB, (tx) => tx.query('select * from public.job_token_usage'))
+  assert.equal(theirs.rows.length, 0)
+  await assert.rejects(
+    asUser(BOB, (tx) =>
+      tx.query(`insert into public.usage_events (kind, tokens, job_context_id) values ('generate', 1, $1)`, [jobId])),
+    /foreign key/,
+  )
+  // Deleting the job keeps its usage, unlinked.
+  await asUser(ALICE, (tx) => tx.query('delete from public.job_contexts where id = $1', [jobId]))
+  const kept = await asUser(ALICE, (tx) => tx.query(`select total_tokens, job_context_id from public.job_token_usage where job_key = 'k1'`))
+  assert.equal(Number(kept.rows[0].total_tokens), 7500)
+  assert.equal(kept.rows[0].job_context_id, null)
+})
+
+test('llm_calls roll up into application_usage per job, by stage, with cost and usage pattern', async () => {
+  await asUser(ALICE, (tx) =>
+    tx.query(
+      `insert into public.llm_calls
+         (job_key, stage, provider, model, input_tokens, output_tokens, cache_read_tokens, thinking_tokens, ok, cost_usd, duration_ms)
+       values
+         ('app1', 'job_analysis', 'anthropic', 'claude-haiku-4-5', 700, 300, 0, null, true, 0.0022, 900),
+         ('app1', 'matching', 'anthropic', 'claude-opus-5-5', 1700, 250, 0, null, true, 0.0118, 2000),
+         ('app1', 'tailoring_plan', 'anthropic', 'claude-opus-5-5', 1800, 340, 600, null, true, 0.0141, 4000),
+         ('app1', 'answer_batch', 'gemini', 'gemini-x', 2400, 800, 0, 50, true, null, 3000),
+         ('app1', 'answer_batch', 'gemini', 'gemini-x', 300, 20, 0, null, false, null, 500),
+         ('app1', 'answer_regeneration', 'gemini', 'gemini-x', 1200, 200, 0, null, true, null, 1500),
+         ('app1', 'embedding_query', 'openai', 'text-embedding-3-small', 20, 0, 0, null, true, 0.0000004, 100),
+         ('app2', 'answer', 'gemini', 'gemini-x', 1100, 200, 0, null, true, null, 1200),
+         ('app2', 'answer', 'gemini', 'gemini-x', 1000, 180, 0, null, true, null, 1100),
+         (null, 'answer', 'gemini', 'gemini-x', 1000, 180, 0, null, true, null, 1100)`,
+    ),
+  )
+  const { rows } = await asUser(ALICE, (tx) => tx.query('select * from public.application_usage order by job_key'))
+  assert.equal(rows.length, 2) // calls without a job aren't an application
+  const [app1, app2] = rows
+  assert.equal(Number(app1.job_analysis_tokens), 1000)
+  assert.equal(Number(app1.tailoring_tokens), 2740)
+  assert.equal(Number(app1.answer_tokens), 3520) // both batch calls: the unusable one was billed too
+  assert.equal(Number(app1.regeneration_tokens), 1400)
+  assert.equal(Number(app1.total_tokens), 1000 + 1950 + 2740 + 3520 + 1400) // embeddings apart
+  assert.equal(Number(app1.cached_input_tokens), 600)
+  assert.equal(Number(app1.thinking_tokens), 50)
+  assert.equal(Number(app1.llm_calls), 6)
+  assert.equal(Number(app1.failed_calls), 1)
+  assert.equal(Number(app1.regenerations), 1)
+  assert.equal(Number(app1.query_embedding_tokens), 20)
+  assert.equal(Number(app1.unpriced_calls), 3)
+  assert.equal(Number(app1.generation_cost_usd).toFixed(4), '0.0281')
+  assert.equal(Number(app1.total_cost_usd).toFixed(7), '0.0281004')
+  assert.equal(app1.usage_pattern, 'tailoring_fill_all')
+  assert.equal(app2.usage_pattern, 'single_answer_heavy')
+
+  const theirs = await asUser(BOB, (tx) => tx.query('select * from public.llm_calls'))
+  assert.equal(theirs.rows.length, 0)
+  await assert.rejects(
+    asUser(BOB, (tx) => tx.query(`insert into public.llm_calls (user_id, stage, provider, model) values ($1, 'answer', 'p', 'm')`, [ALICE])),
+    /row-level security/,
+  )
+  await assert.rejects(
+    db.transaction(async (tx) => {
+      await tx.exec('set local role anon')
+      await tx.query('select * from public.application_usage')
+    }),
+    /permission denied/,
+  )
+})
+
+test('the owner usage report runs', async () => {
+  await asUser(ALICE, (tx) =>
+    tx.query(`insert into public.usage_events (kind, category, duration_ms, edited) values
+                ('generate', 'motivation', null, null), ('regenerate', 'motivation', null, null),
+                ('fill', 'motivation', 4200, true)`),
+  )
+  const sql = await readFile(join(migrationsDir, '..', 'analytics', 'application_usage.sql'), 'utf8')
+  const statements = sql.split(/;\s*\n/).map((s) => s.trim()).filter((s) => s.replace(/--.*$/gm, '').trim())
+  assert.equal(statements.length, 8)
+  for (const statement of statements) await db.query(statement)
+  const quality = await db.query(statements[6])
+  const { generated, regenerated } = quality.rows[0]
+  assert.equal(Number(quality.rows[0].regenerations_per_generated), Number((Number(regenerated) / Number(generated)).toFixed(3)))
+  assert.equal(Number(quality.rows[0].edited_before_fill_rate), 1)
+  assert.equal(Number(quality.rows[0].median_wait_ms), 4200)
 })
