@@ -27,6 +27,29 @@ const SUPABASE_STUB = `
   $$;
   grant usage on schema public, auth to anon, authenticated;
   grant execute on function auth.uid() to anon, authenticated;
+
+  create schema storage;
+  create table storage.buckets (
+    id text primary key,
+    name text not null,
+    public boolean default false,
+    file_size_limit bigint,
+    allowed_mime_types text[]
+  );
+  create table storage.objects (
+    id uuid primary key default gen_random_uuid(),
+    bucket_id text references storage.buckets (id),
+    name text not null,
+    owner uuid default auth.uid()
+  );
+  create function storage.foldername(name text) returns text[] language sql immutable as $$
+    select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1]
+  $$;
+  alter table storage.objects enable row level security;
+  grant usage on schema storage to anon, authenticated;
+  grant select, insert, update, delete on storage.objects to anon, authenticated;
+  grant select on storage.buckets to anon, authenticated;
+  grant execute on function storage.foldername(text) to anon, authenticated;
 `
 
 let db
@@ -192,4 +215,225 @@ test("skills accept level 'none' and usage events accept 'fill_all'", async () =
     asUser(ALICE, (tx) => tx.query(`insert into public.skills (name, level) values ('Rust', 'guru')`)),
     /check constraint/,
   )
+})
+
+// ---------------------------------------------------------------------------
+// v1.2 resume tailoring
+// ---------------------------------------------------------------------------
+
+/** Inserts a master resume, job context and tailoring for `userId`; returns their ids. */
+async function seedTailoring(userId, version = 1) {
+  return asUser(userId, async (tx) => {
+    const resume = await tx.query(
+      `insert into public.resumes (name, file_path, file_type, version, is_master, parse_status)
+       values ('Resume.docx', $1, 'docx', $2, true, 'parsed') returning id`,
+      [`${userId}/masters/v${version}.docx`, version],
+    )
+    const job = await tx.query(
+      `insert into public.job_contexts (title, company, description, source)
+       values ('Senior Full Stack Engineer', 'Company X', 'Build things with React.', 'manual') returning id`,
+    )
+    const tailoring = await tx.query(
+      `insert into public.resume_tailorings (resume_id, resume_version, job_context_id, pipeline_version, output_file_path)
+       values ($1, $2, $3, '1.2.0', $4) returning id`,
+      [resume.rows[0].id, version, job.rows[0].id, `${userId}/tailored/t1.docx`],
+    )
+    return { resumeId: resume.rows[0].id, jobId: job.rows[0].id, tailoringId: tailoring.rows[0].id }
+  })
+}
+
+test('resumes, job contexts and tailorings are private to their owner', async () => {
+  const alice = await seedTailoring(ALICE)
+  await asUser(BOB, async (tx) => {
+    for (const table of ['resumes', 'job_contexts', 'resume_tailorings']) {
+      assert.equal((await tx.query(`select * from public.${table}`)).rows.length, 0, table)
+      assert.equal((await tx.query(`update public.${table} set user_id = user_id`)).affectedRows, 0, table)
+      assert.equal((await tx.query(`delete from public.${table}`)).affectedRows, 0, table)
+    }
+  })
+  await asUser(ALICE, async (tx) => {
+    const { rows } = await tx.query('select id, status from public.resume_tailorings')
+    assert.deepEqual(rows, [{ id: alice.tailoringId, status: 'queued' }])
+  })
+  for (const table of ['resumes', 'job_contexts', 'resume_tailorings']) {
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        await tx.exec('set local role anon')
+        await tx.query(`select * from public.${table}`)
+      }),
+      /permission denied/,
+      table,
+    )
+  }
+})
+
+test('a tailoring cannot reference another user’s resume or job', async () => {
+  const alice = await asUser(ALICE, async (tx) => ({
+    resumeId: (await tx.query('select id from public.resumes limit 1')).rows[0].id,
+    jobId: (await tx.query('select id from public.job_contexts limit 1')).rows[0].id,
+  }))
+  await assert.rejects(
+    asUser(BOB, (tx) =>
+      tx.query(
+        `insert into public.resume_tailorings (resume_id, resume_version, job_context_id, pipeline_version)
+         values ($1, 1, $2, '1.2.0')`,
+        [alice.resumeId, alice.jobId],
+      ),
+    ),
+    /foreign key/,
+  )
+})
+
+test('one master per user; replacing it keeps old versions', async () => {
+  await assert.rejects(
+    asUser(ALICE, (tx) =>
+      tx.query(
+        `insert into public.resumes (name, file_path, file_type, version, is_master)
+         values ('Second.docx', $1, 'docx', 2, true)`,
+        [`${ALICE}/masters/v2.docx`],
+      ),
+    ),
+    /duplicate key/,
+  )
+  await asUser(ALICE, async (tx) => {
+    await tx.query('update public.resumes set is_master = false where is_master')
+    await tx.query(
+      `insert into public.resumes (name, file_path, file_type, version, is_master)
+       values ('Second.docx', $1, 'docx', 2, true)`,
+      [`${ALICE}/masters/v2.docx`],
+    )
+    const { rows } = await tx.query('select version, is_master from public.resumes order by version')
+    assert.deepEqual(rows, [
+      { version: 1, is_master: false },
+      { version: 2, is_master: true },
+    ])
+  })
+  // Each user has their own master.
+  await asUser(BOB, (tx) =>
+    tx.query(
+      `insert into public.resumes (name, file_path, file_type, is_master) values ('Bob.docx', $1, 'docx', true)`,
+      [`${BOB}/masters/v1.docx`],
+    ),
+  )
+})
+
+test('file paths must sit under the owner’s prefix', async () => {
+  await assert.rejects(
+    asUser(BOB, (tx) =>
+      tx.query(
+        `insert into public.resumes (name, file_path, file_type, version) values ('x.docx', $1, 'docx', 9)`,
+        [`${ALICE}/masters/x.docx`],
+      ),
+    ),
+    /check constraint/,
+  )
+})
+
+test('new resumes must be Word documents; older PDF versions keep working', async () => {
+  for (const [type, path] of [['pdf', 'cv.pdf'], ['docx', 'cv.pdf'], ['pdf', 'cv.docx']]) {
+    await assert.rejects(
+      asUser(BOB, (tx) =>
+        tx.query(`insert into public.resumes (name, file_path, file_type, version) values ('cv', $1, $2, 5)`, [
+          `${BOB}/masters/${path}`,
+          type,
+        ]),
+      ),
+      /Word \(\.docx\)/,
+      `${type} ${path}`,
+    )
+  }
+  // A PDF version from before the change (inserted around the trigger) can still be updated and deleted.
+  await db.exec('alter table public.resumes disable trigger resumes_require_docx')
+  await db.query(
+    `insert into public.resumes (user_id, name, file_path, file_type, version) values ($1, 'Old.pdf', $2, 'pdf', 7)`,
+    [BOB, `${BOB}/masters/old.pdf`],
+  )
+  await db.exec('alter table public.resumes enable trigger resumes_require_docx')
+  await asUser(BOB, async (tx) => {
+    await tx.query(`update public.resumes set name = 'Old resume.pdf', is_master = false where version = 7`)
+    assert.equal((await tx.query('delete from public.resumes where version = 7')).affectedRows, 1)
+  })
+  const { rows } = await db.query(`select allowed_mime_types from storage.buckets where id = 'resumes'`)
+  assert.deepEqual(rows, [
+    { allowed_mime_types: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'] },
+  ])
+})
+
+test('deleting an old resume version keeps its tailorings', async () => {
+  await asUser(ALICE, async (tx) => {
+    await tx.query('delete from public.resumes where version = 1')
+    const { rows } = await tx.query('select resume_id, resume_version from public.resume_tailorings')
+    assert.deepEqual(rows, [{ resume_id: null, resume_version: 1 }])
+  })
+})
+
+test('tailoring status is constrained and updated_at is bumped', async () => {
+  await assert.rejects(
+    asUser(ALICE, (tx) => tx.query(`update public.resume_tailorings set status = 'done'`)),
+    /check constraint/,
+  )
+  const before = await asUser(ALICE, (tx) => tx.query('select updated_at from public.resume_tailorings'))
+  await new Promise((r) => setTimeout(r, 20))
+  const after = await asUser(ALICE, (tx) =>
+    tx.query(`update public.resume_tailorings set status = 'analyzing' returning updated_at`),
+  )
+  assert.ok(after.rows[0].updated_at > before.rows[0].updated_at)
+})
+
+test('resume files are private to their owner’s storage prefix', async () => {
+  const { rows: buckets } = await db.query(`select public from storage.buckets where id = 'resumes'`)
+  assert.deepEqual(buckets, [{ public: false }])
+
+  await asUser(ALICE, (tx) =>
+    tx.query(`insert into storage.objects (bucket_id, name) values ('resumes', $1)`, [
+      `${ALICE}/masters/resume.pdf`,
+    ]),
+  )
+  await assert.rejects(
+    asUser(BOB, (tx) =>
+      tx.query(`insert into storage.objects (bucket_id, name) values ('resumes', $1)`, [`${ALICE}/masters/evil.pdf`]),
+    ),
+    /row-level security/,
+  )
+  await asUser(BOB, async (tx) => {
+    assert.equal((await tx.query('select * from storage.objects')).rows.length, 0)
+    assert.equal((await tx.query('delete from storage.objects')).affectedRows, 0)
+  })
+  await asUser(ALICE, async (tx) => {
+    const { rows } = await tx.query('select name from storage.objects')
+    assert.deepEqual(rows, [{ name: `${ALICE}/masters/resume.pdf` }])
+  })
+  await assert.rejects(
+    db.transaction(async (tx) => {
+      await tx.exec('set local role anon')
+      await tx.query(`insert into storage.objects (bucket_id, name) values ('resumes', 'anon/x.pdf')`)
+    }),
+    /row-level security/,
+  )
+})
+
+test('usage events accept the tailoring kinds', async () => {
+  await asUser(ALICE, async (tx) => {
+    for (const kind of [
+      'resume_uploaded', 'resume_parse_failed', 'job_detected', 'tailoring_started', 'tailoring_completed',
+      'tailoring_failed', 'resume_previewed', 'resume_downloaded', 'tailoring_deleted',
+    ]) {
+      await tx.query('insert into public.usage_events (kind) values ($1)', [kind])
+    }
+  })
+})
+
+test('the tailoring metrics queries run against the schema', async () => {
+  await asUser(ALICE, (tx) =>
+    tx.query(`insert into public.usage_events (kind, duration_ms, tokens, provider) values ('tailoring_completed', 42000, 9000, 'Gemini')`),
+  )
+  const sql = await readFile(join(migrationsDir, '..', 'analytics', 'tailoring_metrics.sql'), 'utf8')
+  const statements = sql
+    .split(/;\s*\n/)
+    .map((s) => s.replace(/^\s*--.*$/gm, '').trim())
+    .filter(Boolean)
+  assert.equal(statements.length, 5)
+  for (const statement of statements) await db.query(statement)
+  const { rows } = await db.query(statements[1])
+  assert.equal(Number(rows[0].avg_seconds), 42)
 })
