@@ -43,3 +43,6 @@ htmlcov/
 
 # Logs
 *.log
+evals/jobs/
+evals/out/
+evals/*.json
