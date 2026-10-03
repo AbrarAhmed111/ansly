@@ -13,11 +13,12 @@ from src.app.schemas.resume import CamelModel
 TailoringStatus = Literal["queued", "analyzing", "matching", "tailoring", "validating", "rendering", "ready", "failed"]
 TailoringAction = Literal[
     "reorder", "emphasize", "rewrite_bullet", "add_bullet", "select", "reduce", "align_terms", "update_summary",
+    "update_headline",
 ]
-ResumeSection = Literal["summary", "experience", "projects", "skills", "education", "achievements", "certifications"]
+ResumeSection = Literal["headline", "summary", "experience", "projects", "skills", "education", "achievements", "certifications"]
 ValidationCheck = Literal[
     "protected_fields", "metrics", "unsupported_technology", "traceability", "keyword_integrity",
-    "hallucination_review", "formatting", "document",
+    "hallucination_review", "formatting", "document", "unverified_skill",
 ]
 ValidationOutcome = Literal["reverted", "removed", "restored", "flagged", "warning"]
 

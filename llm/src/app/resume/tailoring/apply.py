@@ -24,7 +24,7 @@ BULLET_SECTIONS = {"experience", "projects", "education"}
 ADD_SECTIONS = {"experience", "projects"}
 MAX_ADDED = 2
 REMOVABLE_ITEM_SECTIONS = {"projects", "achievements", "certifications"}
-TEXT_ACTIONS = {"rewrite_bullet", "add_bullet", "align_terms", "update_summary"}
+TEXT_ACTIONS = {"rewrite_bullet", "add_bullet", "align_terms", "update_summary", "update_headline"}
 
 
 @dataclass
@@ -71,6 +71,16 @@ def apply_plan(source: StructuredResume, plan: TailoringPlan, corpus: EvidenceCo
 
     for change in plan.changes:
         action, section = change.action, change.section
+
+        if action == "update_headline":
+            text = (change.text or "").strip()
+            if section != "headline" or not text or "headline" in touched_text:
+                reject(change, "Title change was empty or repeated.")
+                continue
+            touched_text.add("headline")
+            result.applied.append(AppliedChange(change, before=resume.contact.headline or "", after=text, label="Title"))
+            resume.contact.headline = text
+            continue
 
         if action == "update_summary" or (action == "align_terms" and section == "summary"):
             text = (change.text or "").strip()

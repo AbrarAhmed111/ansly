@@ -28,8 +28,11 @@ export type TailoringAction =
   | 'reduce'
   | 'align_terms'
   | 'update_summary'
+  /** The title line under the name, set to the job's role. */
+  | 'update_headline'
 
 export type ResumeSection =
+  | 'headline'
   | 'summary'
   | 'experience'
   | 'projects'
@@ -70,6 +73,8 @@ export type ValidationCheck =
   | 'formatting'
   /** A change left out because that part of the Word document couldn't be edited safely. */
   | 'document'
+  /** A skill the job requires that isn't in the profile, added for the user to confirm or remove. */
+  | 'unverified_skill'
 
 /** What the validator did about a problem. */
 export type ValidationOutcome = 'reverted' | 'removed' | 'restored' | 'flagged' | 'warning'

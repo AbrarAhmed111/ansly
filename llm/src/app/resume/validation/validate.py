@@ -5,6 +5,7 @@ Runs after every tailoring, before anything is shown. Deterministic checks
 first, each fixing what it finds:
 
 - protected fields  titles, companies, dates, URLs, contact details, names equal the master exactly -> revert
+- headline          the title line is the job's role, cleaned (job_fit.py) -> replaced
 - traceability      every rewritten text cites evidence ids that exist -> revert; a new bullet
                     cites evidence about that same job or project -> left out
 - metrics           every number in a rewritten text is in its cited evidence or the original -> remove the claim
@@ -23,6 +24,7 @@ from src.app.answers.profile_context import canonicalize
 from src.app.resume.matching.evidence import EvidenceCorpus
 from src.app.resume.parsing.discrepancies import _company_key, _key
 from src.app.resume.tailoring.apply import ITEM_SECTIONS, AppliedChange
+from src.app.resume.tailoring.job_fit import fit_headline
 from src.app.resume.text import number_set, numbers, tech_terms, terms
 from src.app.schemas.job import JobAnalysis
 from src.app.schemas.resume import ResumeSkillGroup, StructuredResume
@@ -80,6 +82,7 @@ class Validator:
         self.applied = list(applied)
         self.corpus = corpus
         self.issues: List[ValidationIssue] = []
+        self.analysis = analysis
         skill_reqs = [r.requirement for r in (analysis.requirements if analysis else []) if r.type == "skill"]
         self.vocabulary: List[str] = skill_reqs + [s for e in corpus.items for s in e.skills]
 
@@ -91,8 +94,10 @@ class Validator:
     # -- protected fields -----------------------------------------------------
 
     def protected_fields(self) -> None:
-        if self.resume.contact != self.source.contact:
-            self.resume.contact = self.source.contact.model_copy(deep=True)
+        # The headline is checked on its own (headline()); everything else in the contact block is protected.
+        headline = self.resume.contact.headline
+        if self.resume.contact.model_copy(update={"headline": self.source.contact.headline}) != self.source.contact:
+            self.resume.contact = self.source.contact.model_copy(deep=True, update={"headline": headline})
             self.issue("protected_fields", "reverted", "Contact details were restored to your master resume.")
         if self.resume.custom_sections != self.source.custom_sections:
             self.resume.custom_sections = [s.model_copy(deep=True) for s in self.source.custom_sections]
@@ -125,6 +130,12 @@ class Validator:
                     item.bullets.remove(b)
                     self.issue("protected_fields", "removed", "A bullet that isn't on your master resume was removed.",
                                section=section, item=item.id, attempted=b.text)
+
+    def headline(self) -> None:
+        self.resume.contact.headline = fit_headline(
+            self.source.contact.headline, self.resume.contact.headline,
+            self.analysis.role if self.analysis else None, [e.title for e in self.source.experience],
+        )
 
     # -- rewritten text -------------------------------------------------------
 
@@ -296,6 +307,7 @@ class Validator:
 
     def run(self) -> ValidationResult:
         self.protected_fields()
+        self.headline()
         self.rewritten_text()
         self.skills()
         return ValidationResult(resume=self.resume, issues=self.issues, applied=self.applied)
@@ -335,6 +347,10 @@ def user_warnings(issues: List[ValidationIssue]) -> List[str]:
             one, many = phrases[check]
             out.append(f"{count} {one if count == 1 else many}")
     out += [i.message for i in shown if i.check == "formatting"]
+    added = [i.attempted for i in shown if i.check == "unverified_skill" and i.attempted]
+    if added:
+        out.append(f"{len(added)} {'skill' if len(added) == 1 else 'skills'} added from the job that your profile "
+                   f"doesn't show: {', '.join(added)}. Remove any you don't have before sending.")
     return out
 
 

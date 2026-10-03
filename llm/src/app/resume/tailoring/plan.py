@@ -2,7 +2,8 @@
 Step 4: Matches + Master -> TailoringPlan.
 
 The model proposes controlled operations only (reorder, emphasize,
-rewrite_bullet, add_bullet, select, reduce, align_terms, update_summary). It
+rewrite_bullet, add_bullet, select, reduce, align_terms, update_summary,
+update_headline). It
 never writes the resume or the document: the plan executor applies the
 operations in code, the validator checks every one, and only then are they
 applied to a copy of the user's own Word file.
@@ -34,12 +35,13 @@ You may ONLY use these operations:
 - select: section "projects", "achievements" or "certifications"; "values" = item ids to keep (drop the rest).
 - reduce: remove a less relevant bullet ("item" + "bulletId"), project/achievement/certification ("item"), or skills ("values").
 - update_summary: section "summary"; "text" = a new 2–4 sentence summary written only from EVIDENCE.
+- update_headline: section "headline"; "text" = the candidate's title line (under their name) changed to the job's role, e.g. "Full Stack AI Engineer" -> "Full Stack Engineer" for a Full Stack Engineer job, or "Frontend Developer" for a Frontend Developer job. Use the role's plain name: no company, team, location, level code or "(Remote)"; keep a seniority word (Senior, Lead, Staff, Principal) only if the candidate's own job titles have it. Only when the resume has a HEADLINE and it differs from the role.
 
 Hard rules:
 - Every rewrite_bullet, align_terms and update_summary cites "evidenceIds" from the EVIDENCE list that support every claim in "text".
 - Never add a technology, tool, employer, project, title, certification, responsibility or achievement that isn't in EVIDENCE.
 - Never add or change a number, percentage, team size, money amount or duration. Keep existing metrics exactly; never invent one.
-- Never change job titles, company names, dates, URLs or contact details.
+- Never change job titles at employers, company names, dates, URLs or contact details (the HEADLINE is not a job title: update_headline may change it).
 - Requirements marked NONE are not supported: never claim or imply them.
 - A rewrite keeps the bullet's meaning and length roughly the same; don't stuff keywords.
 - Prefer few, high-value edits: at most 3 rewrites per job, at most 1 new bullet per job or project and 2 overall, at most 15 changes overall.
@@ -52,6 +54,8 @@ Return only a JSON object:
 
 def _resume_prompt(resume: StructuredResume) -> str:
     lines = []
+    if resume.contact.headline:
+        lines.append(f"HEADLINE: {resume.contact.headline}")
     if resume.summary:
         lines.append(f"SUMMARY: {resume.summary}")
     for exp in resume.experience:

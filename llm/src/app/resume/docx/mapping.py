@@ -43,6 +43,7 @@ class SkillRef:
 class ResumeMap:
     paras: List[Para]
     headings: List[int] = field(default_factory=list)
+    headline: Optional[int] = None
     summary: List[int] = field(default_factory=list)
     bullets: Dict[str, int] = field(default_factory=dict)
     # Bullets whose paragraph holds nothing else (safe to remove or copy).
@@ -164,6 +165,18 @@ class _Mapper:
                 if not key.startswith(joined):
                     break
 
+    def headline(self) -> None:
+        """The title line: a paragraph above the first section heading that has the headline as whole words."""
+        text = self.resume.contact.headline
+        if not text or not norm(text):
+            return
+        hi = self.m.headings[0] if self.m.headings else min(len(self.m.paras), 8)
+        for i in range(hi):
+            if i not in self.used and word_spans(self.m.paras[i].text, [text]):
+                self.m.headline = i
+                self.claim(i, "headline")
+                return
+
     def items(self, section: str, items: list, needles) -> None:
         lo, hi = self.section_range(SECTION_KINDS.get(section, section))
         cursor = lo
@@ -230,6 +243,7 @@ class _Mapper:
     def run(self) -> ResumeMap:
         r = self.resume
         self.summary()
+        self.headline()
         self.items("experience", r.experience, lambda i: [i.title, i.company])
         self.items("projects", r.projects, lambda i: [i.name])
         self.items("education", r.education, lambda i: [i.institution, i.degree])

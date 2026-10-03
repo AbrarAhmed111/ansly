@@ -8,6 +8,7 @@ document couldn't take safely, never shows up as made.
 
 from typing import Dict, List
 
+from src.app.answers.profile_context import canonicalize
 from src.app.resume.matching.evidence import EvidenceCorpus
 from src.app.schemas.resume import StructuredResume
 from src.app.schemas.tailoring import ChangeSummary, TextDiff
@@ -27,6 +28,9 @@ def _plural(n: int, word: str) -> str:
 
 def summarize_changes(source: StructuredResume, final: StructuredResume, applied: List[AppliedChange]) -> List[ChangeSummary]:
     out: List[ChangeSummary] = []
+    if (final.contact.headline or "") != (source.contact.headline or ""):
+        out.append(ChangeSummary(section="headline", action="update_headline",
+                                 label=f"Title changed to {final.contact.headline}"))
     for section in ("experience", "projects"):
         before = {b.id: b.text for i in getattr(source, section) for b in i.bullets}
         after = {b.id: b.text for i in getattr(final, section) for b in i.bullets}
@@ -68,6 +72,10 @@ def summarize_changes(source: StructuredResume, final: StructuredResume, applied
         elif c.action == "reduce" and c.section == "skills" and a.label and skills_changed:
             out.append(ChangeSummary(section="skills", action="reduce", label=f"Left out skills: {a.label}"))
 
+    source_skills = {canonicalize(s) for g in source.skills for s in g.items}
+    new_skills = [s for g in final.skills for s in g.items if canonicalize(s) not in source_skills]
+    if new_skills:
+        out.append(ChangeSummary(section="skills", action="emphasize", label=f"Added skills: {', '.join(new_skills)}"))
     if (final.summary or "") != (source.summary or ""):
         out.append(ChangeSummary(section="summary", action="update_summary", label="Summary updated"))
     return out
@@ -81,6 +89,9 @@ def text_diffs(source: StructuredResume, final: StructuredResume, applied: List[
         if key:
             evidence[key] = corpus.labels(a.change.evidence_ids)
     out: List[TextDiff] = []
+    if (final.contact.headline or "") != (source.contact.headline or ""):
+        out.append(TextDiff(section="headline", item=None, item_label="Title", before=source.contact.headline or "",
+                            after=final.contact.headline or ""))
     if (final.summary or "") != (source.summary or ""):
         out.append(TextDiff(section="summary", item=None, item_label="Summary", before=source.summary or "",
                             after=final.summary or "", evidence_labels=evidence.get("summary", [])))

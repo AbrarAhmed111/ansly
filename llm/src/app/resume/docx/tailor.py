@@ -4,6 +4,7 @@ Tailored Resume -> Tailored Word Document.
 The AI decides what changes (the validated tailored resume); this decides how,
 applying each change to a COPY of the user's original .docx in place:
 
+- new title (headline)        -> only the changed characters, inside the original runs
 - rewritten summary / bullet  -> only the changed characters, inside the original runs
 - added bullet                -> a copy of the nearest bullet paragraph, new text
 - removed bullet              -> the original paragraph is deleted
@@ -92,6 +93,7 @@ class _Tailor:
         self.touched: List[etree._Element] = []
         # Effective state, built up from what actually reached the document.
         self.summary: Optional[str] = master.summary
+        self.headline: Optional[str] = master.contact.headline
         self.texts: Dict[str, str] = {}             # bullet id -> new text
         self.added: Dict[str, ResumeBullet] = {}    # bullet id -> added bullet
         self.dropped: Set[str] = set()              # bullet ids removed
@@ -124,6 +126,18 @@ class _Tailor:
         return span is not None and replace_text(element, span[0], span[1], new)
 
     # -- changes --------------------------------------------------------------------
+
+    def apply_headline(self) -> None:
+        old, new = self.master.contact.headline or "", self.final.contact.headline or ""
+        if old == new:
+            return
+        self.attempted += 1
+        element = self.para(self.m.headline)
+        if new and self.rewrite(element, old, new):
+            self.headline = new
+            self.ok(element)
+        else:
+            self.skip("headline", None, "your title")
 
     def apply_summary(self) -> None:
         old, new = self.master.summary or "", self.final.summary or ""
@@ -405,6 +419,7 @@ class _Tailor:
     def effective(self) -> StructuredResume:
         resume = self.master.model_copy(deep=True)
         resume.summary = self.summary
+        resume.contact.headline = self.headline
         for section in BULLET_ITEM_SECTIONS:
             finals = self._items(self.final, section)
             for item in getattr(resume, ITEM_SECTIONS[section]):
@@ -421,6 +436,7 @@ class _Tailor:
 
     def run(self) -> DocxTailoring:
         # Text first (paragraphs still where they were mapped), then deletions, then moves.
+        self.apply_headline()
         self.apply_summary()
         self.apply_rewrites()
         self.apply_additions()
