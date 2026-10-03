@@ -1,9 +1,10 @@
 """
 Resume Tailoring Endpoints (v1.2).
 
-A tailoring runs several LLM calls (tens of seconds), so POST starts it as a
-background job and clients poll GET /tailorings/{id}. If the host stopped the
-background work, the poll that finds it stalled runs the next step itself.
+A tailoring runs several LLM calls, so POST starts it and clients poll
+GET /tailorings/{id}. Where the host lets background work run, POST runs it in
+the background; a poll that finds the current step idle (no background worker,
+or one the host froze) runs the next steps itself, for up to POLL_WORK_SECONDS.
 
 The result is a tailored copy of the user's own Word document. GET .../files
 gives the preview both documents (original and tailored) to render in the
@@ -23,7 +24,7 @@ from src.app.core.rate_limit import check_daily_tailoring_limit, check_rate_limi
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
 from src.app.resume.matching.match import summarize
-from src.app.resume.pipeline import NEEDS_DOCX, PIPELINE_VERSION, StepContext, TailoringPipeline, is_stalled
+from src.app.resume.pipeline import NEEDS_DOCX, PIPELINE_VERSION, StepContext, TailoringPipeline, needs_worker
 from src.app.resume.validation.validate import user_warnings
 from src.app.schemas.matching import MatchAnalysis
 from src.app.schemas.tailoring import (
@@ -45,6 +46,8 @@ router = APIRouter(prefix="/tailorings", tags=["Tailorings"])
 
 SIGNED_URL_SECONDS = 300
 TABLE = "resume_tailorings"
+# A poll starts new steps for this long, so status updates keep arriving while it runs.
+POLL_WORK_SECONDS = 8.0
 
 
 async def _event(rest: SupabaseRest, kind: str) -> None:
@@ -126,7 +129,8 @@ async def start_tailoring(
     except SupabaseError as e:
         logger.error(f"Supabase error for user {user.id}: {e}")
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not start tailoring. Please try again.") from e
-    background.add_task(pipeline.run, StepContext(rest=rest, storage=storage, user_id=user.id), row["id"])
+    if settings.TAILORING_BACKGROUND:
+        background.add_task(pipeline.run, StepContext(rest=rest, storage=storage, user_id=user.id), row["id"])
     return StartTailoringResponse(id=row["id"], status=row["status"])
 
 
@@ -155,10 +159,12 @@ async def get_tailoring(
     pipeline: TailoringPipeline = Depends(get_pipeline),
 ) -> TailoringResponse:
     row = await _get(rest, tailoring_id)
-    if is_stalled(row):
-        # The background run died (e.g. the serverless host froze it): run the next step here.
-        advanced = await pipeline.advance(StepContext(rest=rest, storage=storage, user_id=user.id), row)
-        row = advanced or row
+    if needs_worker(row):
+        # Nobody is running the current step (no background worker, or the host froze it): run it here.
+        try:
+            row = await pipeline.drive(StepContext(rest=rest, storage=storage, user_id=user.id), row, POLL_WORK_SECONDS)
+        except SupabaseError as e:
+            logger.error(f"Tailoring {tailoring_id}: Supabase error while running a step, next poll retries: {e}")
     jobs = await _jobs(rest, [row["job_context_id"]])
     return build_response(row, jobs.get(row["job_context_id"]), detail)
 

@@ -288,8 +288,8 @@ async def test_a_stalled_run_is_resumed_by_polling(env):
         })
         polled = (await client.get("/api/v1/tailorings/t1")).json()
         fresh = (await client.get("/api/v1/tailorings/t1")).json()
-    assert polled["status"] == "tailoring"
-    assert fresh["status"] == "tailoring"  # Not stale any more: the poll doesn't run steps.
+    assert polled["status"] == "ready"
+    assert fresh["status"] == "ready"
 
 
 @pytest.mark.asyncio
