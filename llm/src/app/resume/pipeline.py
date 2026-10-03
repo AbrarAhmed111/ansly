@@ -30,7 +30,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
@@ -49,7 +49,7 @@ from src.app.resume.tailoring.plan import generate_plan
 from src.app.resume.validation.review import review_changes
 from src.app.resume.validation.validate import Validator, validate
 from src.app.schemas.job import JobAnalysis, JobPosting
-from src.app.schemas.matching import MatchAnalysis
+from src.app.schemas.matching import MatchAnalysis, RequirementMatch
 from src.app.schemas.resume import StructuredResume
 from src.app.schemas.tailoring import TailoringPlan, ValidationIssue, ValidationReport
 
@@ -88,10 +88,12 @@ class PipelineError(Exception):
 
 
 async def fetch_profile_rows(rest: SupabaseRest) -> Dict[str, Any]:
-    profiles = await rest.select("profiles", {"limit": "1"})
+    profiles, *sections = await asyncio.gather(
+        rest.select("profiles", {"limit": "1"}),
+        *(rest.select(section, {"order": order, "limit": "100"}) for section, order in PROFILE_SECTIONS.items()),
+    )
     data: Dict[str, Any] = {"profile": profiles[0] if profiles else None}
-    for section, order in PROFILE_SECTIONS.items():
-        data[section] = await rest.select(section, {"order": order, "limit": "100"})
+    data.update(zip(PROFILE_SECTIONS, sections))
     return data
 
 
@@ -210,17 +212,37 @@ class TailoringPipeline:
             raise PipelineError("The job analysis is missing.")
         return JobAnalysis.model_validate(jobs[0]["analysis"])
 
+    async def _earlier_matches(self, rest: SupabaseRest, row: Dict[str, Any], evidence: Dict[str, Any]) -> Optional[List[RequirementMatch]]:
+        """Matches from an earlier run of this resume version against this job, if they were made from exactly
+        the same evidence (so a profile edit always matches afresh). Saves a model call on retries and re-runs."""
+        rows = await rest.select(TABLE, {
+            "job_context_id": f"eq.{row['job_context_id']}", "resume_id": f"eq.{row.get('resume_id')}",
+            "resume_version": f"eq.{row.get('resume_version')}", "pipeline_version": f"eq.{PIPELINE_VERSION}",
+            "id": f"neq.{row['id']}", "match_analysis": "not.is.null",
+            "select": "match_analysis", "order": "created_at.desc", "limit": "1",
+        })
+        if not rows:
+            return None
+        earlier = MatchAnalysis.model_validate(rows[0]["match_analysis"])
+        same = ([e.model_dump(mode="json") for e in earlier.evidence] == evidence["evidence"]
+                and sorted(earlier.declined_skills) == evidence["declined"])
+        return earlier.matches if same else None
+
     async def _matching(self, ctx: StepContext, row: Dict[str, Any]) -> Dict[str, Any]:
-        analysis = await self._analysis(ctx, row)
-        master = await self._master(ctx, row)
-        corpus = build_corpus(await fetch_profile_rows(ctx.rest), master)
-        matches = await match_requirements(self.gateway, analysis, corpus, ctx.usage)
+        analysis, master, profile = await asyncio.gather(
+            self._analysis(ctx, row), self._master(ctx, row), fetch_profile_rows(ctx.rest))
+        corpus = build_corpus(profile, master)
+        evidence = {"evidence": [e.model_dump(mode="json") for e in corpus.items], "declined": sorted(corpus.declined)}
+        matches = await self._earlier_matches(ctx.rest, row, evidence)
+        if matches is None:
+            matches = await match_requirements(self.gateway, analysis, corpus, ctx.usage)
+        else:
+            logger.info(f"Tailoring {row['id']}: reused matches from an earlier run with the same evidence")
         stored = MatchAnalysis(matches=matches, evidence=corpus.items, declined_skills=sorted(corpus.declined))
         return {"match_analysis": stored.model_dump(mode="json", by_alias=True)}
 
     async def _tailoring(self, ctx: StepContext, row: Dict[str, Any]) -> Dict[str, Any]:
-        analysis = await self._analysis(ctx, row)
-        master = await self._master(ctx, row)
+        analysis, master = await asyncio.gather(self._analysis(ctx, row), self._master(ctx, row))
         stored = MatchAnalysis.model_validate(row["match_analysis"])
         corpus = corpus_from(row["match_analysis"])
         plan = await generate_plan(self.gateway, analysis, stored.matches, master, corpus, ctx.usage)
@@ -232,8 +254,7 @@ class TailoringPipeline:
 
     async def _validating(self, ctx: StepContext, row: Dict[str, Any]) -> Dict[str, Any]:
         """Deterministic checks only (fast); the model's truthfulness review runs while the document is stored."""
-        analysis = await self._analysis(ctx, row)
-        master = await self._master(ctx, row)
+        analysis, master = await asyncio.gather(self._analysis(ctx, row), self._master(ctx, row))
         stored = MatchAnalysis.model_validate(row["match_analysis"])
         corpus = corpus_from(row["match_analysis"])
         plan = TailoringPlan.model_validate(row["tailoring_plan"])

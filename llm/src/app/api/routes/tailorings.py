@@ -11,6 +11,7 @@ gives the preview both documents (original and tailored) to render in the
 browser; GET .../download gives the tailored .docx as an attachment.
 """
 
+import asyncio
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -24,7 +25,15 @@ from src.app.core.rate_limit import check_daily_tailoring_limit, check_rate_limi
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
 from src.app.resume.matching.match import summarize
-from src.app.resume.pipeline import NEEDS_DOCX, PIPELINE_VERSION, StepContext, TailoringPipeline, needs_worker
+from src.app.resume.pipeline import (
+    NEEDS_DOCX,
+    PIPELINE_VERSION,
+    TERMINAL,
+    StepContext,
+    TailoringPipeline,
+    age_seconds,
+    needs_worker,
+)
 from src.app.resume.validation.validate import user_warnings
 from src.app.schemas.matching import MatchAnalysis
 from src.app.schemas.tailoring import (
@@ -48,6 +57,18 @@ SIGNED_URL_SECONDS = 300
 TABLE = "resume_tailorings"
 # A poll starts new steps for this long, so status updates keep arriving while it runs.
 POLL_WORK_SECONDS = 8.0
+# When the next poll will itself run a step, ask for it almost at once instead of idling between steps.
+POLL_AGAIN_MS = 250
+
+
+def retry_after_ms(row: Dict[str, Any]) -> Optional[int]:
+    """When the client should poll next: soon if its poll runs the next step, slower the longer a worker runs."""
+    if row["status"] in TERMINAL:
+        return None
+    if needs_worker(row):
+        return POLL_AGAIN_MS
+    age = age_seconds(row.get("created_at"))
+    return 1000 if age < 10 else 2000 if age < 60 else 4000
 
 
 async def _event(rest: SupabaseRest, kind: str) -> None:
@@ -159,14 +180,22 @@ async def get_tailoring(
     pipeline: TailoringPipeline = Depends(get_pipeline),
 ) -> TailoringResponse:
     row = await _get(rest, tailoring_id)
-    if needs_worker(row):
-        # Nobody is running the current step (no background worker, or the host froze it): run it here.
-        try:
-            row = await pipeline.drive(StepContext(rest=rest, storage=storage, user_id=user.id), row, POLL_WORK_SECONDS)
-        except SupabaseError as e:
-            logger.error(f"Tailoring {tailoring_id}: Supabase error while running a step, next poll retries: {e}")
-    jobs = await _jobs(rest, [row["job_context_id"]])
-    return build_response(row, jobs.get(row["job_context_id"]), detail)
+    # The job's title doesn't change while steps run: read it alongside them.
+    jobs_read = asyncio.ensure_future(_jobs(rest, [row["job_context_id"]]))
+    try:
+        if needs_worker(row):
+            # Nobody is running the current step (no background worker, or the host froze it): run it here.
+            try:
+                row = await pipeline.drive(StepContext(rest=rest, storage=storage, user_id=user.id), row,
+                                           POLL_WORK_SECONDS)
+            except SupabaseError as e:
+                logger.error(f"Tailoring {tailoring_id}: Supabase error while running a step, next poll retries: {e}")
+        jobs = await jobs_read
+    finally:
+        jobs_read.cancel()
+    response = build_response(row, jobs.get(row["job_context_id"]), detail)
+    response.retry_after_ms = retry_after_ms(row)
+    return response
 
 
 def _safe_name(text: str) -> str:

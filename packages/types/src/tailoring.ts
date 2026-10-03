@@ -154,6 +154,8 @@ export interface TailoringResponse {
   error: string | null
   createdAt: string
   detail: TailoringDetail | null
+  /** While it runs: when to poll next (see tailoringPollDelay). Absent from older API versions. */
+  retryAfterMs?: number | null
 }
 
 /** `GET /api/v1/tailorings` */

@@ -1,9 +1,8 @@
-import { TAILORING_STEP_COUNT, tailoringProgress, type TailoringResponse, type TailoringStatus } from '@ansly/types'
+import { TAILORING_STEP_COUNT, tailoringPollDelay, tailoringProgress, type TailoringResponse, type TailoringStatus } from '@ansly/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DetectedJob, ExtractResult } from '@/lib/job/detect'
 import { send, type ApiFailure } from '@/lib/messages'
 
-const POLL_MS = 2000
 // How often the progress bar and activity line move between polls.
 const TICK_MS = 500
 
@@ -23,6 +22,8 @@ type State =
       since: number
       /** Answered polls: each one schedules the next. */
       polls: number
+      /** The server's hint for the next poll. */
+      retryAfterMs: number | null
     }
   | { step: 'ready'; result: TailoringResponse }
   | { step: 'error'; error: ApiFailure | null }
@@ -74,7 +75,7 @@ export function TailorCard({
     if (!resume) return setState({ step: 'no_master' })
     if (resume.parseStatus !== 'parsed') return setState({ step: 'needs_review', resumeId: resume.id })
 
-    setState({ step: 'running', status: 'analyzing', id: null, requirements: null, since: Date.now(), polls: 0 })
+    setState({ step: 'running', status: 'analyzing', id: null, requirements: null, since: Date.now(), polls: 0, retryAfterMs: null })
     const analyzed = await send('analyzeJob', { job: extracted.job })
     if (!analyzed.ok) return fail(analyzed.error)
     const requirements = analyzed.data.analysis.mustHave.length + analyzed.data.analysis.niceToHave.length
@@ -83,15 +84,21 @@ export function TailorCard({
     if (!mounted.current) return
     // The job is already analyzed: the run's next real work is matching.
     const status = started.data.status === 'queued' ? 'matching' : started.data.status
-    setState({ step: 'running', status, id: started.data.id, requirements, since: Date.now(), polls: 0 })
+    // The first poll comes quickly: where polls run the steps, it starts the matching step.
+    setState({ step: 'running', status, id: started.data.id, requirements, since: Date.now(), polls: 0, retryAfterMs: 500 })
   }, [extract, job, fail])
 
-  // Poll while the tailoring runs. Every answer, even an unchanged status, schedules the next poll.
+  // Poll while the tailoring runs, at the server's pace. Every answer, even an unchanged status, schedules the next
+  // poll. A hidden tab polls rarely unless its polls are running the steps; showing the tab again polls at once.
   const runningId = state.step === 'running' ? state.id : null
   const polls = state.step === 'running' ? state.polls : 0
+  const retryAfterMs = state.step === 'running' ? state.retryAfterMs : null
   useEffect(() => {
     if (!runningId) return
-    const timer = setTimeout(async () => {
+    let fired = false
+    const poll = async () => {
+      if (fired) return
+      fired = true
       const result = await send('getTailoring', { id: runningId })
       if (!mounted.current) return
       if (!result.ok) return fail(result.error)
@@ -103,13 +110,24 @@ export function TailorCard({
         const status = data.status === 'queued' ? 'matching' : data.status
         setState((s) =>
           s.step === 'running'
-            ? { ...s, status, polls: s.polls + 1, since: s.status === status ? s.since : Date.now() }
+            ? { ...s, status, polls: s.polls + 1, since: s.status === status ? s.since : Date.now(), retryAfterMs: data.retryAfterMs ?? null }
             : s,
         )
       }
-    }, POLL_MS)
-    return () => clearTimeout(timer)
-  }, [runningId, polls, fail])
+    }
+    const timer = setTimeout(poll, tailoringPollDelay(retryAfterMs, document.hidden))
+    const onVisibility = () => {
+      if (!document.hidden) {
+        clearTimeout(timer)
+        void poll()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [runningId, polls, retryAfterMs, fail])
 
   // Moves the progress bar between polls.
   const [now, setNow] = useState(() => Date.now())

@@ -2,6 +2,7 @@
 
 import {
   TAILORING_STEP_COUNT,
+  tailoringPollDelay,
   tailoringProgress,
   type ResumeSection,
   type TailoringResponse,
@@ -50,7 +51,6 @@ import { prefetchPreview, previewDocuments, saveAsPdf } from '@/lib/docx-preview
 import { errorMessage, plural } from '@/lib/format'
 import { TAILORING_STEPS, formatDate, isRunning, stepState, wordDiff } from '@/lib/resume'
 
-const POLL_MS = 2000
 const SECTION_TITLES: Record<ResumeSection, string> = {
   headline: 'Title',
   summary: 'Summary',
@@ -163,31 +163,40 @@ export default function TailoringPage() {
   const { data: pageLimit } = useCached('profile:page-limit', fetchPageLimit, errorMessage)
   const [openDiffs, setOpenDiffs] = useState<Set<ResumeSection>>(new Set())
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [previewStage, setPreviewStage] = useState<PreviewStage>('loading')
+  const [previewStage, setPreviewStage] = useState<PreviewStage>('idle')
   const [busy, setBusy] = useState<string | null>(null)
   const [confirm, confirmDialog] = useConfirm()
   const previewRef = useRef<HTMLDivElement>(null)
 
-  // Poll while it runs.
+  // Poll while it runs, at the pace the server asks for. A hidden tab polls rarely unless its polls run the steps;
+  // showing the tab again polls at once.
   useEffect(() => {
     if (!data || !isRunning(data.status)) return
-    const timer = setTimeout(() => void refresh(), POLL_MS)
-    return () => clearTimeout(timer)
+    const timer = setTimeout(() => void refresh(), tailoringPollDelay(data.retryAfterMs, document.hidden))
+    const onVisibility = () => {
+      if (!document.hidden) {
+        clearTimeout(timer)
+        void refresh()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [data, refresh])
 
-  // As soon as it's ready, fetch the renderer and both documents in the background: the preview then opens at once.
+  // The preview (renderer + both documents) is fetched only when wanted: on hover/focus of Preview, or when it
+  // opens. Someone who only downloads never pays for it.
   const ready = data?.status === 'ready'
-  useEffect(() => {
+  const warmPreview = useCallback(() => {
     if (!ready) return
-    let cancelled = false
+    setPreviewStage((s) => (s === 'idle' ? 'loading' : s))
     prefetchPreview(tailoringId)
     previewDocuments(tailoringId).then(
-      () => !cancelled && setPreviewStage((s) => (s === 'error' ? s : 'ready')),
-      () => !cancelled && setPreviewStage('error'),
+      () => setPreviewStage((s) => (s === 'error' ? s : 'ready')),
+      () => setPreviewStage('error'),
     )
-    return () => {
-      cancelled = true
-    }
   }, [ready, tailoringId])
 
   const progress = useProgress(data?.status)
@@ -225,6 +234,7 @@ export default function TailoringPage() {
 
   function togglePreview() {
     const next = !previewOpen
+    if (next) warmPreview()
     setPreviewOpen(next)
     if (next) requestAnimationFrame(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
@@ -363,6 +373,7 @@ export default function TailoringPage() {
             downloading={busy === 'download'}
             savingPdf={busy === 'pdf'}
             onPreview={togglePreview}
+            onPreviewIntent={warmPreview}
             onDownload={download}
             onPdf={savePdf}
           />

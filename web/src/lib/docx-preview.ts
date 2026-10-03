@@ -58,7 +58,8 @@ export function previewDocuments(tailoringId: string): Promise<PreviewDocuments>
       original,
       originalName: files.original?.fileName ?? null,
     }
-  })
+    // A ready tailoring's documents never change: keep the bytes for the session (signed URLs aren't reused).
+  }, Infinity)
 }
 
 /** Warms everything the preview needs, so opening it doesn't wait. Errors surface when the preview opens. */

@@ -105,6 +105,8 @@ class TailoringResponse(CamelModel):
     error: Optional[str] = None
     created_at: str
     detail: Optional[TailoringDetail] = None
+    # Set while it runs (GET /tailorings/{id}): when to poll next.
+    retry_after_ms: Optional[int] = None
 
 
 class TailoringListItem(CamelModel):

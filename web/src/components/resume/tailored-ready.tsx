@@ -5,8 +5,8 @@ import { CheckCircle2, Download, Eye, EyeOff, FileDown, TriangleAlert } from 'lu
 import { Button, Card, Spinner, StepMarker } from '@/components/ui'
 import { plural } from '@/lib/format'
 
-/** Where the preview is: still downloading/rendering, ready, or unavailable. */
-export type PreviewStage = 'loading' | 'ready' | 'error'
+/** Where the preview is: not requested yet, downloading/rendering, ready, or unavailable. */
+export type PreviewStage = 'idle' | 'loading' | 'ready' | 'error'
 
 function Stage({ state, children }: { state: 'done' | 'active' | 'idle' | 'warning'; children: React.ReactNode }) {
   return (
@@ -29,6 +29,7 @@ export function TailoredReadyCard({
   downloading,
   savingPdf,
   onPreview,
+  onPreviewIntent,
   onDownload,
   onPdf,
 }: {
@@ -39,6 +40,8 @@ export function TailoredReadyCard({
   downloading: boolean
   savingPdf: boolean
   onPreview: () => void
+  /** Hover/focus on Preview: a cue to start fetching it. */
+  onPreviewIntent?: () => void
   onDownload: () => void
   onPdf: () => void
 }) {
@@ -58,14 +61,26 @@ export function TailoredReadyCard({
           <ol className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Progress">
             <Stage state="done">Resume tailored</Stage>
             <Stage state="done">Formatting preserved</Stage>
-            <Stage state={preview === 'ready' ? 'done' : preview === 'error' ? 'warning' : 'active'}>
-              {preview === 'error' ? 'Preview unavailable' : preview === 'ready' ? 'Preview ready' : 'Preparing preview'}
+            <Stage state={preview === 'ready' ? 'done' : preview === 'error' ? 'warning' : preview === 'idle' ? 'idle' : 'active'}>
+              {preview === 'error'
+                ? 'Preview unavailable'
+                : preview === 'ready'
+                  ? 'Preview ready'
+                  : preview === 'idle'
+                    ? 'Preview on request'
+                    : 'Preparing preview'}
             </Stage>
-            <Stage state={preview === 'loading' ? 'idle' : 'done'}>Ready to download</Stage>
+            <Stage state="done">Ready to download</Stage>
           </ol>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
-          <Button size="lg" icon={previewOpen ? EyeOff : Eye} onClick={onPreview}>
+          <Button
+            size="lg"
+            icon={previewOpen ? EyeOff : Eye}
+            onClick={onPreview}
+            onPointerEnter={onPreviewIntent}
+            onFocus={onPreviewIntent}
+          >
             {previewOpen ? 'Hide preview' : 'Preview Resume'}
           </Button>
           <Button size="lg" variant="secondary" icon={Download} onClick={onDownload} loading={downloading}>

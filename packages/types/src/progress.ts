@@ -89,3 +89,18 @@ export function tailoringProgress(status: TailoringStatus, elapsedMs: number): T
     step: Math.max(1, ORDER.indexOf(status) + 1),
   }
 }
+
+/** Poll interval when the server gives no `retryAfterMs` hint. */
+export const TAILORING_POLL_MS = 2000
+/** In a hidden tab, polls that only watch another worker slow down to this. */
+const HIDDEN_POLL_MS = 10_000
+
+/**
+ * How long to wait before polling a running tailoring again, from the server's `retryAfterMs`.
+ * A short hint means the next poll runs the next step itself (hosts without background work), so it
+ * continues even in a hidden tab; otherwise a hidden tab polls rarely.
+ */
+export function tailoringPollDelay(retryAfterMs: number | null | undefined, hidden: boolean): number {
+  const delay = retryAfterMs ?? TAILORING_POLL_MS
+  return hidden && delay >= 1000 ? Math.max(delay, HIDDEN_POLL_MS) : delay
+}

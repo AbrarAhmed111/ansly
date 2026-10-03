@@ -293,6 +293,7 @@ async def test_polling_runs_an_idle_tailoring_to_the_end(env):
         env.rest.tables["resume_tailorings"].append(_waiting_row(job["jobContextId"]))
         polled = (await client.get("/api/v1/tailorings/t1")).json()
     assert polled["status"] == "ready"
+    assert polled["retryAfterMs"] is None  # finished: stop polling
     assert env.rest.tables["resume_tailorings"][0]["step_started_at"] is None
 
 
@@ -304,6 +305,7 @@ async def test_polling_leaves_a_step_another_worker_is_running(env):
         env.rest.tables["resume_tailorings"].append(_waiting_row(job["jobContextId"], step_started_at=running))
         polled = (await client.get("/api/v1/tailorings/t1")).json()
     assert polled["status"] == "matching"
+    assert polled["retryAfterMs"] >= 1000  # someone else is working: no need to poll fast
     assert "You tailor a candidate's resume" not in env.gateway.calls
 
 
@@ -417,3 +419,29 @@ async def test_a_document_that_cant_be_edited_fails_clearly_and_offers_no_file()
     assert "couldn't safely edit this Word document" in result["error"]
     assert download.status_code == 409 and files.status_code == 409
     assert env.rest.tables["resume_tailorings"][0]["output_file_path"] is None
+
+
+@pytest.mark.asyncio
+async def test_analyzing_the_same_posting_again_reuses_the_analysis(env):
+    async with client_for(env) as client:
+        first = (await client.post("/api/v1/jobs/analyze", json={"job": JOB})).json()
+        calls = len(env.gateway.calls)
+        again = (await client.post("/api/v1/jobs/analyze", json={"job": JOB})).json()
+        changed = (await client.post("/api/v1/jobs/analyze", json={"job": {**JOB, "title": "Staff Engineer"}})).json()
+    assert again["jobContextId"] == first["jobContextId"] and again["analysis"] == first["analysis"]
+    assert len(env.gateway.calls) > calls  # only the changed posting called the model
+    assert changed["jobContextId"] != first["jobContextId"]
+    assert len(env.rest.tables["job_contexts"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_tailoring_the_same_job_again_reuses_matches_until_the_evidence_changes(env):
+    match_phrase = "You check a candidate's evidence"
+    async with client_for(env) as client:
+        assert (await tailor(client))["status"] == "ready"
+        first_runs = env.gateway.calls.count(match_phrase)
+        assert (await tailor(client))["status"] == "ready"
+        assert env.gateway.calls.count(match_phrase) == first_runs  # same evidence: no new matching call
+        env.rest.tables["skills"].append({"id": "new", "name": "Rust", "level": "advanced", "years": 2, "sort_order": 99})
+        assert (await tailor(client))["status"] == "ready"
+    assert env.gateway.calls.count(match_phrase) > first_runs

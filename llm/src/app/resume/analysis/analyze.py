@@ -5,6 +5,7 @@ The model splits the description into atomic requirements (one technology or
 one capability each), so matching can check them one at a time.
 """
 
+import hashlib
 import re
 from typing import Any, Dict, List, Optional
 
@@ -80,8 +81,18 @@ def description_too_short(description: Optional[str]) -> bool:
     return len((description or "").strip()) < MIN_DESCRIPTION_CHARS
 
 
+def job_content_hash(job: JobPosting) -> str:
+    """Identifies what the analysis reads (and the prompt that reads it): equal hashes give the same analysis."""
+    return hashlib.sha256(f"{SYSTEM_PROMPT}\n\0{_message(job)}".encode()).hexdigest()
+
+
 async def analyze_job(gateway: LLMGateway, job: JobPosting, usage: Optional[Usage] = None) -> JobAnalysis:
-    message = "\n".join([
+    return await call_json(gateway, SYSTEM_PROMPT, _message(job), lambda data: to_analysis(data, job), usage=usage,
+                           max_tokens=3000, temperature=0.0)
+
+
+def _message(job: JobPosting) -> str:
+    return "\n".join([
         f"TITLE: {job.title}",
         f"COMPANY: {job.company or 'unknown'}",
         f"LOCATION: {job.location}" if job.location else "",
@@ -90,5 +101,3 @@ async def analyze_job(gateway: LLMGateway, job: JobPosting, usage: Optional[Usag
         "DESCRIPTION:",
         job.description.strip()[:MAX_DESCRIPTION_CHARS],
     ])
-    return await call_json(gateway, SYSTEM_PROMPT, message, lambda data: to_analysis(data, job), usage=usage,
-                           max_tokens=3000, temperature=0.0)
