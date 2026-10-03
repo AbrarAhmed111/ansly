@@ -53,7 +53,7 @@ async def _run(
     try:
         await rest.insert(
             "usage_events",
-            {"kind": kind, "category": response.category, "provider": response.provider},
+            {"kind": kind, "category": response.category, "provider": response.provider, "tokens": response.tokens},
         )
     except SupabaseError as e:
         # Analytics must never cost the user their answer.
@@ -121,7 +121,8 @@ async def generate_batch(
         if result.provider is None:
             continue  # Answered without the model: doesn't count toward the daily limit.
         try:
-            await rest.insert("usage_events", {"kind": "generate", "category": result.category, "provider": result.provider})
+            await rest.insert("usage_events", {"kind": "generate", "category": result.category, "provider": result.provider,
+                                               "tokens": result.tokens})
         except SupabaseError as e:
             logger.warning(f"Could not record usage event: {e}")
     return GenerateBatchResponse(results=results)

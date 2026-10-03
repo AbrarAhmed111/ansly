@@ -4,6 +4,7 @@ import { planImport } from '../profile-import'
 import { companyKey, fileStem, linesToBullets, masterPath, resumeFileProblem, stepState, wordDiff } from '../resume'
 import { safeNext } from '../safe-next'
 import { sectionBySlug, toFormValues, toRow, type Row } from '../sections'
+import { compactNumber, tokenUsage } from '../usage'
 
 describe('safeNext', () => {
   it.each([
@@ -175,5 +176,31 @@ describe('resume helpers', () => {
     expect(stepState('matching', 'rendering')).toBe('idle')
     expect(stepState('queued', 'analyzing')).toBe('active')
     expect(stepState('ready', 'rendering')).toBe('done')
+  })
+})
+
+describe('tokenUsage', () => {
+  const now = new Date(2026, 9, 3, 15, 0)
+  const at = (daysAgo: number, hour = 10) => new Date(2026, 9, 3 - daysAgo, hour).toISOString()
+
+  it('totals today and averages from the first day with usage', () => {
+    const usage = tokenUsage(
+      [
+        { created_at: at(0), tokens: 1000 },
+        { created_at: at(0, 1), tokens: 500 },
+        { created_at: at(3), tokens: 2500 },
+        { created_at: at(1), tokens: null },
+      ],
+      now,
+    )
+    expect(usage).toEqual({ today: 1500, perDay: 1000, days: 4 })
+  })
+
+  it('ignores usage outside the window and handles no usage', () => {
+    expect(tokenUsage([{ created_at: at(45), tokens: 9000 }], now)).toEqual({ today: 0, perDay: 0, days: 1 })
+  })
+
+  it('formats large numbers compactly', () => {
+    expect([compactNumber(950), compactNumber(12_400), compactNumber(2_300_000)]).toEqual(['950', '12.4K', '2.3M'])
   })
 })

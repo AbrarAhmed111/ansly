@@ -207,8 +207,13 @@ def precheck(analysis: QuestionAnalysis, ctx: ProfileContext, field: Optional[Fi
     return None
 
 
+def _tokens(usage: Optional[Dict[str, int]]) -> int:
+    usage = usage or {}
+    return int(usage.get("prompt_tokens", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
+
+
 def _response(analysis: QuestionAnalysis, ctx: ProfileContext, parsed: ParsedAnswer, provider: Optional[str],
-              model: Optional[str]) -> AnswerResponse:
+              model: Optional[str], tokens: Optional[int] = None) -> AnswerResponse:
     return AnswerResponse(
         status=parsed.status,
         answer=parsed.answer,
@@ -223,6 +228,7 @@ def _response(analysis: QuestionAnalysis, ctx: ProfileContext, parsed: ParsedAns
         intent=analysis.intent,
         provider=provider,
         model=model,
+        tokens=tokens,
     )
 
 
@@ -297,7 +303,7 @@ class AnswerEngine:
             max_tokens=settings.LLM_MAX_TOKENS,
             validate=lambda text: parse_answer(text, ctx.sources, max_length, request.field),
         )
-        return _response(analysis, ctx, result.value, result.provider, result.model)
+        return _response(analysis, ctx, result.value, result.provider, result.model, _tokens(result.usage))
 
     # --- batches (fill all) -------------------------------------------------------
 
@@ -329,16 +335,19 @@ class AnswerEngine:
             chunk = plan.pending[start:start + BATCH_CHUNK]
             parsed: Dict[str, Optional[ParsedAnswer]] = {}
             provider = model = None
+            tokens = 0
             try:
                 result = await self._generate_chunk(plan, chunk)
                 parsed, provider, model = result.value, result.provider, result.model
+                # One call answered the chunk: its tokens are shared by the answers it produced.
+                tokens = _tokens(result.usage) // max(1, sum(1 for item in chunk if parsed.get(item.id) is not None))
             except GatewayUnavailableError as e:
                 logger.warning(f"Batch generation failed, answering one by one: {e}")
             for item in chunk:
                 answer = parsed.get(item.id)
                 if answer is not None:
-                    response = _response(plan.analyses[item.id], plan.ctx, answer, provider, model)
-                    plan.results[item.id] = BatchAnswer(id=item.id, **response.model_dump())
+                    response = _response(plan.analyses[item.id], plan.ctx, answer, provider, model, tokens)
+                    plan.results[item.id] = BatchAnswer(id=item.id, **response.model_dump(), tokens=tokens)
                 else:
                     plan.results[item.id] = await self._single(rest, plan, item)
         return [plan.results[item.id] for item in plan.request.items]
@@ -384,4 +393,4 @@ class AnswerEngine:
                 missing_information=None, category=analysis.category, intent=analysis.intent,
                 error="Couldn't generate this answer. Try it on its own.",
             )
-        return BatchAnswer(id=item.id, **response.model_dump())
+        return BatchAnswer(id=item.id, **response.model_dump(), tokens=response.tokens)

@@ -91,7 +91,7 @@ export function PageHeader({
 }
 
 /** Numeric metric tile. */
-export function Stat({ label, value, icon, hint }: { label: string; value: number; icon: LucideIcon; hint?: string }) {
+export function Stat({ label, value, icon, hint }: { label: string; value: number | string; icon: LucideIcon; hint?: string }) {
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between">

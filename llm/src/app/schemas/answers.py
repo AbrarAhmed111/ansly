@@ -115,6 +115,8 @@ class AnswerResponse(BaseModel):
     intent: str
     provider: Optional[str] = None
     model: Optional[str] = None
+    # Tokens the model used for this answer: recorded with the usage event, never sent to clients.
+    tokens: Optional[int] = Field(default=None, exclude=True)
 
 
 class MatchSavedAnswerRequest(BaseModel):

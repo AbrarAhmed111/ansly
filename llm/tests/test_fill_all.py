@@ -37,7 +37,8 @@ def _gateway(*payloads: dict) -> AsyncMock:
 
     async def generate(system, messages, temperature=None, max_tokens=None, validate=None):
         text = json.dumps(queue.pop(0) if len(queue) > 1 else queue[0])
-        return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1", usage={})
+        return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1",
+                             usage={"prompt_tokens": 120, "completion_tokens": 40})
 
     gateway.generate = AsyncMock(side_effect=generate)
     return gateway
@@ -267,7 +268,8 @@ def client(rest):
 def _mock_llm(payload: dict):
     async def generate(system, messages, temperature=None, max_tokens=None, validate=None):
         text = json.dumps(payload)
-        return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1", usage={})
+        return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1",
+                             usage={"prompt_tokens": 120, "completion_tokens": 40})
 
     return patch.object(answer_engine.gateway, "generate", AsyncMock(side_effect=generate))
 
@@ -288,6 +290,7 @@ async def test_generate_batch_endpoint(client, rest):
     assert "usedSources" in results[0] and "missing" in results[0]
     # Only the generated answer counts toward the daily limit.
     assert [e["kind"] for e in rest.tables["usage_events"]] == ["generate"]
+    assert rest.tables["usage_events"][0]["tokens"] > 0 and "tokens" not in results[0]
 
 
 @pytest.mark.asyncio

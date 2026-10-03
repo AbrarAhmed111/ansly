@@ -4,6 +4,7 @@ import { ArrowRight, BookmarkCheck, FileText, MousePointerClick, Puzzle, Refresh
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { SECTION_ICONS } from '@/components/section-icons'
+import { TokenUsage } from '@/components/token-usage'
 import {
   Card,
   CardHeader,
@@ -21,6 +22,7 @@ import { errorMessage } from '@/lib/format'
 import { loadFullProfile } from '@/lib/profile'
 import { SECTIONS } from '@/lib/sections'
 import { createClient } from '@/lib/supabase/server'
+import { TOKEN_WINDOW_DAYS, type TokenEvent } from '@/lib/usage'
 
 export const metadata = { title: 'Dashboard' }
 export const dynamic = 'force-dynamic'
@@ -35,6 +37,19 @@ async function weeklyUsage(supabase: Awaited<ReturnType<typeof createClient>>) {
     reused: count(['use_saved_answer']),
     tailored: count(['tailoring_completed']),
   }
+}
+
+/** Events that used AI tokens, for the last TOKEN_WINDOW_DAYS days (plus a day of slack for time zones). */
+async function tokenEvents(supabase: Awaited<ReturnType<typeof createClient>>): Promise<TokenEvent[]> {
+  const since = new Date(Date.now() - (TOKEN_WINDOW_DAYS + 1) * 24 * 3600 * 1000).toISOString()
+  const { data } = await supabase
+    .from('usage_events')
+    .select('created_at, tokens')
+    .gt('tokens', 0)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(5000)
+  return (data ?? []) as TokenEvent[]
 }
 
 /** Small side card: icon, title, one line, one action. */
@@ -87,9 +102,10 @@ export default async function DashboardPage() {
     )
   }
   const { percent, items } = profileCompleteness(profile)
-  const [{ count: savedCount }, usage, { count: masterCount }, { count: tailoredCount }] = await Promise.all([
+  const [{ count: savedCount }, usage, tokens, { count: masterCount }, { count: tailoredCount }] = await Promise.all([
     supabase.from('saved_answers').select('id', { count: 'exact', head: true }),
     weeklyUsage(supabase),
+    tokenEvents(supabase),
     // Before the v1.2 migration these tables don't exist: count stays null and the cards still render.
     supabase.from('resumes').select('id', { count: 'exact', head: true }).eq('is_master', true),
     supabase.from('resume_tailorings').select('id', { count: 'exact', head: true }).eq('status', 'ready'),
@@ -162,6 +178,12 @@ export default async function DashboardPage() {
         <Stat label="Fields filled" value={usage.filled} icon={MousePointerClick} hint="Answers you approved" />
         <Stat label="Saved answers reused" value={usage.reused} icon={RefreshCcw} hint="Instant, no generation" />
         <Stat label="Resumes tailored" value={usage.tailored} icon={FileText} hint="Truthful copies of your master" />
+      </div>
+
+      {/* Token use */}
+      <h2 className="mt-8 text-title">AI usage</h2>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <TokenUsage events={tokens} />
       </div>
 
       {/* Profile sections + side cards */}

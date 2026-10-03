@@ -34,7 +34,8 @@ def client(rest):
 def mock_llm(payload: dict):
     async def generate(system, messages, temperature=None, max_tokens=None, validate=None):
         text = json.dumps(payload)
-        return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1", usage={})
+        return GatewayResult(text=text, value=validate(text), provider="Mock", model="mock-1",
+                             usage={"prompt_tokens": 120, "completion_tokens": 40})
 
     return patch.object(answer_engine.gateway, "generate", AsyncMock(side_effect=generate))
 
@@ -88,6 +89,8 @@ async def test_generate_returns_grounded_answer_and_logs_event(client, rest):
     assert body["missingInformation"] is None
     assert body["category"] == "project"
     assert [e["kind"] for e in rest.tables["usage_events"]] == ["generate"]
+    # Token use is recorded for the dashboard, but isn't part of the answer.
+    assert rest.tables["usage_events"][0]["tokens"] > 0 and "tokens" not in body
 
 
 @pytest.mark.asyncio
