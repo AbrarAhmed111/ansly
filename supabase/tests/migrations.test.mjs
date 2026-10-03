@@ -453,3 +453,50 @@ test('profiles keep free-form additional context, up to 6000 characters', async 
     /check constraint/,
   )
 })
+
+test('dashboard_summary aggregates the caller’s own data only', async () => {
+  const CAROL = '00000000-0000-0000-0000-00000000000c'
+  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'carol@example.com', '{"full_name": "Carol"}')`, [CAROL])
+  await asUser(CAROL, async (tx) => {
+    await tx.query(`insert into public.experiences (company, title, description) values ('A', 'Eng', 'Built things')`)
+    await tx.query(`insert into public.experiences (company, title, highlights) values ('B', 'Eng', '{"Shipped"}')`)
+    await tx.query(`insert into public.projects (name, description) values ('P', 'An app')`)
+    await tx.query(`insert into public.skills (name) values ('Go'), ('Rust')`)
+    await tx.query(`insert into public.skills (name, level) values ('COBOL', 'none')`)
+    await tx.query(`insert into public.usage_events (kind, tokens) values ('generate', 100), ('generate', 50), ('fill', null)`)
+  })
+  // Another user's activity must not leak in.
+  await asUser(BOB, (tx) => tx.query(`insert into public.usage_events (kind, tokens) values ('generate', 999)`))
+
+  const { rows } = await asUser(CAROL, (tx) => tx.query('select public.dashboard_summary() as s'))
+  const s = rows[0].s
+  assert.equal(s.profile.full_name, 'Carol')
+  assert.equal(s.experiences, 2)
+  assert.equal(s.experiences_described, true)
+  assert.equal(s.projects_described, true)
+  assert.equal(s.skills, 3)
+  assert.equal(s.known_skills, 2)
+  assert.equal(s.education, 0)
+  assert.deepEqual(s.usage_7d, { generate: 2, fill: 1 })
+  assert.equal(s.token_buckets.reduce((sum, [, tokens]) => sum + Number(tokens), 0), 150)
+  assert.equal(s.master_resume, false)
+  assert.equal(s.ready_tailorings, 0)
+
+  await assert.rejects(
+    db.transaction(async (tx) => {
+      await tx.exec('set local role anon')
+      await tx.query('select public.dashboard_summary()')
+    }),
+    /permission denied/,
+  )
+})
+
+test('job contexts can be found again by content hash, per user', async () => {
+  await asUser(ALICE, (tx) =>
+    tx.query(`insert into public.job_contexts (title, description, source, content_hash) values ('Eng', 'Build things', 'manual', 'h1')`),
+  )
+  const mine = await asUser(ALICE, (tx) => tx.query(`select id from public.job_contexts where content_hash = 'h1'`))
+  assert.equal(mine.rows.length, 1)
+  const theirs = await asUser(BOB, (tx) => tx.query(`select id from public.job_contexts where content_hash = 'h1'`))
+  assert.equal(theirs.rows.length, 0)
+})

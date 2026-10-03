@@ -1,4 +1,4 @@
-import type { FullProfile } from './database'
+import type { FullProfile, Profile } from './database'
 
 export interface CompletenessItem {
   key: string
@@ -15,14 +15,46 @@ export interface Completeness {
   items: CompletenessItem[]
 }
 
+/** What completeness is scored from: a few profile fields plus counts (the dashboard gets these pre-aggregated). */
+export interface CompletenessSignals {
+  profile: Pick<Profile, 'full_name' | 'headline' | 'location' | 'summary' | 'links'> | null
+  experiences: number
+  /** Every experience has a description or highlights. */
+  experiencesDescribed: boolean
+  /** At least one project has a description. */
+  projectsDescribed: boolean
+  /** Skills excluding "I don't have this" rows (level 'none'). */
+  knownSkills: number
+  education: number
+  achievements: number
+  facts: number
+}
+
 const filled = (value: string | null | undefined) =>
   typeof value === 'string' && value.trim().length > 0
+
+export function completenessSignals(data: FullProfile): CompletenessSignals {
+  return {
+    profile: data.profile,
+    experiences: data.experiences.length,
+    experiencesDescribed: data.experiences.every((e) => filled(e.description) || e.highlights.length > 0),
+    projectsDescribed: data.projects.some((pr) => filled(pr.description)),
+    knownSkills: data.skills.filter((s) => s.level !== 'none').length,
+    education: data.education.length,
+    achievements: data.achievements.length,
+    facts: (data.profile_facts ?? []).length,
+  }
+}
 
 /**
  * Scores how much of the profile is filled in. Weighted toward what answer
  * generation draws on most: experience, projects, skills and the summary.
  */
 export function profileCompleteness(data: FullProfile): Completeness {
+  return completenessFromSignals(completenessSignals(data))
+}
+
+export function completenessFromSignals(data: CompletenessSignals): Completeness {
   const p = data.profile
   const items: CompletenessItem[] = [
     {
@@ -50,45 +82,42 @@ export function profileCompleteness(data: FullProfile): Completeness {
       key: 'experience',
       label: 'Work experience with descriptions',
       weight: 25,
-      done:
-        data.experiences.length > 0 &&
-        data.experiences.every((e) => filled(e.description) || e.highlights.length > 0),
+      done: data.experiences > 0 && data.experiencesDescribed,
       href: '/profile/experience',
     },
     {
       key: 'projects',
       label: 'At least one project',
       weight: 20,
-      done: data.projects.some((pr) => filled(pr.description)),
+      done: data.projectsDescribed,
       href: '/profile/projects',
     },
     {
       key: 'skills',
       label: 'At least five skills',
       weight: 15,
-      // "I don't have this" rows (level 'none') aren't skills.
-      done: data.skills.filter((s) => s.level !== 'none').length >= 5,
+      done: data.knownSkills >= 5,
       href: '/profile/skills',
     },
     {
       key: 'education',
       label: 'Education',
       weight: 5,
-      done: data.education.length > 0,
+      done: data.education > 0,
       href: '/profile/education',
     },
     {
       key: 'achievements',
       label: 'At least one achievement',
       weight: 5,
-      done: data.achievements.length > 0,
+      done: data.achievements > 0,
       href: '/profile/achievements',
     },
     {
       key: 'additional',
       label: 'Additional details (answers you gave Ansly)',
       weight: 5,
-      done: (data.profile_facts ?? []).length > 0,
+      done: data.facts > 0,
       href: '/profile/additional',
     },
   ]

@@ -1,4 +1,4 @@
-import { profileCompleteness } from '@ansly/types'
+import { completenessFromSignals } from '@ansly/types'
 import { clsx } from 'clsx'
 import { ArrowRight, BookmarkCheck, FileText, MousePointerClick, Puzzle, RefreshCcw, Sparkles, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -18,39 +18,13 @@ import {
   StepMarker,
   buttonStyles,
 } from '@/components/ui'
+import { loadDashboard, type DashboardData } from '@/lib/dashboard'
 import { errorMessage } from '@/lib/format'
-import { loadFullProfile } from '@/lib/profile'
 import { SECTIONS } from '@/lib/sections'
 import { createClient } from '@/lib/supabase/server'
-import { TOKEN_WINDOW_DAYS, type TokenEvent } from '@/lib/usage'
 
 export const metadata = { title: 'Dashboard' }
 export const dynamic = 'force-dynamic'
-
-async function weeklyUsage(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
-  const { data } = await supabase.from('usage_events').select('kind').gte('created_at', since)
-  const count = (kinds: string[]) => (data ?? []).filter((e) => kinds.includes(e.kind)).length
-  return {
-    generated: count(['generate', 'regenerate']),
-    filled: count(['fill']),
-    reused: count(['use_saved_answer']),
-    tailored: count(['tailoring_completed']),
-  }
-}
-
-/** Events that used AI tokens, for the last TOKEN_WINDOW_DAYS days (plus a day of slack for time zones). */
-async function tokenEvents(supabase: Awaited<ReturnType<typeof createClient>>): Promise<TokenEvent[]> {
-  const since = new Date(Date.now() - (TOKEN_WINDOW_DAYS + 1) * 24 * 3600 * 1000).toISOString()
-  const { data } = await supabase
-    .from('usage_events')
-    .select('created_at, tokens')
-    .gt('tokens', 0)
-    .gte('created_at', since)
-    .order('created_at', { ascending: false })
-    .limit(5000)
-  return (data ?? []) as TokenEvent[]
-}
 
 /** Small side card: icon, title, one line, one action. */
 function ActionCard({
@@ -87,9 +61,9 @@ function ActionCard({
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  let profile
+  let dashboard: DashboardData
   try {
-    profile = await loadFullProfile(supabase)
+    dashboard = await loadDashboard(supabase)
   } catch (e) {
     return (
       <>
@@ -101,27 +75,11 @@ export default async function DashboardPage() {
       </>
     )
   }
-  const { percent, items } = profileCompleteness(profile)
-  const [{ count: savedCount }, usage, tokens, { count: masterCount }, { count: tailoredCount }] = await Promise.all([
-    supabase.from('saved_answers').select('id', { count: 'exact', head: true }),
-    weeklyUsage(supabase),
-    tokenEvents(supabase),
-    // Before the v1.2 migration these tables don't exist: count stays null and the cards still render.
-    supabase.from('resumes').select('id', { count: 'exact', head: true }).eq('is_master', true),
-    supabase.from('resume_tailorings').select('id', { count: 'exact', head: true }).eq('status', 'ready'),
-  ])
-  const hasMaster = (masterCount ?? 0) > 0
-  const name = profile.profile?.full_name?.split(' ')[0]
+  const { signals, counts, savedCount, usage, tokens, hasMaster, readyCount: tailoredCount } = dashboard
+  const { percent, items } = completenessFromSignals(signals)
+  const name = signals.profile?.full_name?.split(' ')[0]
   const next = items.find((i) => !i.done)
   const doneCount = items.filter((i) => i.done).length
-
-  const counts: Record<string, number> = {
-    experience: profile.experiences.length,
-    projects: profile.projects.length,
-    skills: profile.skills.length,
-    education: profile.education.length,
-    achievements: profile.achievements.length,
-  }
 
   return (
     <div className="animate-fade-up">
