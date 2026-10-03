@@ -462,7 +462,7 @@ New files in `packages/types/src/`, keeping web, extension and API aligned the w
 | File | Contents |
 |---|---|
 | `resume.ts` | `StructuredResume`, `ResumeRecord`, parse status |
-| `job.ts` | `JobContext`, `JobAnalysis`, `JobRequirement` |
+| `job.ts` | `JobPosting` (the plan's JobContext; renamed because V1's answer `JobContext` already exists in `api.ts`), `JobAnalysis`, `JobRequirement` |
 | `matching.ts` | `Evidence`, `RequirementMatch`, support levels |
 | `tailoring.ts` | `TailoringPlan`, `TailoringChange`, `ValidationReport`, status enum, API request/response |
 
@@ -700,14 +700,14 @@ Each phase lists its tasks and an exit criterion. A phase counts as done when it
 
 **Tasks**
 
-- [ ] Migration: `resumes`, `job_contexts`, `resume_tailorings` with indexes and the one-master-per-user constraint
-- [ ] RLS policies (owner-only CRUD), anon revoked
-- [ ] Private Storage bucket `resumes` with per-user path policies
-- [ ] Extend `usage_events` allowed kinds
-- [ ] Shared types: `resume.ts`, `job.ts`, `matching.ts`, `tailoring.ts`; update `database.ts` and `api.ts`
-- [ ] Structured Resume JSON schema (versioned) with sample fixtures
-- [ ] Supabase migration tests, including RLS isolation for the new tables and storage
-- [ ] Separate daily tailoring limit config
+- [x] Migration: `resumes`, `job_contexts`, `resume_tailorings` with indexes and the one-master-per-user constraint
+- [x] RLS policies (owner-only CRUD), anon revoked
+- [x] Private Storage bucket `resumes` with per-user path policies
+- [x] Extend `usage_events` allowed kinds
+- [x] Shared types: `resume.ts`, `job.ts`, `matching.ts`, `tailoring.ts`; update `database.ts` and `api.ts`
+- [x] Structured Resume JSON schema (versioned) with sample fixtures
+- [x] Supabase migration tests, including RLS isolation for the new tables and storage
+- [x] Separate daily tailoring limit config
 
 **Exit criterion:** migrations apply cleanly, and RLS tests prove one user can't read another user's resumes, tailorings or files.
 
@@ -715,116 +715,130 @@ Each phase lists its tasks and an exit criterion. A phase counts as done when it
 
 **Tasks**
 
-- [ ] Web `Resume` nav item and page
-- [ ] Upload PDF/DOCX to Storage (size and type limits)
-- [ ] `POST /api/v1/resumes`: text extraction (PDF, DOCX)
-- [ ] Section identification and LLM-assisted parse into Structured Resume JSON
-- [ ] Parse confidence, with a `needs_review` state
-- [ ] Parsed-resume review/edit screen (`PATCH /api/v1/resumes/{id}`)
-- [ ] Replace master → new version; old versions retained
-- [ ] Profile ↔ resume discrepancy report (titles, companies, dates, skills), resolved by the user with no silent overwrite
-- [ ] Optional "add missing items to profile" from the resume, with explicit user confirmation per item
-- [ ] Parsing tests on a fixture set of real-world resume layouts
+- [x] Web `Resume` nav item and page
+- [x] Upload PDF/DOCX to Storage (size and type limits)
+- [x] `POST /api/v1/resumes`: text extraction (PDF, DOCX)
+- [x] Section identification and LLM-assisted parse into Structured Resume JSON
+- [x] Parse confidence, with a `needs_review` state
+- [x] Parsed-resume review/edit screen (`PATCH /api/v1/resumes/{id}`)
+- [x] Replace master → new version; old versions retained
+- [x] Profile ↔ resume discrepancy report (titles, companies, dates, skills), resolved by the user with no silent overwrite
+- [x] Optional "add missing items to profile" from the resume, with explicit user confirmation per item
+- [x] Parsing tests on a fixture set of real-world resume layouts
 
 **Exit criterion:** your own master resume uploads, parses into correct sections, and its differences from your profile are shown and resolvable.
+
+> Status: built and tested against PDF/DOCX fixtures in three layouts (`llm/tests/test_resume_parsing.py`). Confirm with your own resume.
 
 ## Phase 3 — Job Analysis & Matching
 
 **Tasks**
 
-- [ ] `POST /api/v1/jobs/analyze`: store JobContext and produce JobAnalysis (must-have, nice-to-have, responsibilities, experience requirements)
-- [ ] Minimum-description guard
-- [ ] Evidence corpus builder (profile rows + parsed master, with stable evidence IDs)
-- [ ] Deterministic skill matching reusing V1's skill precheck
-- [ ] LLM semantic matching that must cite evidence IDs; uncited claims are rejected
-- [ ] Support levels: strong / partial / none
-- [ ] Summary counts (analyzed / supported / partial / unsupported)
-- [ ] Tests: a Kubernetes-style unsupported requirement is always `none`; cited evidence IDs always exist
+- [x] `POST /api/v1/jobs/analyze`: store JobContext and produce JobAnalysis (must-have, nice-to-have, responsibilities, experience requirements)
+- [x] Minimum-description guard
+- [x] Evidence corpus builder (profile rows + parsed master, with stable evidence IDs)
+- [x] Deterministic skill matching reusing V1's skill precheck
+- [x] LLM semantic matching that must cite evidence IDs; uncited claims are rejected
+- [x] Support levels: strong / partial / none
+- [x] Summary counts (analyzed / supported / partial / unsupported)
+- [x] Tests: a Kubernetes-style unsupported requirement is always `none`; cited evidence IDs always exist
 
 **Exit criterion:** for 10 real job descriptions, every "supported" requirement points to real evidence and no unsupported skill is marked supported.
+
+> Status: enforced in code (skills/certifications are deterministic; semantic matches must cite existing evidence) and tested. Run the evaluation on real job descriptions to close it.
 
 ## Phase 4 — Tailoring Engine
 
 **Tasks**
 
-- [ ] TailoringPlan generation restricted to the controlled operations
-- [ ] Plan executor that applies operations to Structured Resume JSON in code
-- [ ] Bullet rewriting grounded in cited evidence
-- [ ] Summary rewrite from evidence
-- [ ] `POST /api/v1/tailorings` as a background job with status transitions
-- [ ] `GET /api/v1/tailorings/{id}` polling
-- [ ] Store every intermediate artifact (analysis, matches, plan, output)
-- [ ] `pipeline_version` stamping
-- [ ] Provider fallback through the existing gateway
+- [x] TailoringPlan generation restricted to the controlled operations
+- [x] Plan executor that applies operations to Structured Resume JSON in code
+- [x] Bullet rewriting grounded in cited evidence
+- [x] Summary rewrite from evidence
+- [x] `POST /api/v1/tailorings` as a background job with status transitions
+- [x] `GET /api/v1/tailorings/{id}` polling
+- [x] Store every intermediate artifact (analysis, matches, plan, output)
+- [x] `pipeline_version` stamping
+- [x] Provider fallback through the existing gateway
 
 **Exit criterion:** given a job and your master resume, the API returns a tailored Structured Resume and a human-readable change list, and the master record is unchanged.
+
+> Status: met in `llm/tests/test_resume_api.py` (end to end with fakes).
 
 ## Phase 5 — Validation & Rendering
 
 **Tasks**
 
-- [ ] Protected-field check (titles, companies, dates, URLs, contacts) with auto-revert
-- [ ] Metric check: no number in the output that isn't in evidence
-- [ ] Technology/skill token check against the evidence corpus
-- [ ] Traceability check on rewritten bullets
-- [ ] Keyword-integrity check on dropped skills
-- [ ] LLM hallucination review pass → warnings
-- [ ] Validation report stored on the tailoring
-- [ ] Resume renderer: Structured Resume → ATS-friendly PDF (one template)
-- [ ] Page-count/overflow check with one tighter re-render
-- [ ] Store the PDF in Storage; `GET /download` returns a signed URL
-- [ ] Adversarial test set: JDs demanding metrics, certifications and technologies the candidate lacks
+- [x] Protected-field check (titles, companies, dates, URLs, contacts) with auto-revert
+- [x] Metric check: no number in the output that isn't in evidence
+- [x] Technology/skill token check against the evidence corpus
+- [x] Traceability check on rewritten bullets
+- [x] Keyword-integrity check on dropped skills
+- [x] LLM hallucination review pass → warnings
+- [x] Validation report stored on the tailoring
+- [x] Resume renderer: Structured Resume → ATS-friendly PDF (one template)
+- [x] Page-count/overflow check with one tighter re-render
+- [x] Store the PDF in Storage; `GET /download` returns a signed URL
+- [x] Adversarial test set: JDs demanding metrics, certifications and technologies the candidate lacks
 
 **Exit criterion:** across the adversarial set, no invented metric, technology, title, date or company reaches the PDF, and every reverted change appears as a warning.
+
+> Status: met — `test_adversarial_plan_never_reaches_the_pdf` extracts the rendered PDF's text and checks it.
 
 ## Phase 6 — Web Review & History (Web MVP)
 
 **Tasks**
 
-- [ ] Manual "Tailor for a job description" form (paste JD, title, company, URL)
-- [ ] Progress UI driven by status polling
-- [ ] Review screen: changes by section, unsupported requirements, warnings
-- [ ] Bullet diff view
-- [ ] PDF preview
-- [ ] Download
-- [ ] Tailored resume history list; delete with confirmation (removes the file)
-- [ ] "Add to profile" link from unsupported requirements
-- [ ] Dashboard counts and "upload master resume" next step
+- [x] Manual "Tailor for a job description" form (paste JD, title, company, URL)
+- [x] Progress UI driven by status polling
+- [x] Review screen: changes by section, unsupported requirements, warnings
+- [x] Bullet diff view
+- [x] PDF preview
+- [x] Download
+- [x] Tailored resume history list; delete with confirmation (removes the file)
+- [x] "Add to profile" link from unsupported requirements
+- [x] Dashboard counts and "upload master resume" next step
 
 **Exit criterion — Web MVP:** you can paste a real job description, review exactly what changed and why, and download a truthful tailored PDF without using the extension.
+
+> Status: built (`web/src/app/(app)/resume/`). Needs a run against the deployed API.
 
 ## Phase 7 — Extension Job Detection & Card
 
 **Tasks**
 
-- [ ] `extension/src/lib/job/`: JSON-LD JobPosting detector
-- [ ] LinkedIn and Indeed adapters
-- [ ] Generic heuristic detector
-- [ ] Detector tests on saved job-page fixtures
-- [ ] Respect the per-hostname disable setting and the new "Offer resume tailoring" toggle
-- [ ] `TailorCard.tsx` in the Shadow DOM: a small pill that expands on click
-- [ ] Background handlers: `analyzeJob`, `startTailoring`, `getTailoring`, `downloadTailoring`
-- [ ] All card states (no master, analyzing, matching, tailoring, ready, warning, not enough info, error, not connected)
-- [ ] "Review" opens the web review screen through `openWebApp`
-- [ ] Coexist with the V1 answer UI on pages that are both job and application pages (e.g. LinkedIn Easy Apply)
-- [ ] Host permissions reviewed and kept minimal
+- [x] `extension/src/lib/job/`: JSON-LD JobPosting detector
+- [x] LinkedIn and Indeed adapters
+- [x] Generic heuristic detector
+- [x] Detector tests on saved job-page fixtures
+- [x] Respect the per-hostname disable setting and the new "Offer resume tailoring" toggle
+- [x] `TailorCard.tsx` in the Shadow DOM: a small pill that expands on click
+- [x] Background handlers: `analyzeJob`, `startTailoring`, `getTailoring`, `downloadTailoring`
+- [x] All card states (no master, analyzing, matching, tailoring, ready, warning, not enough info, error, not connected)
+- [x] "Review" opens the web review screen through `openWebApp`
+- [x] Coexist with the V1 answer UI on pages that are both job and application pages (e.g. LinkedIn Easy Apply)
+- [x] Host permissions reviewed and kept minimal
 
 **Exit criterion — Full v1.2:** on live LinkedIn, Indeed and at least two career pages, you can click **Tailor Resume**, see progress, review the result and download the PDF.
+
+> Status: built and tested on saved page fixtures (`extension/src/lib/__tests__/job-detect.test.ts`, `tailor-card.test.tsx`). Live-site QA is open.
 
 ## Phase 8 — Hardening & Release
 
 **Tasks**
 
-- [ ] Evaluation set: 20+ real job descriptions across your target roles, reviewed by hand for truthfulness and usefulness
-- [ ] Usage events wired end-to-end; dashboards for completion, failure, time and cost
-- [ ] Daily tailoring limit values confirmed in production env
-- [ ] Monitoring: pipeline step failures, provider fallback rate, render failures
-- [ ] Error copy reviewed for every state
-- [ ] Settings export/import updated
-- [ ] Privacy policy and Chrome Web Store listing updated for resume storage and job pages
-- [ ] Root `pnpm check` green; extension, web, llm and Supabase tests extended
-- [ ] Extension version bump and store resubmission
-- [ ] Release notes for v1.2
+- [ ] Evaluation set: 20+ real job descriptions across your target roles, reviewed by hand for truthfulness and usefulness — *tooling ready (`llm/scripts/eval_tailoring.py`, `llm/evals/README.md`); needs your job descriptions and review*
+- [x] Usage events wired end-to-end; dashboards for completion, failure, time and cost
+- [ ] Daily tailoring limit values confirmed in production env — *`DAILY_TAILORING_LIMIT` (default 10)*
+- [x] Monitoring: pipeline step failures, provider fallback rate, render failures
+- [x] Error copy reviewed for every state
+- [x] Settings export/import updated
+- [x] Privacy policy updated for resume storage and job pages
+- [ ] Chrome Web Store listing and privacy disclosures updated — *see release notes*
+- [x] Root `pnpm check` green; extension, web, llm and Supabase tests extended
+- [x] Extension version bump (0.2.0)
+- [ ] Store resubmission
+- [x] Release notes for v1.2
 
 **Exit criterion:** v1.2 is live, and you've used it for your own real applications with no fabricated content reaching a downloaded resume.
 
@@ -850,8 +864,8 @@ Phase 1 ─► Phase 7 (detectors only) ──────────► Phase 
 
 | Decision | Options | Lean |
 |---|---|---|
-| PDF renderer | HTML → PDF (WeasyPrint / headless Chromium), Typst, ReportLab | HTML → PDF: easiest to template and preview in the web app |
-| Background jobs | FastAPI background tasks, a queue (e.g. Redis/RQ), Supabase-driven polling | Start with in-process background tasks + DB status; move to a queue if hosting kills long tasks |
+| PDF renderer | HTML → PDF (WeasyPrint / headless Chromium), Typst, ReportLab | **Decided: ReportLab** — pure Python, so it runs on the serverless API without system libraries; the web app previews the rendered PDF itself |
+| Background jobs | FastAPI background tasks, a queue (e.g. Redis/RQ), Supabase-driven polling | **Decided:** in-process background task + DB status, and a status poll that finds a stalled run executes its next step (so a host that stops background work can't strand a tailoring) |
 | DOCX output | Skip / generate from the same JSON | Skip for v1.2 unless the renderer makes it trivial |
 | Template count | One / several | One ATS-friendly template |
 | Parse model | Rules + LLM / LLM only | Rules for sections, LLM for structuring, user confirms |
