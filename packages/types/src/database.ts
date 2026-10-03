@@ -26,6 +26,8 @@ export interface Profile {
   phone: string | null
   location: string | null
   summary: string | null
+  /** Free-form "anything else Ansly should know" (≤ 6000 chars), used like the rest of the profile. */
+  additional_context: string | null
   links: ProfileLinks
   work_authorization: string | null
   requires_sponsorship: boolean | null

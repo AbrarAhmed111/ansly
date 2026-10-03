@@ -140,7 +140,7 @@ def build_context(
         ctx.sources[ref] = Source(ref, "profile", profile.get("id", ""), "Profile")
         out.append(f"[{ref}] PROFILE")
         for label, key in [("Name", "full_name"), ("Headline", "headline"), ("Location", "location"),
-                           ("Summary", "summary")]:
+                           ("Summary", "summary"), ("More about the candidate", "additional_context")]:
             out += _lines(label, profile.get(key))
         links = {k: v for k, v in (profile.get("links") or {}).items() if v}
         if links:
@@ -156,7 +156,7 @@ def build_context(
                 if isinstance(value, bool):
                     value = "yes" if value else "no"
                 out += _lines(label, value)
-        corpus += [profile.get("headline") or "", profile.get("summary") or ""]
+        corpus += [profile.get("headline") or "", profile.get("summary") or "", profile.get("additional_context") or ""]
 
     prefixes = {"experiences": "E", "projects": "P", "skills": "S", "education": "ED", "achievements": "A"}
     for section in analysis.sections:
@@ -230,6 +230,7 @@ def build_context(
     ctx.is_empty = (
         not any(data.get(s) for s in SECTION_LIMITS)
         and not (profile.get("summary") or "").strip()
+        and not (profile.get("additional_context") or "").strip()
         and not facts
         and not any(f.strip() for f in additional_facts or [])
     )

@@ -284,3 +284,30 @@ def test_best_match_picks_highest():
     match, score = best_match("Which project are you most proud of?", saved)
     assert match["id"] == 2 and score >= MATCH_THRESHOLD
     assert best_match("What are your salary expectations?", saved)[0] is None
+
+
+@pytest.mark.asyncio
+async def test_additional_context_is_part_of_every_answer_and_counts_as_evidence():
+    rest = FakeRest()
+    rest.tables["profiles"][0]["additional_context"] = (
+        "I want platform engineering roles. At Acme Labs I owned our Kubernetes deploys and mentored two juniors."
+    )
+    analysis = classify_question("Do you have experience with Kubernetes?")
+    ctx = build_context(await fetch_profile_data(rest, analysis), analysis)
+    assert "More about the candidate: I want platform engineering roles." in ctx.text
+    assert ctx.has_skill("Kubernetes")  # The skill precheck sees it, so the answer isn't refused.
+
+    about = classify_question("Tell us about yourself")
+    assert "mentored two juniors" in build_context(await fetch_profile_data(rest, about), about).text
+
+
+def test_additional_context_alone_is_not_an_empty_profile():
+    profile = {"id": "u", "summary": None, "links": {}, "additional_context": "Ten years in retail banking operations."}
+    ctx = build_context({"profile": profile}, classify_question("Tell us about yourself"))
+    assert ctx.is_empty is False
+
+
+def test_projects_are_in_the_context_for_most_questions():
+    analysis = classify_question("Tell us about a project you are proud of")
+    ctx = build_context(FakeRest().tables | {"profile": FakeRest().tables["profiles"][0]}, analysis)
+    assert "PROJECT: TaskFlow" in ctx.text and "300 GitHub stars" in ctx.text

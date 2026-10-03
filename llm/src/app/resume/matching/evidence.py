@@ -89,9 +89,10 @@ def build_corpus(data: Dict[str, Any], resume: Optional[StructuredResume]) -> Ev
     declined = {canonicalize(s["name"]) for s in skills if s.get("level") == "none"}
 
     profile = data.get("profile") or {}
-    if (profile.get("summary") or profile.get("headline") or "").strip():
+    if (profile.get("summary") or profile.get("headline") or profile.get("additional_context") or "").strip():
         items.append(Evidence(id="PR", source="profile", source_id=profile.get("id", ""), label="Profile",
-                              text=_join(profile.get("headline"), profile.get("summary"))))
+                              text=_join(profile.get("headline"), profile.get("summary"),
+                                         profile.get("additional_context"))))
     for i, r in enumerate(data.get("experiences") or [], start=1):
         items.append(Evidence(
             id=f"E{i}", source="experience", source_id=r.get("id", ""), label=f"{r.get('title')} at {r.get('company')}",

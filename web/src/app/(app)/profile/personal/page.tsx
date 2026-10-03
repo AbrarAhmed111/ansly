@@ -15,6 +15,7 @@ type Form = {
   phone: string
   location: string
   summary: string
+  additional_context: string
   links: Required<ProfileLinks>
   work_authorization: string
   requires_sponsorship: '' | 'yes' | 'no'
@@ -33,6 +34,8 @@ const LINKS: { key: keyof ProfileLinks; label: string; icon: LucideIcon; placeho
   { key: 'other', label: 'Other', icon: Link2, placeholder: 'https://…' },
 ]
 const SUMMARY_MIN = 80
+/** Same limit as the database column. */
+const CONTEXT_MAX = 6000
 const yesNo = (v: boolean | null | undefined): '' | 'yes' | 'no' => (v == null ? '' : v ? 'yes' : 'no')
 const fromYesNo = (v: string) => (v === '' ? null : v === 'yes')
 const orNull = (v: string) => (v.trim() ? v.trim() : null)
@@ -45,6 +48,7 @@ function toForm(p: Partial<Profile> | null, fallbackEmail: string): Form {
     phone: p?.phone ?? '',
     location: p?.location ?? '',
     summary: p?.summary ?? '',
+    additional_context: p?.additional_context ?? '',
     links: { ...EMPTY_LINKS, ...(p?.links ?? {}) },
     work_authorization: p?.work_authorization ?? '',
     requires_sponsorship: yesNo(p?.requires_sponsorship),
@@ -135,6 +139,7 @@ export default function PersonalPage() {
           phone: orNull(form.phone),
           location: orNull(form.location),
           summary: orNull(form.summary),
+          additional_context: orNull(form.additional_context),
           links,
           work_authorization: orNull(form.work_authorization),
           requires_sponsorship: fromYesNo(form.requires_sponsorship),
@@ -169,6 +174,7 @@ export default function PersonalPage() {
   }
 
   const summaryLength = form.summary.trim().length
+  const contextLength = form.additional_context.length
 
   return (
     <form ref={formRef} onSubmit={onSubmit} className="animate-fade-up">
@@ -235,6 +241,42 @@ export default function PersonalPage() {
             help="Your background, focus and what you're good at."
           >
             <Textarea id="summary" rows={6} value={form.summary} onChange={(e) => set('summary', e.target.value)} />
+          </Field>
+        </Group>
+
+        <Group
+          title="More about you"
+          description={
+            <>
+              Anything else Ansly should know to answer accurately: what you’re looking for next, context behind your
+              experience, domains you know well, how you like to work. Ansly treats it as true about you, in answers
+              and in tailored resumes.
+            </>
+          }
+        >
+          <Field
+            label="Additional context"
+            htmlFor="additional_context"
+            className="sm:col-span-2"
+            hint={
+              <span className={clsx('tabular-nums', contextLength > CONTEXT_MAX * 0.9 && 'text-warning')}>
+                {contextLength}/{CONTEXT_MAX}
+              </span>
+            }
+            help="Facts only, in your own words. Details about a specific job or project are best added there."
+          >
+            <Textarea
+              id="additional_context"
+              rows={7}
+              maxLength={CONTEXT_MAX}
+              value={form.additional_context}
+              onChange={(e) => set('additional_context', e.target.value)}
+              placeholder={
+                'e.g. I’m moving into platform engineering and want roles with infrastructure ownership. ' +
+                'At Acme I was the go-to person for our CI pipeline. I’ve mentored two junior developers. ' +
+                'I’m comfortable presenting to non-technical stakeholders.'
+              }
+            />
           </Field>
         </Group>
 

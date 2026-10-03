@@ -253,3 +253,10 @@ def test_bullet_additions_are_limited():
     ])
     assert [a.change.item for a in applied.applied] == ["exp_1", "proj_1"]
     assert len(applied.rejected) == 3
+
+
+def test_profile_additional_context_is_evidence_for_tailoring():
+    rows = profile_rows()
+    rows["profile"]["additional_context"] = "Mentored two junior developers at Northwind Labs."
+    pr = build_corpus(rows, master()).by_id["PR"]
+    assert "Mentored two junior developers" in pr.text

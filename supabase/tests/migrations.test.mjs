@@ -437,3 +437,19 @@ test('the tailoring metrics queries run against the schema', async () => {
   const { rows } = await db.query(statements[1])
   assert.equal(Number(rows[0].avg_seconds), 42)
 })
+
+test('profiles keep free-form additional context, up to 6000 characters', async () => {
+  await asUser(ALICE, async (tx) => {
+    const { rows } = await tx.query(
+      `update public.profiles set additional_context = $1 where id = $2 returning additional_context`,
+      ['Moving into platform engineering.', ALICE],
+    )
+    assert.deepEqual(rows, [{ additional_context: 'Moving into platform engineering.' }])
+  })
+  await assert.rejects(
+    asUser(ALICE, (tx) =>
+      tx.query(`update public.profiles set additional_context = $1 where id = $2`, ['x'.repeat(6001), ALICE]),
+    ),
+    /check constraint/,
+  )
+})

@@ -19,7 +19,7 @@ export interface ProfileExport {
 }
 
 const PROFILE_FIELDS = [
-  'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'links', 'work_authorization',
+  'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'additional_context', 'links', 'work_authorization',
   'requires_sponsorship', 'notice_period', 'salary_expectation', 'willing_to_relocate', 'preferred_work_mode',
   'resume_page_limit',
 ]
