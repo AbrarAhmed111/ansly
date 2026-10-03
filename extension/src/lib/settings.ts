@@ -20,6 +20,8 @@ export interface Settings {
   overwriteFilled: boolean
   /** Outline every candidate field: green = detected (with kind), grey = ignored (hover for why). */
   detectionDebug: boolean
+  /** Show the "Tailor resume" pill on job posting pages (enabled sites only). */
+  offerTailoring: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reviewBeforeFill: false,
   overwriteFilled: false,
   detectionDebug: false,
+  offerTailoring: true,
 }
 
 export const settingsItem = storage.defineItem<Settings>('sync:settings', {

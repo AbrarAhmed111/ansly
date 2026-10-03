@@ -86,6 +86,7 @@ export async function apiRequest<T>(
   }
   if (response.status === 429) return fail('rate_limited', message ?? 'Too many requests. Please wait a moment.')
   if (response.status === 503) return fail('unavailable', message ?? 'The AI providers are busy. Please try again in a minute.')
+  if (response.status === 409) return fail('conflict', message ?? 'Ansly needs something from you first.')
   if (response.status === 422 || response.status === 400) return fail('bad_request', message ?? 'Ansly could not read this question.')
   return fail('server', message ?? `Something went wrong (HTTP ${response.status}). Please try again.`)
 }

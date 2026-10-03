@@ -137,6 +137,12 @@ export default function App() {
             onChange={(v) => void patch({ useJobDescription: v })}
           />
           <Toggle
+            label="Offer resume tailoring on job pages"
+            help="Show a small “Tailor resume” pill on job postings. The job is only read when you click it."
+            checked={settings.offerTailoring}
+            onChange={(v) => void patch({ offerTailoring: v })}
+          />
+          <Toggle
             label="Review answers before filling"
             help="Fill all shows every answer in the panel first, with one confirm."
             checked={settings.reviewBeforeFill}

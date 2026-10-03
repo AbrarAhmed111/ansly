@@ -6,10 +6,49 @@ import { watchFields, type TrackedField } from '@/lib/detection/scan'
 import { diagnostics } from '@/lib/diagnostics'
 import { isOnScreen, sparklePosition, type Box } from '@/lib/geometry'
 import { extractJobContext } from '@/lib/job-context'
-import type { TabMessage } from '@/lib/messages'
+import { extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
+import { send, type TabMessage } from '@/lib/messages'
 import type { Settings } from '@/lib/settings'
 import { Panel, type Row } from './Panel'
 import { Popover, type PopoverTarget } from './Popover'
+import { TailorCard } from './TailorCard'
+
+const JOB_CHECK_MS = 1500
+// Checks after a navigation before giving up (content often renders after the URL changes).
+const JOB_CHECK_ATTEMPTS = 8
+
+/**
+ * The job posting on this page, if any (title and company only, read locally).
+ * Re-checks when the URL or title changes, because job boards are single-page apps.
+ */
+function useJobPage(active: boolean): { key: string; job: DetectedJob } | null {
+  const [page, setPage] = useState<{ key: string; job: DetectedJob } | null>(null)
+  useEffect(() => {
+    if (!active) {
+      setPage(null)
+      return
+    }
+    let signature = ''
+    let attempts = 0
+    const check = () => {
+      const next = `${window.location.href}|${document.title}`
+      if (next !== signature) {
+        signature = next
+        attempts = 0
+      }
+      if (attempts >= JOB_CHECK_ATTEMPTS) return
+      attempts++
+      const job = peekJob(document)
+      const key = job ? jobKey(document) : null
+      if (job && key) attempts = JOB_CHECK_ATTEMPTS
+      setPage((prev) => (prev?.key === key ? prev : job && key ? { key, job } : null))
+    }
+    check()
+    const timer = setInterval(check, JOB_CHECK_MS)
+    return () => clearInterval(timer)
+  }, [active])
+  return page
+}
 
 /** Re-renders on scroll/resize (one frame at a time) so buttons follow their fields. */
 function useLayoutTick(active: boolean) {
@@ -103,6 +142,16 @@ export function App({ host, initialSettings, subscribe }: {
   const allRef = useRef(all)
   allRef.current = all
   const lastContextTarget = useRef<Element | null>(null)
+  const jobPage = useJobPage(enabled && settings.offerTailoring)
+  const [dismissedJobs, setDismissedJobs] = useState<Set<string>>(new Set())
+  const trackedJobs = useRef(new Set<string>())
+
+  // One "job_detected" event per job shown (no job text is sent).
+  useEffect(() => {
+    if (!jobPage || trackedJobs.current.has(jobPage.key)) return
+    trackedJobs.current.add(jobPage.key)
+    void send('track', { kind: 'job_detected' })
+  }, [jobPage])
 
   useEffect(() => subscribe(setSettings), [subscribe])
 
@@ -278,6 +327,19 @@ export function App({ host, initialSettings, subscribe }: {
           onRowsChange={setRows}
           onOpenField={openField}
         />
+        </div>
+      )}
+
+      {jobPage && !dismissedJobs.has(jobPage.key) && (
+        // Hidden (not unmounted) while the fill-all panel is open, so a running tailoring keeps its progress.
+        <div hidden={panelOpen}>
+          <TailorCard
+            key={jobPage.key}
+            job={jobPage.job}
+            extract={() => extractJob(document)}
+            stacked={detected.length > 0}
+            onDismiss={() => setDismissedJobs((s) => new Set(s).add(jobPage.key))}
+          />
         </div>
       )}
 

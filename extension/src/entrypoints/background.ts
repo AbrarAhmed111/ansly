@@ -1,4 +1,4 @@
-import type { ExtensionSession } from '@ansly/types'
+import type { ExtensionSession, TailoringDownloadResponse } from '@ansly/types'
 import { apiRequest, type ApiDeps } from '@/lib/api'
 import { WEB_URL } from '@/lib/config'
 import {
@@ -126,6 +126,21 @@ const handlers: Handlers = {
   async removeSite({ domain }) {
     await removeSite(domain)
     return ok(await enabledSites())
+  },
+  getMasterResume: () => apiRequest(deps, 'GET', '/api/v1/resumes/master'),
+  analyzeJob: (payload) => apiRequest(deps, 'POST', '/api/v1/jobs/analyze', payload),
+  startTailoring: (payload) => apiRequest(deps, 'POST', '/api/v1/tailorings', payload),
+  getTailoring: ({ id }) => apiRequest(deps, 'GET', `/api/v1/tailorings/${encodeURIComponent(id)}`),
+  async downloadTailoring({ id }) {
+    const result = await apiRequest<TailoringDownloadResponse>(
+      deps,
+      'GET',
+      `/api/v1/tailorings/${encodeURIComponent(id)}/download`,
+    )
+    if (!result.ok) return result
+    // Signed Supabase Storage URL that downloads the tailored .docx (the preview lives in the web app).
+    await browser.tabs.create({ url: result.data.url })
+    return ok(null)
   },
   async enableSite({ domain }) {
     if (!(await enabledSites()).includes(domain)) {

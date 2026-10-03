@@ -4,6 +4,12 @@
  */
 
 import type {
+  AnalyzeJobRequest,
+  AnalyzeJobResponse,
+  MasterResumeResponse,
+  StartTailoringRequest,
+  StartTailoringResponse,
+  TailoringResponse,
   GenerateBatchRequest,
   GenerateBatchResponse,
   MatchSavedBatchRequest,
@@ -28,6 +34,8 @@ export type ErrorCode =
   | 'network'
   | 'unavailable'
   | 'bad_request'
+  /** 409: e.g. no master resume yet, or it isn't confirmed. */
+  | 'conflict'
   | 'server'
 
 export interface ApiFailure {
@@ -66,6 +74,14 @@ export interface RequestMap {
   removeSite: { payload: { domain: string }; response: string[] }
   /** Register the content script for a domain whose permission was just granted. */
   enableSite: { payload: { domain: string }; response: null }
+  // v1.2 resume tailoring
+  getMasterResume: { payload: null; response: MasterResumeResponse }
+  analyzeJob: { payload: AnalyzeJobRequest; response: AnalyzeJobResponse }
+  startTailoring: { payload: StartTailoringRequest; response: StartTailoringResponse }
+  /** Poll a tailoring's status. */
+  getTailoring: { payload: { id: string }; response: TailoringResponse }
+  /** Downloads the tailored Word document (short-lived signed URL). The preview is in the web app. */
+  downloadTailoring: { payload: { id: string }; response: null }
 }
 
 export type RequestType = keyof RequestMap

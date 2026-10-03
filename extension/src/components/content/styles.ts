@@ -141,6 +141,27 @@ textarea.answer:focus { outline: none; border-color: rgb(var(--a-accent)); box-s
 label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: rgb(var(--a-muted)); }
 .panel-foot { margin: 0; padding: 0 14px 10px; font-size: 11px; background: rgb(var(--a-surface-muted)); }
 
+/* Resume tailoring (v1.2): a small pill on job pages that expands into a card. */
+.tailor-pill-wrap { position: fixed; z-index: 2147483646; right: 20px; bottom: 20px; display: inline-flex; align-items: center; gap: 4px; }
+.tailor-pill-wrap.stacked, .tailor-card.stacked { bottom: 64px; }
+.tailor-pill-wrap .pill { position: static; }
+.pill-dismiss {
+  width: 22px; height: 22px; padding: 0; border-radius: 999px; border: 1px solid rgb(var(--a-border)); cursor: pointer;
+  background: rgb(var(--a-surface)); color: rgb(var(--a-muted)); font-size: 10px; line-height: 1; box-shadow: var(--a-shadow);
+}
+.pill-dismiss:hover { color: rgb(var(--a-fg)); }
+.tailor-card {
+  position: fixed; z-index: 2147483647; right: 16px; bottom: 16px; width: min(360px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 32px));
+  display: flex; flex-direction: column; background: rgb(var(--a-surface)); color: rgb(var(--a-fg)); border: 1px solid rgb(var(--a-border));
+  border-radius: 14px; box-shadow: var(--a-shadow); overflow: hidden; animation: pop-in .18s cubic-bezier(.32,.72,0,1);
+}
+.tailor-title { font-weight: 650; font-size: 14px; }
+.tailor-ready { font-weight: 600; color: rgb(var(--a-success)); }
+.tailor-stats { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin: 0; font-size: 13px; }
+.tailor-stats dt { color: rgb(var(--a-muted)); }
+.tailor-stats dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tailor-changes ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+
 /* Filled fields get a subtle outline: amber when low confidence, red when the fill didn't stick. */
 .filled-outline { position: fixed; z-index: 2147483645; pointer-events: none; border-radius: 8px; border: 2px solid rgb(var(--a-accent) / 0.55); }
 .filled-outline.s-low { border-color: rgb(var(--a-warning) / 0.8); }
