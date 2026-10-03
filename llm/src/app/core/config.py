@@ -39,6 +39,24 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 2048
     JOB_DESCRIPTION_MAX_CHARS: int = 6000
 
+    # Semantic retrieval fallback (answers/semantic.py): off unless a provider is set. "openai" or "gemini";
+    # uses that provider's first API key. Vectors are EMBEDDING_DIMENSIONS long (the migration fixes 768).
+    EMBEDDING_PROVIDER: str = ""
+    EMBEDDING_MODEL: str = ""
+    EMBEDDING_DIMENSIONS: int = 768
+    # A cheaper Anthropic model for light stages (saved-answer adaptation, job analysis, review); empty = the
+    # provider's main model for every stage.
+    ANTHROPIC_FAST_MODEL: str = ""
+    # Route simple generated answers (one technology, one degree, one past role; see answers/routing.py) to
+    # ANTHROPIC_FAST_MODEL too. Off until the fast model has passed the answer quality set
+    # (scripts/eval_answers.py) for your traffic.
+    FAST_MODEL_SIMPLE_ANSWERS: bool = False
+    # Prices for models core/pricing.py doesn't list, as JSON: {"model": {"input": .., "output": .., ...}}.
+    MODEL_PRICING_JSON: str = ""
+    # Write per-call usage rows after the response is sent instead of before. Off on Vercel, which may freeze
+    # work after the response (the rows would be lost).
+    USAGE_WRITE_BACKGROUND: bool = not os.environ.get("VERCEL")
+
     # Usage limits (per user)
     RATE_LIMIT_PER_MINUTE: int = 10
     DAILY_GENERATION_LIMIT: int = 100

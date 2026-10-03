@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.app.api.router import api_router
 from src.app.api.routes.health import router as health_router
-from src.app.core import metrics
+from src.app.core import llm_usage, metrics
 from src.app.core.config import get_settings
 from src.app.core.http import close_shared_client
 from src.app.core.logging import setup_logging
@@ -35,19 +35,23 @@ app = FastAPI(
 
 @app.middleware("http")
 async def record_request_metrics(request: Request, call_next):
-    """Logs one timing line per API request (see core/metrics.py)."""
-    if not settings.PERF_LOG or not request.url.path.startswith("/api/"):
+    """Collects the request's LLM calls (core/llm_usage.py) and logs one timing line per API request (see
+    core/metrics.py). The request id ties the line, the llm_calls rows and the X-Request-Id header together."""
+    if not request.url.path.startswith("/api/"):
         return await call_next(request)
     request_metrics = metrics.start_request()
+    llm_usage.start_collecting()
     status = 500
     try:
         response = await call_next(request)
         status = response.status_code
+        response.headers["X-Request-Id"] = request_metrics.request_id
         return response
     finally:
-        route = request.scope.get("route")
-        path = getattr(route, "path", request.url.path)
-        metrics.logger.info(request_metrics.summary(f"{request.method} {path}", status))
+        if settings.PERF_LOG:
+            route = request.scope.get("route")
+            path = getattr(route, "path", request.url.path)
+            metrics.logger.info(request_metrics.summary(f"{request.method} {path}", status))
 
 # -----------------------------------------------------------------------------
 # CORS Middleware

@@ -278,4 +278,4 @@ def test_job_description_scaled_to_the_question():
              for q in ["What is your notice period?", "Do you have experience with React?", "Why do you want to join us?"]}
     notice, skill, motivation = sizes.values()
     assert notice < skill < motivation
-    assert motivation - notice >= 6000  # the full description only where it helps
+    assert 1200 <= motivation - notice <= 2000  # a motivation question gets the most, still well under 6000

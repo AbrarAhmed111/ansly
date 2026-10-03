@@ -21,15 +21,19 @@ class TTLCache(Generic[V]):
         self._entries: "OrderedDict[Tuple[Hashable, ...], Tuple[float, V]]" = OrderedDict()
 
     def get(self, key: Tuple[Hashable, ...]) -> Optional[V]:
+        return self.lookup(key)[0]
+
+    def lookup(self, key: Tuple[Hashable, ...]) -> Tuple[Optional[V], str]:
+        """The value and "hit", or None and why: "miss" (never stored or evicted) or "expired"."""
         entry = self._entries.get(key)
         if entry is None:
-            return None
+            return None, "miss"
         expires, value = entry
         if expires <= time.monotonic():
             del self._entries[key]
-            return None
+            return None, "expired"
         self._entries.move_to_end(key)
-        return value
+        return value, "hit"
 
     def set(self, key: Tuple[Hashable, ...], value: V) -> None:
         self._entries[key] = (time.monotonic() + self.ttl, value)

@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 
-from src.app.core import metrics
+from src.app.core import llm_usage, metrics, token_budget
 from src.app.core.config import get_settings
 
 from .adapters import Completion, complete_anthropic, complete_openai_compatible
@@ -68,6 +68,18 @@ class LLMGateway:
         """Returns deployments that are configured and not in cooldown."""
         return [d for d in self.deployments if d.is_available]
 
+    @staticmethod
+    def model_for(deployment: ProviderDeployment, stage: str) -> str:
+        """The deployment's model, or ANTHROPIC_FAST_MODEL for fast-tier stages on Anthropic when it is set (see
+        token_budget.STAGE_TIER). Simple answers go to it only with FAST_MODEL_SIMPLE_ANSWERS."""
+        settings = get_settings()
+        fast = settings.ANTHROPIC_FAST_MODEL.strip()
+        if deployment.kind != "anthropic" or not fast or stage not in token_budget.FAST_MODEL_STAGES:
+            return deployment.default_model
+        if stage == token_budget.ANSWER_SIMPLE and not settings.FAST_MODEL_SIMPLE_ANSWERS:
+            return deployment.default_model
+        return fast
+
     async def _complete(
         self,
         deployment: ProviderDeployment,
@@ -75,6 +87,7 @@ class LLMGateway:
         messages: List[Dict[str, str]],
         temperature: Optional[float],
         max_tokens: Optional[int],
+        stage: str = "unknown",
     ) -> Completion:
         if deployment.kind == "anthropic":
             settings = get_settings()
@@ -83,9 +96,10 @@ class LLMGateway:
                 system,
                 messages,
                 max_tokens=max(max_tokens or 0, settings.ANTHROPIC_MAX_TOKENS),
-                effort=settings.ANTHROPIC_EFFORT,
+                effort=token_budget.effort_for(stage, settings.ANTHROPIC_EFFORT),
                 timeout=self.timeout,
                 max_retries=self.max_retries,
+                model=self.model_for(deployment, stage),
             )
         return await complete_openai_compatible(
             deployment,
@@ -104,12 +118,16 @@ class LLMGateway:
         temperature: Optional[float] = 0.7,
         max_tokens: Optional[int] = None,
         validate: Optional[Callable[[str], Any]] = None,
+        stage: str = "unknown",
+        items: int = 1,
     ) -> GatewayResult:
         """
         Executes a chat completion with automatic fallback across deployments.
 
         `validate` receives the raw text and returns the parsed value; raising
         InvalidOutputError (or ValueError) moves on to the next deployment.
+        `stage` (a name from core/token_budget.py) and `items` (questions in a
+        batch) label the call's token log line and budget check.
         """
         available = self.get_available_deployments()
 
@@ -136,12 +154,17 @@ class LLMGateway:
                     f"[Attempt {attempts}/{self.max_attempts}]..."
                 )
                 start_time = time.time()
-                completion = await self._complete(deployment, system, messages, temperature, max_tokens)
+                metrics.llm_started()
+                completion = await self._complete(deployment, system, messages, temperature, max_tokens, stage)
+                duration_ms = int((time.time() - start_time) * 1000)
+                model = self.model_for(deployment, stage)
                 try:
                     value = validate(completion.text) if validate else completion.text
                 except ValueError as e:
+                    # The provider billed this call even though its output can't be used.
+                    llm_usage.record(llm_usage.from_usage(stage, deployment.provider, model, completion.usage,
+                                                          duration_ms, items, ok=False))
                     raise InvalidOutputError(str(e)) from e
-                duration_ms = int((time.time() - start_time) * 1000)
 
                 if status_events:
                     status_events.append(
@@ -154,17 +177,15 @@ class LLMGateway:
                     )
 
                 usage = completion.usage
-                metrics.record_llm(deployment.default_model, duration_ms,
-                                   usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-                logger.info(
-                    f"✅ {deployment.name} succeeded in {duration_ms}ms | "
-                    f"Tokens: {usage.get('prompt_tokens', 0)} in, {usage.get('completion_tokens', 0)} out"
-                )
+                call = llm_usage.from_usage(stage, deployment.provider, model, usage, duration_ms, items)
+                llm_usage.record(call)
+                token_budget.log_call(stage, model, deployment.provider, call.prompt_tokens, call.output_tokens,
+                                      duration_ms, items, cached=call.cache_read_tokens, cost=call.cost_usd)
                 return GatewayResult(
                     text=completion.text,
                     value=value,
                     provider=deployment.name,
-                    model=deployment.default_model,
+                    model=model,
                     usage=usage,
                     status_events=status_events,
                 )

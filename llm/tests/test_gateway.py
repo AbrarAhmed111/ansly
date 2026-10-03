@@ -185,9 +185,17 @@ async def test_anthropic_adapter_request_and_refusal():
                                           max_tokens=16000, effort="medium", timeout=20, max_retries=0)
         assert result.text == "Answer" and result.usage["total_tokens"] == 15
         kwargs = create.await_args.kwargs
-        assert kwargs["system"] == "sys" and "temperature" not in kwargs
+        assert kwargs["system"] == [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]
+        assert "temperature" not in kwargs
         assert kwargs["output_config"] == {"effort": "medium"}
         assert kwargs["fallbacks"] == "default"
+
+        # Cached input counts toward the prompt size (Anthropic's input_tokens leaves it out).
+        response.usage = SimpleNamespace(input_tokens=10, output_tokens=5, cache_read_input_tokens=600,
+                                         cache_creation_input_tokens=0)
+        result = await complete_anthropic(deployment, "sys", [], max_tokens=16000, effort="medium",
+                                          timeout=20, max_retries=0)
+        assert result.usage["prompt_tokens"] == 610 and result.usage["cached_tokens"] == 600
 
         response.stop_reason = "refusal"
         response.stop_details = SimpleNamespace(category="cyber")

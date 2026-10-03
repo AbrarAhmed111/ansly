@@ -89,6 +89,15 @@ class SupabaseRest:
                                        headers={"Prefer": "return=minimal"})
         self._check(response)
 
+    async def upsert(self, table: str, rows: List[Dict[str, Any]], on_conflict: str) -> None:
+        """Insert-or-update in one request, matching rows on the `on_conflict` columns (a unique key)."""
+        if not rows:
+            return
+        response = await self._request("POST", f"/{table}", f"upsert:{table}", json=rows,
+                                       params={"on_conflict": on_conflict},
+                                       headers={"Prefer": "resolution=merge-duplicates,return=minimal"})
+        self._check(response)
+
     async def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> List[Dict[str, Any]]:
         response = await self._request("PATCH", f"/{table}", f"update:{table}", params=filters, json=values,
                                        headers={"Prefer": "return=representation"})

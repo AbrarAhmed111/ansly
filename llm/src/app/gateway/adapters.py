@@ -44,9 +44,25 @@ def _cached_client(key: Tuple[Any, ...], factory: Callable[[], Any]) -> Any:
     return entry[1]
 
 
-def _usage(prompt: Optional[int] = 0, completion: Optional[int] = 0) -> Dict[str, int]:
+def _usage(prompt: Optional[int] = 0, completion: Optional[int] = 0, cached: Optional[int] = 0,
+           cache_write: Optional[int] = 0, reasoning: Optional[int] = None) -> Dict[str, int]:
+    """Normalized usage: prompt_tokens is all input (cached included), cached_tokens the part read from a cache,
+    cache_write_tokens the part written to one, reasoning_tokens the thinking inside completion_tokens (only
+    when the provider reports it separately)."""
     prompt, completion = prompt or 0, completion or 0
-    return {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion}
+    usage = {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion,
+             "cached_tokens": cached or 0, "cache_write_tokens": cache_write or 0}
+    if reasoning is not None:
+        usage["reasoning_tokens"] = reasoning
+    return usage
+
+
+# Claude models that reject output_config.effort (it errors on Haiku 4.5 and Sonnet 4.5); they run without it.
+NO_EFFORT_MODELS = ("claude-haiku", "claude-sonnet-4-5", "claude-3")
+
+
+def supports_effort(model: str) -> bool:
+    return not model.startswith(NO_EFFORT_MODELS)
 
 
 async def complete_openai_compatible(
@@ -82,9 +98,13 @@ async def complete_openai_compatible(
     if getattr(choice, "finish_reason", None) == "content_filter":
         raise RefusalError("content_filter")
     usage = response.usage
+    prompt_details = getattr(usage, "prompt_tokens_details", None)
+    completion_details = getattr(usage, "completion_tokens_details", None)
     return Completion(
         text=choice.message.content or "",
-        usage=_usage(getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0)),
+        usage=_usage(getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0),
+                     cached=getattr(prompt_details, "cached_tokens", 0),
+                     reasoning=getattr(completion_details, "reasoning_tokens", None)),
     )
 
 
@@ -96,6 +116,7 @@ async def complete_anthropic(
     effort: str,
     timeout: float,
     max_retries: int,
+    model: Optional[str] = None,
 ) -> Completion:
     client = _cached_client(
         ("anthropic", deployment.api_key, timeout, max_retries),
@@ -103,18 +124,28 @@ async def complete_anthropic(
     )
     # Current Claude models reject sampling parameters and keep thinking on, so
     # depth is controlled with effort. Server-side fallbacks re-run a refused
-    # request on another Claude model inside the same call.
+    # request on another Claude model inside the same call. The system prompt is
+    # the stable prefix of every call of a stage, so it is cached (prompts under
+    # the model's minimum cacheable length simply aren't).
+    model = model or deployment.default_model
+    extra: Dict[str, Any] = {"output_config": {"effort": effort}} if supports_effort(model) else {}
     response = await client.beta.messages.create(
-        model=deployment.default_model,
+        model=model,
         max_tokens=max_tokens,
-        system=system,
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=messages,
-        output_config={"effort": effort},
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
+        **extra,
     )
     if response.stop_reason == "refusal":
         details = getattr(response, "stop_details", None)
         raise RefusalError(getattr(details, "category", None) or "refusal")
     text = "".join(block.text for block in response.content if block.type == "text")
-    return Completion(text=text, usage=_usage(response.usage.input_tokens, response.usage.output_tokens))
+    # input_tokens excludes cached input; count all of it so token logs and budgets see the real prompt size.
+    # Thinking is billed inside output_tokens; Anthropic doesn't report it separately.
+    usage = response.usage
+    read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    return Completion(text=text, usage=_usage(usage.input_tokens + read + write, usage.output_tokens,
+                                              cached=read, cache_write=write))
