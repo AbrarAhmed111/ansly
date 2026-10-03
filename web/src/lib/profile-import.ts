@@ -12,11 +12,16 @@ export interface ProfileExport {
   achievements?: Record<string, unknown>[]
   profile_facts?: Record<string, unknown>[]
   saved_answers?: Record<string, unknown>[]
+  /** Resume metadata (v1.2). Export only: files and their contents are never imported. */
+  resumes?: Record<string, unknown>[]
+  /** Tailoring history (v1.2). Export only. */
+  resume_tailorings?: Record<string, unknown>[]
 }
 
 const PROFILE_FIELDS = [
   'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'links', 'work_authorization',
   'requires_sponsorship', 'notice_period', 'salary_expectation', 'willing_to_relocate', 'preferred_work_mode',
+  'resume_page_limit',
 ]
 const SAVED_ANSWER_FIELDS = ['question', 'answer', 'category', 'company', 'role']
 
@@ -123,6 +128,35 @@ export async function runImport(supabase: SupabaseClient, userId: string, plan: 
     inserted += rows.length
   }
   return inserted
+}
+
+/**
+ * Resume metadata and tailoring history. File contents (parsed and tailored resumes) are only included when
+ * `includeContents` is set; the original and tailored files themselves never are.
+ */
+export async function exportResumes(
+  supabase: SupabaseClient,
+  includeContents: boolean,
+): Promise<Pick<ProfileExport, 'resumes' | 'resume_tailorings'>> {
+  const resumeColumns = `name, file_type, version, is_master, parse_status, created_at, updated_at${includeContents ? ', parsed_content' : ''}`
+  const tailoringColumns = `status, pipeline_version, resume_version, job_context_id, created_at${
+    includeContents ? ', match_analysis, tailored_content, validation_report' : ''
+  }`
+  const [resumes, tailorings, jobs] = await Promise.all([
+    supabase.from('resumes').select(resumeColumns).order('version'),
+    supabase.from('resume_tailorings').select(tailoringColumns).order('created_at'),
+    supabase.from('job_contexts').select('id, title, company, location, url, source'),
+  ])
+  // Before the v1.2 migration these tables don't exist: export the rest.
+  if (resumes.error || tailorings.error || jobs.error) return {}
+  const byId = new Map((jobs.data ?? []).map(({ id, ...job }) => [id as string, job]))
+  return {
+    resumes: (resumes.data ?? []) as unknown as Record<string, unknown>[],
+    resume_tailorings: ((tailorings.data ?? []) as unknown as Record<string, unknown>[]).map(({ job_context_id, ...row }) => ({
+      ...row,
+      job: byId.get(job_context_id as string) ?? null,
+    })),
+  }
 }
 
 export async function exportProfile(supabase: SupabaseClient): Promise<ProfileExport> {

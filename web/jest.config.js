@@ -5,6 +5,7 @@ const createJestConfig = nextJest({ dir: './' })
 module.exports = createJestConfig({
   testEnvironment: 'node',
   moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
-  testMatch: ['<rootDir>/src/**/*.test.ts'],
+  // Library tests run in node; component tests (.test.tsx) opt into jsdom with a docblock.
+  testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx'],
   transformIgnorePatterns: ['/node_modules/(?!@ansly/)'],
 })

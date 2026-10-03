@@ -1,6 +1,7 @@
 import { profileCompleteness, type FullProfile } from '@ansly/types'
 import seed from '../../../../supabase/seed/profile.seed.json'
 import { planImport } from '../profile-import'
+import { companyKey, fileStem, linesToBullets, masterPath, resumeFileProblem, stepState, wordDiff } from '../resume'
 import { safeNext } from '../safe-next'
 import { sectionBySlug, toFormValues, toRow, type Row } from '../sections'
 
@@ -124,5 +125,55 @@ describe('profileCompleteness', () => {
     const skills = Array.from({ length: 5 }, (_, i) => ({ name: `s${i}`, level: i === 0 ? 'none' : null }))
     const item = profileCompleteness({ ...empty, skills } as unknown as FullProfile).items.find((i) => i.key === 'skills')
     expect(item?.done).toBe(false)
+  })
+})
+
+describe('resume helpers', () => {
+  it('accepts only Word (.docx) files, with a clear reason otherwise', () => {
+    expect(resumeFileProblem({ name: 'cv.DOCX', type: '', size: 1000 })).toBeNull()
+    expect(resumeFileProblem({ name: 'Resume.PDF', type: '', size: 1000 })).toMatch(/PDF resumes aren’t supported.*\.docx/)
+    expect(resumeFileProblem({ name: 'cv', type: 'application/pdf', size: 1000 })).toMatch(/PDF/)
+    expect(resumeFileProblem({ name: 'cv.doc', type: 'application/msword', size: 1000 })).toMatch(/older Word/)
+    expect(resumeFileProblem({ name: 'cv.pages', type: '', size: 1000 })).toBe('Upload your resume as a Word (.docx) file.')
+    expect(resumeFileProblem({ name: 'cv.docx', type: '', size: 11 * 1024 * 1024 })).toMatch(/over 10 MB/)
+    expect(fileStem('Sam Rivera Resume.docx')).toBe('Sam Rivera Resume')
+  })
+
+  it('keeps uploads under the user’s own masters folder', () => {
+    expect(masterPath('u1', 'My Resume (final).pdf', 42)).toBe('u1/masters/42-My_Resume_final_.pdf')
+    expect(masterPath('u1', '../../etc/passwd', 1).startsWith('u1/masters/1-')).toBe(true)
+    expect(masterPath('u1', '../../etc/passwd', 1)).not.toContain('..')
+  })
+
+  it('keeps bullet ids by position when editing lines', () => {
+    const previous = [
+      { id: 'exp_1_b1', text: 'Old one' },
+      { id: 'exp_1_b2', text: 'Old two' },
+    ]
+    expect(linesToBullets('• New one\n\n- New two\nNew three', previous, 'exp_1')).toEqual([
+      { id: 'exp_1_b1', text: 'New one' },
+      { id: 'exp_1_b2', text: 'New two' },
+      { id: 'exp_1_b3', text: 'New three' },
+    ])
+  })
+
+  it('diffs words', () => {
+    const parts = wordDiff('Built web apps with React.', 'Built SaaS web apps with React and TypeScript.')
+    expect(parts.filter((p) => p.kind === 'added').map((p) => p.text.trim())).toEqual(['SaaS', 'React and TypeScript.'])
+    expect(parts.filter((p) => p.kind === 'removed').map((p) => p.text.trim())).toEqual(['React.'])
+    expect(parts.map((p) => (p.kind === 'removed' ? '' : p.text)).join('')).toBe('Built SaaS web apps with React and TypeScript.')
+  })
+
+  it('matches company names the way the API does', () => {
+    expect(companyKey('Nizam, LLC.')).toBe(companyKey('Nizam LLC'))
+    expect(companyKey('Northwind Labs Inc')).toBe('northwindlabs')
+  })
+
+  it('tracks tailoring progress', () => {
+    expect(stepState('matching', 'analyzing')).toBe('done')
+    expect(stepState('matching', 'matching')).toBe('active')
+    expect(stepState('matching', 'rendering')).toBe('idle')
+    expect(stepState('queued', 'analyzing')).toBe('active')
+    expect(stepState('ready', 'rendering')).toBe('done')
   })
 })
