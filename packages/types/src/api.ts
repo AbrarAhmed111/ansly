@@ -6,7 +6,7 @@
  * `resume.ts` (/resumes), `job.ts` (/jobs/analyze), `tailoring.ts` (/tailorings).
  */
 
-import type { Profile, SavedAnswer, Skill, SkillLevel, UsageEventKind } from './database'
+import type { MemoryScope, Profile, SavedAnswer, Skill, SkillLevel, UsageEventKind } from './database'
 import type { FieldKind } from './fields'
 
 export type ServiceStatus = 'ok' | 'error' | 'not_configured'
@@ -39,8 +39,12 @@ export interface JobContext {
 export interface FieldContext {
   /** Visible label / surrounding question text, if different from the question. */
   label?: string | null
-  /** The field's maxlength, so the answer fits. */
+  /** The field's maxlength, or a character limit stated in its helper text, so the answer fits. */
   maxLength?: number | null
+  /** A word limit stated near the field ("Max 250 words"). */
+  maxWords?: number | null
+  /** A minimum stated near the field ("Minimum 100 characters"). */
+  minLength?: number | null
   /** The element type (popover) or the detected field kind (fill all). */
   kind?: 'textarea' | 'input' | 'contenteditable' | Exclude<FieldKind, 'profile' | 'ignored'> | null
   /** For choice fields: the answer must be one of these (several for choice_multi). */
@@ -114,7 +118,11 @@ export interface AnswerResponse {
   intent: string
   provider: string | null
   model: string | null
+  /** Where it came from (no model for profile / memory): shown as plain language, never as model details. */
+  origin?: AnswerOrigin | null
 }
+
+export type AnswerOrigin = 'profile' | 'memory' | 'saved' | 'adapted' | 'generated'
 
 /** Profile columns that ask-and-learn may write. */
 export type ProfileField = Extract<
@@ -125,16 +133,35 @@ export type ProfileField = Extract<
 export type MissingTarget =
   | { type: 'profile_field'; field: ProfileField }
   | { type: 'skill'; name: string }
-  | { type: 'fact'; category: string }
+  /** `key`: an Application Memory key ('travel_willingness') for facts Ansly answers directly; else free text. */
+  | { type: 'fact'; category: string; key?: string | null }
+
+/** Ask-and-Learn groups, in display order. */
+export type MemoryGroup =
+  | 'Personal'
+  | 'Work authorization'
+  | 'Availability'
+  | 'Relocation'
+  | 'Compensation'
+  | 'Skills'
+  | 'Experience'
+  | 'Education'
+  | 'Preferences'
+  | 'Other'
 
 export interface MissingInfo {
   /** e.g. 'notice_period', 'skill:kubernetes', 'fact:leadership' */
   key: string
   /** Question shown to the user. */
   prompt: string
-  input: 'text' | 'textarea' | 'select' | 'boolean' | 'number' | 'skill'
+  input: 'text' | 'textarea' | 'select' | 'choice' | 'boolean' | 'number' | 'skill'
   options?: string[] | null
   target: MissingTarget
+  group?: MemoryGroup | string
+  /** How long the answer is remembered unless the user changes it: 'job' for answers about one employer. */
+  scope?: MemoryScope
+  /** Short name for the fact ("Relocation"). */
+  label?: string | null
 }
 
 /** Value for a `skill` target: "I don't have this" is a valid answer. */
@@ -146,11 +173,60 @@ export interface SkillAnswer {
 
 /** `POST /api/v1/profile/missing` */
 export interface SaveMissingRequest {
-  items: { key: string; target: MissingTarget; value: string | boolean | SkillAnswer; prompt?: string | null }[]
+  items: {
+    key: string
+    target: MissingTarget
+    value: string | boolean | SkillAnswer
+    prompt?: string | null
+    /** Omitted: profile fields go to the profile, everything else is remembered globally. */
+    scope?: MemoryScope | null
+  }[]
+  /** The application the facts were given for (company / job scope and provenance; no description is stored). */
+  job_context?: JobContext | null
+  /** Where they were given: inline while applying (default) or in the web app's setup. */
+  source?: 'ask_and_learn' | 'onboarding'
 }
 
 export interface SaveMissingResponse {
-  saved: { key: string; target: MissingTarget; row: Partial<Profile> | Skill | Record<string, unknown> }[]
+  saved: {
+    key: string
+    target: MissingTarget
+    row: Partial<Profile> | Skill | Record<string, unknown>
+    destination: 'profile' | 'skills' | 'memory'
+    scope: MemoryScope
+    group: string
+  }[]
+}
+
+export type RewriteAction =
+  | 'shorter'
+  | 'longer'
+  | 'natural'
+  | 'professional'
+  | 'concise'
+  | 'technical'
+  | 'confident'
+  | 'simpler'
+  | 'fit'
+  | 'custom'
+
+/** `POST /api/v1/answers/rewrite`: transforms the user's current text; never rebuilds it from the profile. */
+export interface RewriteRequest {
+  text: string
+  action: RewriteAction
+  /** Required for 'custom'. */
+  instruction?: string | null
+  question?: string | null
+  field?: FieldContext | null
+  /** Only company and role are used. */
+  job_context?: JobContext | null
+}
+
+export interface RewriteResponse {
+  answer: string
+  /** False when the rewrite would have changed facts (or broken the limit): `answer` is the original. */
+  changed: boolean
+  reason: string | null
 }
 
 /** `POST /api/v1/answers/generate-batch` */
@@ -221,7 +297,21 @@ export type UseSavedAnswerResponse = SavedAnswer
 
 /** `POST /api/v1/events` */
 export interface TrackEventRequest {
-  kind: Extract<UsageEventKind, 'fill' | 'use_saved_answer' | 'fill_all' | 'job_detected' | 'resume_previewed'>
+  kind: Extract<
+    UsageEventKind,
+    | 'fill'
+    | 'use_saved_answer'
+    | 'fill_all'
+    | 'job_detected'
+    | 'resume_previewed'
+    | 'ask_and_learn_shown'
+    | 'ask_and_learn_skipped'
+    | 'fill_all_completed'
+    | 'undo'
+    | 'onboarding_step'
+    | 'extension_connected'
+    | 'first_answer'
+  >
   category?: string | null
   /** 'fill': the user's wait, field opened to answer shown (ms). */
   duration_ms?: number | null

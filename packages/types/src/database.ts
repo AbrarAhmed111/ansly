@@ -111,12 +111,31 @@ export interface Achievement extends OwnedRow {
   url: string | null
 }
 
-/** Grounding facts the user added when Ansly asked (extension) or on /profile/additional (web). */
+export type MemoryScope = 'global' | 'category' | 'company' | 'job'
+
+/**
+ * Application Memory: facts the user gave when Ansly asked (extension), on /profile/additional or on the memory
+ * page (web). See llm/src/app/memory for scope, precedence and conflict rules.
+ */
 export interface ProfileFact extends OwnedRow {
   category: string | null
   prompt: string
   answer: string
   source: 'extension' | 'web'
+  /** Normalized fact key ('relocation_preference', 'notice_period'...); null for free text. */
+  key: string | null
+  value_type: 'text' | 'boolean' | 'number' | 'choice'
+  scope: MemoryScope
+  company: string | null
+  job_key: string | null
+  source_type: 'ask_and_learn' | 'web' | 'onboarding' | 'memory_edit'
+  /** "Acme · Software Engineer": the application it was learned during. */
+  source_label: string | null
+  source_id: string | null
+  confirmed: boolean
+  status: 'active' | 'outdated' | 'superseded'
+  last_confirmed_at: string
+  last_used_at: string | null
 }
 
 export interface SavedAnswer {
@@ -151,6 +170,21 @@ export type UsageEventKind =
   | 'tailoring_deleted'
   | 'job_analyzed'
   | 'adapt_saved_answer'
+  | 'ask_and_learn_shown'
+  | 'ask_and_learn_completed'
+  | 'ask_and_learn_skipped'
+  | 'memory_fact_saved'
+  | 'memory_fact_edited'
+  | 'memory_fact_deleted'
+  | 'memory_fact_confirmed'
+  | 'memory_used'
+  | 'rewrite'
+  | 'fit_to_limit'
+  | 'fill_all_completed'
+  | 'undo'
+  | 'onboarding_step'
+  | 'extension_connected'
+  | 'first_answer'
 
 /** `job_token_usage` view: model tokens spent per job application (one row per posting). */
 export interface JobTokenUsage {
