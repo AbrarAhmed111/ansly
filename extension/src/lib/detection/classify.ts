@@ -10,6 +10,7 @@
  */
 
 import type { FieldKind, ProfileKey, SkipReason } from '@ansly/types'
+import { detectLimits } from '../limits'
 import { extractGroupQuestion, extractQuestion, optionLabel, type ExtractedQuestion } from './question'
 
 /** The kind of DOM control (how to read and fill it). */
@@ -25,6 +26,10 @@ export interface FieldClassification {
   skipReason?: SkipReason
   required: boolean
   maxLength: number | null
+  /** A word limit stated near the field ("Max 250 words"). */
+  maxWords?: number | null
+  /** A minimum stated near the field ("Minimum 100 characters"). */
+  minLength?: number | null
   /** Questions like "Why…", "Describe…", "Tell us…" that expect a paragraph. */
   longAnswer: boolean
   /** Gets the ✨ button and popover (free-text kinds in a text control). */
@@ -136,9 +141,20 @@ function profileKeyFor(el: HTMLElement, label: string): ProfileKey | null {
   return null
 }
 
+const TEXT_CONTROLS: (ControlType | null)[] = ['textarea', 'input', 'contenteditable']
+
 function base(control: ControlType | null, question: ExtractedQuestion, el?: HTMLElement): Omit<FieldClassification, 'kind' | 'eligible'> {
   const maxLength = el && (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) && el.maxLength > 0 ? el.maxLength : null
   return { control, question, required: el ? isRequired(el) : false, maxLength, longAnswer: false }
+}
+
+/** Limits the page states in words ("Max 250 words", "0/500") count as much as maxlength. Text controls only. */
+function addLimits(b: Omit<FieldClassification, 'kind' | 'eligible'>, el: HTMLElement): void {
+  if (!TEXT_CONTROLS.includes(b.control)) return
+  const limits = detectLimits(el, [b.question.hint, b.question.text])
+  b.maxLength = limits.maxLength
+  if (limits.maxWords) b.maxWords = limits.maxWords
+  if (limits.minLength) b.minLength = limits.minLength
 }
 
 const ignored = (b: Omit<FieldClassification, 'kind' | 'eligible'>, skipReason: SkipReason): FieldClassification => ({
@@ -164,6 +180,7 @@ export function classifyField(el: Element): FieldClassification {
   // The question is extracted even for ignored fields, so debug mode can show what was skipped.
   const question = extractQuestion(el)
   b.question = question
+  addLimits(b, el)
   if (type && IGNORED_INPUT_TYPES[type]) return ignored(b, IGNORED_INPUT_TYPES[type])
   if (isDisabled(el)) return ignored(b, 'disabled')
   if (isHidden(el)) return ignored(b, 'hidden')

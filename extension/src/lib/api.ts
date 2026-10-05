@@ -30,7 +30,7 @@ async function detail(response: Response): Promise<string | null> {
 
 export async function apiRequest<T>(
   deps: ApiDeps,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<Result<T>> {

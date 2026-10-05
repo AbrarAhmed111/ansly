@@ -24,6 +24,10 @@ import type {
   MatchSavedAnswerResponse,
   ResolveAnswerResponse,
   RegenerateAnswerRequest,
+  RewriteRequest,
+  RewriteResponse,
+  MemoryItem,
+  UpdateMemoryRequest,
   SavedAnswer,
   TrackEventRequest,
 } from '@ansly/types'
@@ -69,6 +73,10 @@ export interface RequestMap {
   generateBatch: { payload: GenerateBatchRequest; response: GenerateBatchResponse }
   matchSavedBatch: { payload: MatchSavedBatchRequest; response: MatchSavedBatchResponse }
   saveMissing: { payload: SaveMissingRequest; response: SaveMissingResponse }
+  /** Shorter / Natural / Fit to limit...: transforms the current text without regenerating it. */
+  rewrite: { payload: RewriteRequest; response: RewriteResponse }
+  /** Edits one Application Memory fact inline (from an answer that used it). */
+  updateMemory: { payload: { id: string; changes: UpdateMemoryRequest }; response: MemoryItem }
   /** Values for `profile` fields (name, email, links...), from the user's profile. */
   getProfileValues: { payload: null; response: ProfileValues }
   /** Sites Ansly runs on (for the web app's settings page). */
