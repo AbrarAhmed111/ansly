@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { ParsedEditor, cleanResume, editorErrors } from '@/components/resume/parsed-editor'
 import { Alert, Badge, Button, Card, ErrorText, PageHeader, Skeleton, buttonStyles } from '@/components/ui'
 import { KEYS, createResume, listResumes, updateResume } from '@/lib/api'
+import { safeNext } from '@/lib/safe-next'
 import { load } from '@/lib/cache'
 import { errorMessage } from '@/lib/format'
 import { DOCX_ACCEPT, PARSE_STATUS, resumeFileProblem, uploadResumeFile } from '@/lib/resume'
@@ -87,7 +88,8 @@ export function UploadResume({ resumeId }: { resumeId: string | null }) {
     try {
       await updateResume(record.id, { parsedContent: cleanResume(draft) })
       toast.success(record.parseStatus === 'needs_review' ? 'Resume confirmed' : 'Changes saved')
-      router.push('/resume')
+      // Started from setup: go back there to build the profile from the resume.
+      router.push(safeNext(new URLSearchParams(window.location.search).get('next'), '/resume'))
     } catch (e) {
       toast.error(errorMessage(e))
     } finally {

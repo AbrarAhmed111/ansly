@@ -1,6 +1,6 @@
 import { completenessFromSignals } from '@ansly/types'
 import { clsx } from 'clsx'
-import { ArrowRight, BookmarkCheck, FileText, MousePointerClick, Puzzle, RefreshCcw, Sparkles, Wand2, type LucideIcon } from 'lucide-react'
+import { ArrowRight, BookmarkCheck, FileText, MousePointerClick, Puzzle, RefreshCcw, Rocket, Sparkles, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { SECTION_ICONS } from '@/components/section-icons'
@@ -88,6 +88,20 @@ export default async function DashboardPage() {
         title={name ? `Welcome back, ${name}` : 'Welcome to Ansly'}
         description="Ansly answers application questions only from what's in your profile. The more complete it is, the better your answers."
       />
+
+      {/* Resume-first setup, until the core is in place */}
+      {(!hasMaster || counts.experience === 0) && (
+        <Card className="mb-6 flex flex-wrap items-center gap-4 border-accent/30 bg-gradient-to-br from-accent-soft via-surface to-surface">
+          <IconTile icon={Rocket} tone="accent" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-title">Get Ansly ready in about two minutes</h2>
+            <p className="mt-0.5 text-muted">Upload your resume and Ansly builds your profile from it. Then a few quick preferences, and you’re set.</p>
+          </div>
+          <Link href="/setup" className={buttonStyles()}>
+            Continue setup <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Card>
+      )}
 
       {/* Completeness */}
       <Card className="relative overflow-hidden p-0">

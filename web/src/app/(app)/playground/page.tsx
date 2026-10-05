@@ -66,6 +66,11 @@ const CONFIDENCE_TONE = { high: 'success', medium: 'accent', low: 'warning' } as
 
 export default function PlaygroundPage() {
   const [question, setQuestion] = useState('')
+  // Setup's "Try your first answer" links here with the question filled in.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (q) setQuestion(q.slice(0, 2000))
+  }, [])
   const [showContext, setShowContext] = useState(false)
   const [company, setCompany] = useState('')
   const [role, setRole] = useState('')

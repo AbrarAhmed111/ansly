@@ -31,6 +31,7 @@ import {
   Steps,
   type StepState,
 } from '@/components/ui'
+import { trackEvent } from '@/lib/api'
 import { errorMessage } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import { supabaseKey, supabaseUrl } from '@/lib/supabase/env'
@@ -103,7 +104,10 @@ export default function ExtensionPage() {
         setChecked(true)
       } else if (msg.type === 'ANSLY_CONNECTED') {
         setBusy(false)
-        if (msg.ok) toast.success('Extension connected')
+        if (msg.ok) {
+          toast.success('Extension connected')
+          void trackEvent({ kind: 'extension_connected', category: null })
+        }
         else setError(msg.error ?? 'The extension could not save the session.')
       }
     }
