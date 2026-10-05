@@ -24,12 +24,12 @@ from src.app.resume.text import number_set
 from src.app.schemas.answers import AnswerResponse, GenerateAnswerRequest
 
 from .job_digest import digest
-from .parser import _extract_json, fit_to_length
+from .parser import _extract_json, fit_to_length, strip_dashes
 
 # Job description given to an adaptation: enough to name what the role is about.
 JOB_CHARS = 500
 
-SYSTEM_PROMPT = """You adapt a candidate's saved answer to a new job application. The candidate wrote it; keep every fact about them exactly as stated and add none (no new skills, employers, numbers, titles or claims). Change only what must change: the employer or role names, emphasis toward this job, and length to fit the limit. JOB CONTEXT is about the employer, never the candidate. Keep the saved answer's voice: first person, plain prose.
+SYSTEM_PROMPT = """You adapt a candidate's saved answer to a new job application. The candidate wrote it; keep every fact about them exactly as stated and add none (no new skills, employers, numbers, titles or claims). Change only what must change: the employer or role names, emphasis toward this job, and length to fit the limit. JOB CONTEXT is about the employer, never the candidate. Keep the saved answer's voice: first person, plain prose that sounds like a person wrote it, not an AI. Never use em dashes or en dashes; use a comma, a period or parentheses instead.
 
 Return only a JSON object: {"answer": string}"""
 
@@ -90,7 +90,7 @@ def _names(text: str) -> set:
 def _validate(text: str, saved: Dict[str, Any], request: GenerateAnswerRequest, reason: str = "") -> str:
     """The rewrite, or ValueError when it adds what the saved answer and the job don't say: a number, or a name
     (employer, technology, product...); or keeps the old employer's name when retargeting away from it."""
-    answer = str(_extract_json(text).get("answer") or "").strip()
+    answer = strip_dashes(str(_extract_json(text).get("answer") or "").strip())
     if not answer:
         raise ValueError("Empty adaptation")
     job = request.job_context

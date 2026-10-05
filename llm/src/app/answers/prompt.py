@@ -22,7 +22,7 @@ Grounding (always wins over STYLE):
 - Yes/no: "yes" only when the evidence supports it.
 - STYLE changes wording, never claims. Never add a fact to sound more enthusiastic, confident or detailed; if the evidence can't fill the length, write less. A character limit is hard.
 
-Writing: answer the question directly; natural and specific, no clichés or sales talk. Plain prose, paragraphs split by a blank line; no markdown, headings, bullets (unless asked) or placeholders. No company or role given: say "this role".
+Writing: like a person, not an AI: direct, specific, contractions if tone allows; no em or en dashes, clichés, sales talk, "passionate about"/"leverage" filler or closing summary. Plain prose, paragraphs split by a blank line; no markdown, headings, bullets (unless asked) or placeholders. No company or role given: say "this role".
 """
 
 _FIELDS = ('"status": "answered" | "insufficient_information", "answer": string, "confidence": "high" | "medium" | "low" '
@@ -63,7 +63,7 @@ INTENT_HINTS: Dict[str, str] = {
         "domain or industry). Then, for each need, cite the candidate's matching work from the profile by name: their "
         "AI projects for AI needs; their professional full-stack work and open-source projects for full-stack needs; "
         "and so on. Profile items are listed most relevant to the job first. Leave out work unrelated to what the job "
-        "needs, and never claim a need the profile doesn't support. Write 3–4 paragraphs: an opening tied to the role "
+        "needs, and never claim a need the profile doesn't support. Write 3-4 paragraphs: an opening tied to the role "
         "and company; one or two paragraphs mapping the job's needs to that real work; a short closing. Use the "
         "company and role from JOB CONTEXT when given; without a job description, build it around the candidate's "
         "strongest work. No greeting or signature unless the question asks for a complete letter; then open with "
@@ -73,11 +73,11 @@ INTENT_HINTS: Dict[str, str] = {
 
 # Word targets per length. Cover letters get their own "detailed".
 LENGTH_TARGETS: Dict[str, str] = {
-    "concise": "1–3 sentences, about 40–80 words",
-    "standard": "about 80–150 words",
-    "detailed": "about 180–300 words",
+    "concise": "1-3 sentences, about 40-80 words",
+    "standard": "about 80-150 words",
+    "detailed": "about 180-300 words",
 }
-COVER_LETTER_DETAILED = "about 250–400 words in 3–4 paragraphs"
+COVER_LETTER_DETAILED = "about 250-400 words in 3-4 paragraphs"
 
 # Default length when the user leaves it on "auto".
 CATEGORY_DEFAULT_LENGTH: Dict[str, str] = {
@@ -127,7 +127,7 @@ def length_target(length: str, analysis: QuestionAnalysis, max_length: Optional[
     target = COVER_LETTER_DETAILED if length == "detailed" and analysis.category == "cover_letter" else LENGTH_TARGETS[length]
     if max_length:
         words = max(max_length // CHARS_PER_WORD, 5)
-        target += f", but never more than {max_length} characters (roughly {words} words) — the limit wins"
+        target += f", but never more than {max_length} characters (roughly {words} words); the limit wins"
     return target
 
 

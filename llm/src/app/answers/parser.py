@@ -45,6 +45,16 @@ def _extract_json(text: str) -> dict:
     return value
 
 
+def strip_dashes(text: str) -> str:
+    """Replaces em and en dashes, a tell-tale of generated text: a range ("2019–2021") gets a hyphen, a dash
+    before punctuation is dropped, any other dash becomes a comma."""
+    text = re.sub(r"(?<=\d)\s*[–—]\s*(?=\d)", "-", text)
+    text = re.sub(r"[ \t]*[–—][ \t]*(?=[.,;:!?)]|$)", "", text, flags=re.MULTILINE)
+    text = re.sub(r"(?m)^[ \t]*[–—][ \t]*", "", text)
+    text = re.sub(r"[ \t]*[–—]+[ \t]*", ", ", text)
+    return re.sub(r",(\s*,)+", ",", text)
+
+
 def fit_to_length(answer: str, max_length: Optional[int]) -> str:
     """Trims an over-long answer at the last sentence end that fits."""
     if not max_length or len(answer) <= max_length:
@@ -132,6 +142,8 @@ def parse_answer_data(
         answer = ""
     else:
         answer = _coerce_to_field(answer, field)
+        if not (field and (field.is_choice or field.kind == "number")):
+            answer = strip_dashes(answer)
     question = data.get("missingQuestion") or data.get("missing_question")
     question = str(question).strip() if question and status == "insufficient_information" else None
 

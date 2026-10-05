@@ -122,12 +122,12 @@ def _message(question: str, style: AnswerStyle | None = None, field: FieldContex
 
 
 @pytest.mark.parametrize("question,length,target", [
-    ("Cover letter", "auto", "250–400 words in 3–4 paragraphs"),
-    ("Why are you interested in this role?", "auto", "80–150 words"),
-    ("Do you have experience with Next.js?", "auto", "40–80 words"),
-    ("Cover letter", "concise", "40–80 words"),
-    ("Why are you interested in this role?", "detailed", "180–300 words"),
-    ("Tell us about yourself", "standard", "80–150 words"),
+    ("Cover letter", "auto", "250-400 words in 3-4 paragraphs"),
+    ("Why are you interested in this role?", "auto", "80-150 words"),
+    ("Do you have experience with Next.js?", "auto", "40-80 words"),
+    ("Cover letter", "concise", "40-80 words"),
+    ("Why are you interested in this role?", "detailed", "180-300 words"),
+    ("Tell us about yourself", "standard", "80-150 words"),
 ])
 def test_length_targets(question, length, target):
     assert target in _message(question, AnswerStyle(length=length))
@@ -135,7 +135,7 @@ def test_length_targets(question, length, target):
 
 def test_max_length_beats_length_target():
     message = _message("Cover letter", AnswerStyle(length="detailed"), FieldContext(kind="textarea", max_length=300))
-    assert "never more than 300 characters (roughly 50 words) — the limit wins" in message
+    assert "never more than 300 characters (roughly 50 words); the limit wins" in message
 
 
 def test_single_line_fields_get_no_word_target():
@@ -261,7 +261,7 @@ async def test_engine_passes_style_and_detects_cover_letter_fields():
         question="Write a letter to the team", field=FieldContext(kind="textarea"), style=AnswerStyle(tone="formal")))
     message = gateway.generate.await_args.kwargs["messages"][0]["content"]
     assert response.category == "cover_letter"
-    assert "250–400 words" in message and "Tone: formal:" in message
+    assert "250-400 words" in message and "Tone: formal:" in message
 
 
 # --- similarity ---------------------------------------------------------------
@@ -369,3 +369,15 @@ def test_cover_letter_guidance_maps_job_needs_to_real_work():
     message = build_user_message(analysis, ctx, JobContext(company="X", role="ML Engineer", description="LLM work"), None)
     assert "main needs in the JOB CONTEXT" in message and "AI projects for AI needs" in message
     assert "open-source projects for full-stack needs" in message
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("I built the API — then shipped it.", "I built the API, then shipped it."),
+    ("Python—and Go—daily.", "Python, and Go, daily."),
+    ("From 2019–2021 I led it.", "From 2019-2021 I led it."),
+    ("It worked well —.", "It worked well."),
+    ("No dashes here.", "No dashes here."),
+])
+def test_strip_dashes(text, expected):
+    from src.app.answers.parser import strip_dashes
+    assert strip_dashes(text) == expected
