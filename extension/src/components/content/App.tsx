@@ -8,9 +8,10 @@ import { hasValue } from '@/lib/fill'
 import { isOnScreen, sparklePosition, type Box } from '@/lib/geometry'
 import { extractJobContext, isCoverLetter } from '@/lib/job-context'
 import { explainNoJob, extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
+import { detectLimits } from '@/lib/limits'
 import { send, type TabMessage } from '@/lib/messages'
 import { firstTailorOffer, type Settings } from '@/lib/settings'
-import { Panel, type Row } from './Panel'
+import { Panel, type Row, type RowStatus } from './Panel'
 import { Popover, type PopoverTarget } from './Popover'
 import { TailorCard } from './TailorCard'
 
@@ -125,16 +126,32 @@ function boxOf(el: HTMLElement): Box {
 
 function toTarget(el: HTMLElement, question: string, tracked?: TrackedField): PopoverTarget {
   const kind = fieldKind(el)
-  const maxLength = (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) && el.maxLength > 0 ? el.maxLength : null
+  // A detected field knows its limits already; a field opened from the context menu is read now.
+  const limits = tracked
+    ? { maxLength: tracked.maxLength, maxWords: tracked.maxWords ?? null, minLength: tracked.minLength ?? null }
+    : detectLimits(el, [question])
   return {
     el,
     question,
+    fieldId: tracked?.id,
     field: {
       label: question,
-      maxLength,
+      maxLength: limits.maxLength,
+      ...(limits.maxWords ? { maxWords: limits.maxWords } : {}),
+      ...(limits.minLength ? { minLength: limits.minLength } : {}),
       kind: tracked?.kind === 'number' ? 'number' : kind === 'select' ? null : kind,
     },
   }
+}
+
+// The quiet per-field icon: what Ansly knows about the field at a glance.
+const FIELD_ICONS: Partial<Record<RowStatus, { icon: string; label: string }>> = {
+  generating: { icon: '◌', label: 'Generating' },
+  ready: { icon: '✓', label: 'Ready' },
+  filled: { icon: '✓', label: 'Filled' },
+  review: { icon: '!', label: 'Review' },
+  needs_info: { icon: '?', label: 'Needs info' },
+  failed: { icon: '×', label: 'Failed' },
 }
 
 // Long fields still open besides the one being answered, before the popover offers to answer them together.
@@ -217,7 +234,7 @@ export function App({ host, initialSettings, subscribe }: {
   const fields = useMemo(() => all.filter((f) => f.eligible), [all])
   const detected = useMemo(() => all.filter((f) => f.kind !== 'ignored'), [all])
   const ignoredCount = all.length - detected.length
-  const filledIds = Object.entries(rows).filter(([, r]) => ['filled', 'low', 'failed'].includes(r.status))
+  const filledIds = Object.entries(rows).filter(([, r]) => r.snapshot && ['filled', 'failed'].includes(r.status))
 
   const trackedElements = useMemo(() => fields.map((f) => f.el), [fields])
   useLayoutTick(enabled && (fields.length > 0 || target !== null || filledIds.length > 0 || settings.detectionDebug), trackedElements)
@@ -307,7 +324,7 @@ export function App({ host, initialSettings, subscribe }: {
   /** Empty long-answer fields other than `el`, not already filled or being written by the panel. */
   const openLongFields = useCallback((el: HTMLElement | null) => fields.filter((f) =>
     f.kind === 'open_text' && !f.controls.includes(el as HTMLElement) && !hasValue(f.controls)
-    && !['filled', 'low', 'working', 'review'].includes(rows[f.id]?.status ?? 'idle')), [fields, rows])
+    && !['filled', 'generating', 'ready', 'review'].includes(rows[f.id]?.status ?? 'idle')), [fields, rows])
 
   const answerRest = useCallback((el: HTMLElement) => {
     const ids = openLongFields(el).map((f) => f.id)
@@ -357,28 +374,58 @@ export function App({ host, initialSettings, subscribe }: {
         if (!box || box.width < 60) return null
         const pos = sparklePosition(box, f.control !== 'input')
         const el = f.controls[0]!
+        const state = FIELD_ICONS[rows[f.id]?.status ?? 'idle']
         return (
           <button
             key={f.id}
-            className="sparkle"
+            className={`sparkle ${state ? `s-${rows[f.id]!.status}` : ''}`}
             style={{ top: pos.top, left: pos.left }}
             data-active={target?.el === el}
-            aria-label={`Answer with Ansly: ${f.question.text}`}
-            title="Answer with Ansly"
+            aria-label={`Answer with Ansly${state ? ` (${state.label})` : ''}: ${f.question.text}`}
+            title={state ? `Ansly: ${state.label}` : 'Answer with Ansly'}
             // Keep focus in the field (some forms validate on blur).
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTarget(target?.el === el ? null : toTarget(el, f.question.text, f))}
           >
-            ✨
+            {state?.icon ?? '✦'}
           </button>
         )
       })}
 
-      {detected.length > 0 && !panelOpen && (
-        <button className="pill" onClick={() => { setPanelOpen(true); setPanelMounted(true) }} aria-label={`Ansly found ${detected.length} fields. Open fill all`}>
-          <span className="pill-brand">✨ Ansly</span> · {detected.length} field{detected.length === 1 ? '' : 's'} ▸
-        </button>
-      )}
+      {detected.length > 0 && !panelOpen && (() => {
+        // Page-level status: always know where the application stands.
+        const statuses = detected.map((f) => rows[f.id]?.status ?? 'idle')
+        const n = (s: RowStatus[]) => statuses.filter((x) => s.includes(x)).length
+        const answered = n(['filled', 'ready'])
+        const review = n(['review'])
+        const missing = n(['needs_info'])
+        const started = statuses.some((s) => s !== 'idle')
+        const job = jobPage?.job
+        const jobName = job ? [job.title, job.company].filter(Boolean).join(' at ') : ''
+        const summary = started
+          ? `${answered} answered, ${review} to review, ${missing} need info`
+          : `${jobName ? `${jobName}: ` : ''}${detected.length} fields detected`
+        return (
+          <button className="pill" onClick={() => { setPanelOpen(true); setPanelMounted(true) }} aria-label={`Ansly: ${summary}. Open the application assistant`}>
+            <span className="pill-brand">Ansly</span>
+            {started ? (
+              <>
+                <span className="pill-stat s-ready">✓ {answered}</span>
+                {review > 0 && <span className="pill-stat s-review">! {review}</span>}
+                {missing > 0 && <span className="pill-stat s-needs_info">? {missing}</span>}
+                <span className="pill-action">Open</span>
+              </>
+            ) : (
+              <>
+                {jobName && <span className="pill-job" title={jobName}>{jobName}</span>}
+                <span>{detected.length} field{detected.length === 1 ? '' : 's'}</span>
+                {/* Nothing runs until the user asks: preparing is their call. */}
+                <span className="pill-action">{jobName ? 'Prepare application' : 'Review & Fill'}</span>
+              </>
+            )}
+          </button>
+        )
+      })()}
       {panelMounted && (
         <div hidden={!panelOpen}>
         <Panel
@@ -396,6 +443,7 @@ export function App({ host, initialSettings, subscribe }: {
           onRowsChange={setRows}
           onOpenField={openField}
           run={run}
+          job={jobPage ? { title: jobPage.job.title || null, company: jobPage.job.company || null } : null}
         />
         </div>
       )}
