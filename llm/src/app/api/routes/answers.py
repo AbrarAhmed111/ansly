@@ -16,6 +16,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from src.app.answers.adapt import adapt_saved_answer, adaptation_reason
 from src.app.answers.engine import AnswerEngine
 from src.app.answers.profile_context import fetch_profile_data
+from src.app.answers.rewrite import rewrite_answer
 from src.app.answers.saved import load_saved_answers
 from src.app.answers.similarity import best_match
 from src.app.api.deps import get_answer_engine, get_rest
@@ -27,6 +28,7 @@ from src.app.core.rate_limit import check_rate_limit, enforce_daily_limit, gener
 from src.app.core.token_budget import job_key
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.gateway import GatewayUnavailableError
+from src.app.memory.service import mark_used
 from src.app.schemas.answers import (
     AnswerResponse,
     GenerateAnswerRequest,
@@ -35,6 +37,8 @@ from src.app.schemas.answers import (
     JobContext,
     RegenerateAnswerRequest,
     ResolveAnswerResponse,
+    RewriteRequest,
+    RewriteResponse,
 )
 
 logger = logging.getLogger("AnswersAPI")
@@ -52,8 +56,13 @@ async def _insert_events(rest: SupabaseRest, events: List[Dict[str, Any]]) -> No
         logger.warning(f"Could not record usage event: {e}")
 
 
+def _memory_ids(answers: List[Any]) -> List[str]:
+    """The Application Memory facts these answers came from."""
+    return [s.id for a in answers if a.origin == "memory" for s in a.used_sources if s.type == "fact"]
+
+
 async def _record_usage(rest: SupabaseRest, events: List[Dict[str, Any]], job: Optional[JobContext] = None,
-                        background: Optional[BackgroundTasks] = None) -> None:
+                        background: Optional[BackgroundTasks] = None, used_facts: Optional[List[str]] = None) -> None:
     """The request's usage events (one bulk insert) and its LLM calls (another), after the response when
     possible. Analytics must never cost the user their answer."""
     fields = _job_fields(job)
@@ -62,6 +71,11 @@ async def _record_usage(rest: SupabaseRest, events: List[Dict[str, Any]], job: O
     async def write() -> None:
         if events:
             await _insert_events(rest, events)
+        if used_facts:
+            try:
+                await mark_used(rest, used_facts)
+            except SupabaseError as e:
+                logger.warning(f"Could not stamp memory use: {e}")
         await llm_usage.write_calls(rest, calls, fields.get("job_key"), fields.get("job_context_id"))
 
     await llm_usage.defer(background, write)
@@ -133,7 +147,9 @@ async def _run(
     await _record_usage(rest, [
         {"kind": kind, "category": response.category, "provider": response.provider, "tokens": response.tokens,
          "llm_calls": 1 if response.provider else 0, **_job_fields(request.job_context)},
-    ], request.job_context, background)
+        # Learned facts reused: the measure of Application Memory paying off.
+        *([{"kind": "memory_used", "category": response.category}] if response.origin == "memory" else []),
+    ], request.job_context, background, used_facts=_memory_ids([response]))
     return ResolveAnswerResponse(score=score, answer=response)
 
 
@@ -248,7 +264,44 @@ async def generate_batch(
          "provider": r.provider, "tokens": r.tokens, "llm_calls": plan.calls if i == 0 else 0,
          **_job_fields(request.job_context)}
         for i, r in enumerate(generated)
-    ], request.job_context, background)
+    ] + [{"kind": "memory_used", "category": r.category} for r in results if r.origin == "memory"],
+        request.job_context, background, used_facts=_memory_ids(results))
     counts = {source: list(plan.sources.values()).count(source) for source in set(plan.sources.values())}
     logger.info("batch " + " ".join(f"{k}={v}" for k, v in sorted(counts.items())) + f" llm_calls={plan.calls}")
     return GenerateBatchResponse(results=results)
+
+
+@router.post(
+    "/rewrite",
+    response_model=RewriteResponse,
+    response_model_by_alias=True,
+    summary="Shorter, more natural, fit to limit...: transform an answer without regenerating it",
+)
+async def rewrite(
+    request: RewriteRequest,
+    background: BackgroundTasks,
+    user: AuthUser = Depends(get_current_user),
+    rest: SupabaseRest = Depends(get_rest),
+    engine: AnswerEngine = Depends(get_answer_engine),
+) -> RewriteResponse:
+    """One small call on the user's current text (their latest edit): no profile, no retrieval. A rewrite that
+    would add facts is rejected and the text comes back unchanged (`changed: false`)."""
+    if request.action == "custom" and not (request.instruction or "").strip():
+        raise HTTPException(422, "Say how to rewrite it, e.g. \"more direct\".")
+    settings = get_settings()
+    try:
+        _, used_today = await gather_all(
+            check_rate_limit(rest, settings.RATE_LIMIT_PER_MINUTE), generations_today(rest))
+        enforce_daily_limit(used_today, settings.DAILY_GENERATION_LIMIT)
+        result = await rewrite_answer(engine.gateway, request)
+    except SupabaseError as e:
+        logger.error(f"Supabase error for user {user.id}: {e}")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, PROFILE_UNAVAILABLE) from e
+    except GatewayUnavailableError as e:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, PROVIDERS_BUSY) from e
+    kind = "fit_to_limit" if request.action == "fit" else "rewrite"
+    await _record_usage(rest, [
+        {"kind": kind, "category": request.action, "provider": result.provider, "tokens": result.tokens or None,
+         "llm_calls": 1, **_job_fields(request.job_context)},
+    ], request.job_context, background)
+    return RewriteResponse(answer=result.answer, changed=result.changed, reason=result.reason)

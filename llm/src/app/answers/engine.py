@@ -19,10 +19,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.app.core import metrics
 from src.app.core.config import get_settings
-from src.app.core.token_budget import ANSWER_BATCH
+from src.app.core.token_budget import ANSWER_BATCH, job_key
 from src.app.core.ttl_cache import TTLCache
 from src.app.db.rest import SupabaseRest
 from src.app.gateway import GatewayUnavailableError, LLMGateway
+from src.app.memory.keys import CATEGORY_GROUPS, FACT_KEYS, INTENT_KEYS
+from src.app.memory.service import Resolved, scope_facts
 from src.app.schemas.answers import (
     AnswerResponse,
     AnswerStyle,
@@ -48,7 +50,6 @@ from .profile_context import (
     build_context,
     canonicalize,
     fetch_profile_data,
-    logistics_value,
     missing_skills,
 )
 from .prompt import BATCH_SYSTEM_PROMPT, SYSTEM_PROMPT, build_batch_message, build_user_message
@@ -145,19 +146,24 @@ LOGISTICS_LABELS = {
     "notice_period": "your notice period or availability",
     "relocation": "whether you're willing to relocate",
     "work_mode": "your preferred work mode (remote, hybrid, on-site)",
+    "travel": "whether you're willing to travel",
 }
 
 WORK_MODES = ["remote", "hybrid", "onsite", "flexible"]
+# Ask-and-Learn input per fact type (see memory.keys).
+# A choice is sent as "select" (with its options): extension builds from before Application Memory render that
+# as a dropdown, newer ones as buttons.
+_INPUTS = {"boolean": "boolean", "choice": "select", "text": "text", "number": "number"}
 
-# intent -> (profile column, input type, question to ask)
-LOGISTICS_ASK = {
-    "salary": ("salary_expectation", "text", "What is your salary expectation?"),
-    "sponsorship": ("requires_sponsorship", "boolean", "Will you need visa sponsorship to work?"),
-    "work_authorization": ("work_authorization", "text", "What is your work authorization (e.g. citizen, permanent resident, visa type)?"),
-    "notice_period": ("notice_period", "text", "What is your notice period, or when can you start?"),
-    "relocation": ("willing_to_relocate", "boolean", "Are you willing to relocate?"),
-    "work_mode": ("preferred_work_mode", "select", "Which work mode do you prefer?"),
-}
+
+def scoped_data(data: Dict[str, Any], job: Optional[JobContext]) -> Dict[str, Any]:
+    """The profile with only the Application Memory that applies to this application: facts saved for another
+    job or company never reach its answers."""
+    facts = data.get("profile_facts")
+    if not facts:
+        return data
+    key = job_key(job.url, job.company, job.role) if job else None
+    return {**data, "profile_facts": scope_facts(facts, job.company if job else None, key)}
 
 
 def job_text(job: Optional[JobContext]) -> Optional[str]:
@@ -178,22 +184,33 @@ def _as_written(question: str, skill: str) -> str:
 
 
 def logistics_missing(intent: str) -> Optional[MissingInfo]:
-    if intent not in LOGISTICS_ASK:
+    key = INTENT_KEYS.get(intent)
+    spec = FACT_KEYS.get(key or "")
+    if spec is None:
         return None
-    column, input_type, prompt = LOGISTICS_ASK[intent]
+    target = ProfileFieldTarget(field=spec.profile_field) if spec.profile_field \
+        else FactTarget(category=spec.group, key=spec.key)
     return MissingInfo(
-        key=column,
-        prompt=prompt,
-        input=input_type,
-        options=WORK_MODES if input_type == "select" else None,
-        target=ProfileFieldTarget(field=column),
+        key=spec.profile_field or spec.key,
+        prompt=spec.ask,
+        input=_INPUTS[spec.input],
+        options=list(spec.options) or None,
+        target=target,
+        group=spec.group,
+        scope=spec.default_scope,
+        label=spec.label,
     )
 
 
 def skill_missing(name: str) -> MissingInfo:
     return MissingInfo(
-        key=f"skill:{canonicalize(name)}", prompt=f"Have you used {name}?", input="skill", target=SkillTarget(name=name)
+        key=f"skill:{canonicalize(name)}", prompt=f"Have you used {name}?", input="skill", target=SkillTarget(name=name),
+        group="Skills", scope="global", label=name,
     )
+
+
+# Questions whose answer is about one employer or role: what the user writes is kept for that job only.
+JOB_SPECIFIC_INTENTS = {"motivation_company", "motivation_role", "cover_letter"}
 
 
 def fact_missing(analysis: QuestionAnalysis, prompt: Optional[str]) -> MissingInfo:
@@ -203,6 +220,8 @@ def fact_missing(analysis: QuestionAnalysis, prompt: Optional[str]) -> MissingIn
         prompt=(prompt or analysis.question).strip(),
         input="textarea",
         target=FactTarget(category=category),
+        group=CATEGORY_GROUPS.get(category, CATEGORY_GROUPS.get(analysis.category, "Other")),
+        scope="job" if analysis.intent in JOB_SPECIFIC_INTENTS else "global",
     )
 
 
@@ -233,7 +252,16 @@ def deterministic(analysis: QuestionAnalysis, answer: str, ctx: ProfileContext, 
         missing_information=None,
         category=analysis.category,
         intent=analysis.intent,
+        origin="memory" if used is not None and used.type == "fact" else "profile",
     )
+
+
+def memory_source(found: Resolved) -> Optional[UsedSource]:
+    """The memory row an answer came from, so the popover can show it and edit it inline."""
+    if not found.from_memory or not found.row:
+        return None
+    spec = FACT_KEYS.get(found.key)
+    return UsedSource(type="fact", id=str(found.row.get("id") or ""), label=spec.label if spec else found.key)
 
 
 def _yes_no_option(options: List[str], yes: bool) -> Optional[str]:
@@ -277,13 +305,18 @@ def logistics_text(intent: str, value: Any, question: str) -> Optional[str]:
         return ("Yes" if value else "No") if yes_no and re.search(r"\b(?:willing|open|able)\b", question, re.IGNORECASE) else None
     if intent == "work_mode" and isinstance(value, str):
         return WORK_MODE_LABELS.get(value) if not yes_no and re.search(r"\bprefer", question, re.IGNORECASE) else None
+    if intent == "travel" and isinstance(value, bool):
+        willing = re.search(r"\b(?:willing|open|able)\b", question, re.IGNORECASE)
+        return ("Yes" if value else "No") if yes_no and willing else None
     return None
 
 
 def precheck(analysis: QuestionAnalysis, ctx: ProfileContext, field: Optional[FieldContext] = None) -> Optional[AnswerResponse]:
     """Answers that need no model: questions the profile clearly cannot support, and choices it settles."""
     if analysis.category == "logistics":
-        value = logistics_value(ctx.profile, analysis.intent)
+        found = ctx.resolve(analysis.intent)
+        value = found.value if found else None
+        used = memory_source(found) if found else None
         if value is None:
             label = LOGISTICS_LABELS.get(analysis.intent, "this preference")
             ask = logistics_missing(analysis.intent)
@@ -295,12 +328,12 @@ def precheck(analysis: QuestionAnalysis, ctx: ProfileContext, field: Optional[Fi
             if option is None and analysis.intent == "work_authorization"                     and authorized_in_asked_country(analysis.question, value):
                 option = _yes_no_option(field.options or [], True)
             if option:
-                return deterministic(analysis, option, ctx)
+                return deterministic(analysis, option, ctx, used=used)
         # A one-line text box ("Notice period", "Expected salary") takes the stored value as is: no model needed.
         if field and field.kind in ("input", "short_text"):
             text = logistics_text(analysis.intent, value, analysis.question)
             if text:
-                return deterministic(analysis, text, ctx)
+                return deterministic(analysis, text, ctx, used=used)
         return None
 
     if ctx.is_empty:
@@ -369,6 +402,7 @@ def _response(analysis: QuestionAnalysis, ctx: ProfileContext, parsed: ParsedAns
         provider=provider,
         model=model,
         tokens=tokens,
+        origin="generated" if parsed.status == "answered" else None,
     )
 
 
@@ -478,6 +512,7 @@ class AnswerEngine:
         analysis = _analyze(request.question, request.field)
         if data is None:
             data = await fetch_profile_data(rest, analysis, user_id)
+        data = scoped_data(data, request.job_context)
         ctx = build_context(data, analysis, request.additional_facts, job_text=job_text(request.job_context))
 
         early = precheck(analysis, ctx, request.field)
@@ -549,6 +584,7 @@ class AnswerEngine:
                 saved = None
         else:
             data = await fetch_profile_data(rest, union, user_id)
+        data = scoped_data(data, request.job_context)
         facts = [f for item in request.items for f in (item.additional_facts or [])]
         # Grounding only (no evidence text yet): the prechecks need the profile, not a prompt.
         ctx = build_context(data, union, facts, include_logistics=has_logistics, analyses=[])
@@ -616,7 +652,7 @@ class AnswerEngine:
             logger.info(f"Saved answer used unchanged ({reason}): {e}")
             plan.results[item.id] = _saved_result(item, analysis, saved)
             return
-        values = adapted.model_dump(exclude={"tokens"})
+        values = {**adapted.model_dump(exclude={"tokens"}), "origin": "adapted"}
         plan.results[item.id] = BatchAnswer(id=item.id, **values, tokens=adapted.tokens,
                                             saved_answer_id=str(saved.get("id")), adapted_from=str(saved.get("id")))
 
@@ -699,7 +735,7 @@ def _takes_saved_answer(field_: Optional[FieldContext]) -> bool:
 def _saved_result(item: BatchItem, analysis: QuestionAnalysis, saved: Dict[str, Any]) -> BatchAnswer:
     return BatchAnswer(id=item.id, status="answered", answer=str(saved.get("answer") or ""), confidence="high",
                        used_sources=[], missing_information=None, category=analysis.category,
-                       intent=analysis.intent, saved_answer_id=str(saved.get("id")))
+                       intent=analysis.intent, saved_answer_id=str(saved.get("id")), origin="saved")
 
 
 def _item_request(request: GenerateBatchRequest, item: BatchItem) -> GenerateAnswerRequest:

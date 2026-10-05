@@ -123,11 +123,27 @@ def resolve_length(style: Optional[AnswerStyle], analysis: QuestionAnalysis) -> 
     return length
 
 
-def length_target(length: str, analysis: QuestionAnalysis, max_length: Optional[int]) -> str:
+# Word-target ranges per length, for comparing them with a field's limit.
+_LENGTH_WORDS = {"concise": (40, 80), "standard": (80, 150), "detailed": (180, 300)}
+
+
+def length_target(length: str, analysis: QuestionAnalysis, max_length: Optional[int],
+                  max_words: Optional[int] = None, min_length: Optional[int] = None) -> str:
+    """The length to write to. A field limit tighter than the length's usual target replaces it with a range
+    inside the limit (about 70-90% of it), so the answer is written to fit instead of written long and cut."""
     target = COVER_LETTER_DETAILED if length == "detailed" and analysis.category == "cover_letter" else LENGTH_TARGETS[length]
+    high_words = 400 if target == COVER_LETTER_DETAILED else _LENGTH_WORDS[length][1]
+    if max_words and max_words < high_words:
+        target = f"about {max(int(max_words * 0.7), 1)}-{max(int(max_words * 0.9), 1)} words"
     if max_length:
         words = max(max_length // CHARS_PER_WORD, 5)
+        if max_length < high_words * CHARS_PER_WORD:
+            target = f"about {int(max_length * 0.7)}-{int(max_length * 0.9)} characters"
         target += f", but never more than {max_length} characters (roughly {words} words); the limit wins"
+    if max_words:
+        target += f"; never more than {max_words} words"
+    if min_length:
+        target += f"; at least {min_length} characters"
     return target
 
 
@@ -144,6 +160,8 @@ def _field_parts(analysis: QuestionAnalysis, field: Optional[FieldContext], styl
         guidance.append("Technologies asked about: " + ", ".join(analysis.target_skills) + ".")
     if field and field.max_length:
         guidance.append(f"The answer must be at most {field.max_length} characters.")
+    if field and field.max_words:
+        guidance.append(f"The answer must be at most {field.max_words} words.")
     if field and field.is_choice:
         options = "; ".join(f'"{o}"' for o in field.options or [])
         if field.kind == "choice_multi":
@@ -170,7 +188,9 @@ def _field_parts(analysis: QuestionAnalysis, field: Optional[FieldContext], styl
         max_length = field.max_length if field else None
         style_lines = [f"Tone: {TONE_HINTS[style.tone if style else 'professional']}."]
         if not (field and field.single_line):
-            style_lines.insert(0, f"Length: {length_target(resolve_length(style, analysis), analysis, max_length)}.")
+            style_lines.insert(0, "Length: " + length_target(
+                resolve_length(style, analysis), analysis, max_length, field.max_words if field else None,
+                field.min_length if field else None) + ".")
         parts.append("STYLE (wording only; the grounding rules still apply):\n" + "\n".join(style_lines))
     return parts
 

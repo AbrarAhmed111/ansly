@@ -37,7 +37,8 @@ async def _used_today(rest: SupabaseRest, kinds: str) -> int:
 
 
 async def generations_today(rest: SupabaseRest) -> int:
-    return await _used_today(rest, "generate,regenerate")
+    # Rewrites are small, but they are model calls: they count, so the limit can't be sidestepped.
+    return await _used_today(rest, "generate,regenerate,rewrite,fit_to_limit")
 
 
 async def check_daily_limit(rest: SupabaseRest, limit: int, needed: int = 1) -> None:

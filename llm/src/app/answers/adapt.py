@@ -124,6 +124,6 @@ async def adapt_saved_answer(gateway: LLMGateway, saved: Dict[str, Any], request
     usage = result.usage or {}
     return AnswerResponse(
         status="answered", answer=result.value, confidence="high", used_sources=[], missing_information=None,
-        category=category, intent=intent, provider=result.provider, model=result.model,
+        category=category, intent=intent, provider=result.provider, model=result.model, origin="adapted",
         tokens=int(usage.get("prompt_tokens", 0) or 0) + int(usage.get("completion_tokens", 0) or 0),
     )

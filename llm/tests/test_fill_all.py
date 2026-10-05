@@ -109,7 +109,9 @@ async def test_missing_logistics_asks_for_the_profile_field():
     assert response.status == "insufficient_information"
     [item] = response.missing
     assert (item.key, item.input, item.target.type, item.target.field) == (
-        "willing_to_relocate", "boolean", "profile_field", "willing_to_relocate")
+        "willing_to_relocate", "select", "profile_field", "willing_to_relocate")
+    # Ask-and-Learn: grouped, with a three-way answer, remembered as a preference that may vary by default.
+    assert (item.group, item.options, item.scope) == ("Relocation", ["Yes", "No", "Depends on the role"], "category")
 
 
 @pytest.mark.asyncio

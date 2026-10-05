@@ -35,6 +35,8 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("logistics", "work_authorization", [r"\b(?:legally )?authori[sz]ed to work\b", r"\bwork (?:authori[sz]ation|permit)\b", r"\bright to work\b"]),
     ("logistics", "notice_period", [r"\bnotice period\b", r"\bwhen can you start\b", r"\bstart date\b", r"\bearliest (?:start|available)\b", r"\bavailab(?:le|ility) to start\b"]),
     ("logistics", "relocation", [r"\breloca\w*\b"]),
+    ("logistics", "travel", [r"\btravel\w*\b.*\b(?:willing|able|open|comfortable)\b",
+                             r"\b(?:willing|able|open|comfortable)\b.*\btravel"]),
     ("logistics", "work_mode", [r"\b(?:remote|hybrid|on-?site|in[- ]office)\b.*\b(?:prefer|comfortable|open|willing|able)\b", r"\b(?:prefer|comfortable|open|willing|able)\b.*\b(?:remote|hybrid|on-?site|in[- ]office)\b", r"\bwork(?:ing)? (?:arrangement|model|setup|location type)\b", r"\bremote,? (?:or|/) ?(?:hybrid|on-?site)\b"]),
     ("behavioral", "failure", [r"\b(?:fail(?:ed|ure)?|mistake|went wrong|setback)\b"]),
     ("behavioral", "conflict", [r"\b(?:conflict|disagree\w*|difficult (?:colleague|coworker|stakeholder|person))\b"]),
@@ -63,6 +65,8 @@ _SKILL_PATTERNS = [
     r"\bhave you (?:ever )?(?:used|worked with|built with|built (?:anything|something) (?:with|in)|deployed|written)\s+(?P<skill>[^?;:!]+)",
     r"\b(?:worked|work|built|develop(?:ed)?) (?:with|in|using)\s+(?P<skill>[^?;:!]+)",
     r"\brate your\s+(?P<skill>[^?;:!]+?)\s+(?:skills?|experience|proficiency)\b",
+    # "How many years of Docker experience do you have?"
+    r"\byears of (?:professional |hands-on )?(?P<skill>(?!(?:experience|professional|relevant|total|work|industry|hands-on)\b)[^?;:!]+?)\s+experience\b",
 ]
 
 # Words that mean the phrase is about a situation, not a technology.

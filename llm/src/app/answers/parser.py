@@ -66,6 +66,14 @@ def fit_to_length(answer: str, max_length: Optional[int]) -> str:
     return cut[: cut.rfind(" ")].rstrip(",;:- ") if " " in cut else cut
 
 
+def fit_to_words(answer: str, max_words: Optional[int]) -> str:
+    """Trims an answer over a word limit at the last sentence end within it (a guard: prompts target the limit)."""
+    words = re.findall(r"\S+\s*", answer)
+    if not max_words or len(words) <= max_words:
+        return answer
+    return fit_to_length(answer, len("".join(words[:max_words]).rstrip()))
+
+
 def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
@@ -162,7 +170,8 @@ def parse_answer_data(
 
     return ParsedAnswer(
         status=status,
-        answer=fit_to_length(answer, max_length) if not (field and field.is_choice) else answer,
+        answer=fit_to_words(fit_to_length(answer, max_length), field.max_words if field else None)
+        if not (field and field.is_choice) else answer,
         confidence=confidence,
         used_refs=used,
         missing_information=missing,

@@ -27,6 +27,8 @@ ANSWER = "answer"
 ANSWER_BATCH = "answer_batch"
 REGENERATION = "answer_regeneration"
 ADAPTATION = "answer_adaptation"
+# Rewrite controls (Shorter, Natural, Fit to limit...): the answer and an instruction, never the profile.
+REWRITE = "answer_rewrite"
 # Cover letters and "about me": longer answers drawing on more evidence.
 ANSWER_COMPLEX = "answer_complex"
 # One technology, one degree, one past role: the evidence settles it (answers/routing.py).
@@ -57,6 +59,7 @@ BUDGETS: Dict[str, Budget] = {
     ANSWER_BATCH: Budget(input=1800, output=500, input_per_item=200),
     REGENERATION: Budget(input=2000, output=500),
     ADAPTATION: Budget(input=700, output=300),
+    REWRITE: Budget(input=700, output=500),
 }
 
 
@@ -73,13 +76,14 @@ BUDGETS: Dict[str, Budget] = {
 # (Haiku 4.5) run without it.
 FAST, STRONG = "fast", "strong"
 STAGE_TIER: Dict[str, str] = {
-    JOB_ANALYSIS: FAST, VALIDATION: FAST, ADAPTATION: FAST, ANSWER_SIMPLE: FAST,
+    JOB_ANALYSIS: FAST, VALIDATION: FAST, ADAPTATION: FAST, ANSWER_SIMPLE: FAST, REWRITE: FAST,
     RESUME_PARSE: STRONG, MATCHING: STRONG, TAILORING: STRONG, ANSWER: STRONG, ANSWER_COMPLEX: STRONG,
     ANSWER_BATCH: STRONG, REGENERATION: STRONG,
 }
 FAST_MODEL_STAGES = {stage for stage, tier in STAGE_TIER.items() if tier == FAST}
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
-STAGE_EFFORT: Dict[str, str] = {JOB_ANALYSIS: "low", MATCHING: "low", VALIDATION: "low", ADAPTATION: "low"}
+STAGE_EFFORT: Dict[str, str] = {JOB_ANALYSIS: "low", MATCHING: "low", VALIDATION: "low", ADAPTATION: "low",
+                                REWRITE: "low"}
 
 
 def effort_for(stage: str, configured: str) -> str:

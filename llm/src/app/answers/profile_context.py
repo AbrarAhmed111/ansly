@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from src.app.core import metrics
 from src.app.core.ttl_cache import TTLCache
 from src.app.db.rest import SupabaseRest
+from src.app.memory.keys import FACT_KEYS, INTENT_KEYS
+from src.app.memory.service import Resolved, resolve_fact
 
 from .classifier import QuestionAnalysis
 
@@ -85,6 +87,13 @@ class ProfileContext:
     # When one context serves several questions (a batch): per question, in order, the evidence refs retrieved
     # for it ("E1", "P2"...), so the model knows which shared records back which answer.
     question_refs: List[List[str]] = field(default_factory=list)
+    # Application Memory that applies to this application (already scoped and active-only).
+    facts: List[Dict[str, Any]] = field(default_factory=list)
+
+    def resolve(self, intent: str) -> Optional[Resolved]:
+        """A logistics fact by the memory precedence (job / company memory, profile, global memory)."""
+        key = INTENT_KEYS.get(intent)
+        return resolve_fact(key, self.profile, self.facts) if key else None
 
     def declined(self, skill: str) -> bool:
         return canonicalize(skill) in self.declined_skills and not self.has_skill(skill)
@@ -196,6 +205,11 @@ BATCH_EVIDENCE_BUDGET_MAX = 6000
 JOB_DRIVEN = {"about_me", "cover_letter", "motivation", "strengths", "general"}
 SKILLS_SHOWN = 12
 LINK_QUESTION = re.compile(r"\b(?:links?|url|github|linkedin|portfolio|website)\b", re.IGNORECASE)
+# Logistics lines shown to the model for logistics questions: (label, intent).
+LOGISTICS_LINES = [("Work authorization", "work_authorization"), ("Requires visa sponsorship", "sponsorship"),
+                   ("Notice period / availability", "notice_period"), ("Salary expectation", "salary"),
+                   ("Willing to relocate", "relocation"), ("Preferred work mode", "work_mode"),
+                   ("Willing to travel", "travel")]
 PREFIXES = {"experiences": "E", "projects": "P", "education": "ED", "achievements": "A", "profile_facts": "F"}
 
 
@@ -287,6 +301,9 @@ def _render(rec: _Record, ref: str) -> Tuple[str, str, str]:
         label = r["title"]
         date = f" ({r['date'][:7]})" if r.get("date") else ""
         return f"[{ref}] ACHIEVEMENT: {label}{date}{tail}", "achievement", label
+    spec = FACT_KEYS.get(r.get("key") or "")
+    if spec is not None:
+        return f"[{ref}] FACT ({spec.label}): {r.get('answer')}", "fact", spec.label
     answer = f" — {r['answer']}" if r.get("answer") else ""
     return (f"[{ref}] FACT ({r.get('category') or 'general'}): {r['prompt']}{answer}", "fact",
             str(r.get("prompt", ""))[:80])
@@ -371,6 +388,7 @@ def build_context(
     ctx.profile = profile
     ctx.rows = {s: data.get(s) or [] for s in SECTION_LIMITS}
     all_facts = (data.get("profile_facts") or [])[:FACTS_LIMIT]
+    ctx.facts = all_facts
 
     if profile:
         ref = "PR"
@@ -390,16 +408,15 @@ def build_context(
             if links and any(LINK_QUESTION.search(a.question) for a in targets):
                 out.append("  Links: " + ", ".join(f"{k}: {v}" for k, v in links.items()))
         if any(a.category == "logistics" for a in targets) if include_logistics is None else include_logistics:
-            for label, key in [("Work authorization", "work_authorization"),
-                               ("Requires visa sponsorship", "requires_sponsorship"),
-                               ("Notice period / availability", "notice_period"),
-                               ("Salary expectation", "salary_expectation"),
-                               ("Willing to relocate", "willing_to_relocate"),
-                               ("Preferred work mode", "preferred_work_mode")]:
-                value = profile.get(key)
-                if isinstance(value, bool):
-                    value = "yes" if value else "no"
-                out += _lines(label, value)
+            for label, intent in LOGISTICS_LINES:
+                found = resolve_fact(INTENT_KEYS[intent], profile, all_facts)
+                if found is None:
+                    continue
+                value = found.text.lower() if isinstance(found.value, bool) else found.text
+                note = "" if found.source == "profile" else (
+                    " (the candidate said this for this application)" if found.source != "memory"
+                    else " (from the candidate's application memory)")
+                out += _lines(label, f"{value}{note}")
         corpus += [profile.get("headline") or "", profile.get("summary") or "", profile.get("additional_context") or ""]
 
     if data["skills"]:
@@ -497,8 +514,8 @@ async def fetch_profile_data(rest: SupabaseRest, analysis: QuestionAnalysis,
     for section in sections:
         queries[section] = (section, {"order": SECTION_ORDER[section],
                                       "limit": str(max(SECTION_LIMITS[section] * 3, 20))})
-    if analysis.category != "logistics":
-        queries["profile_facts"] = ("profile_facts", {"order": "updated_at.desc", "limit": str(FACTS_LIMIT)})
+    # Always: logistics are answered from Application Memory too, and facts are few and short.
+    queries["profile_facts"] = ("profile_facts", {"order": "updated_at.desc", "limit": str(FACTS_LIMIT)})
     results = await asyncio.gather(*(_rows(rest, user_id, table, params) for table, params in queries.values()))
     data: Dict[str, Any] = dict(zip(queries, results))
     data["profile"] = data["profile"][0] if data["profile"] else None
@@ -509,18 +526,10 @@ def missing_skills(ctx: ProfileContext, skills: List[str]) -> List[str]:
     return [s for s in skills if not ctx.has_skill(s)]
 
 
-def logistics_value(profile: Optional[Dict[str, Any]], intent: str) -> Any:
-    """The profile field that answers a logistics question, or None if it is not filled in."""
-    if not profile:
-        return None
-    field_for_intent = {
-        "salary": "salary_expectation",
-        "sponsorship": "requires_sponsorship",
-        "work_authorization": "work_authorization",
-        "notice_period": "notice_period",
-        "relocation": "willing_to_relocate",
-        "work_mode": "preferred_work_mode",
-    }
-    key = field_for_intent.get(intent)
-    value = profile.get(key) if key else None
-    return None if value in (None, "") else value
+def logistics_value(profile: Optional[Dict[str, Any]], intent: str,
+                    facts: Optional[List[Dict[str, Any]]] = None) -> Any:
+    """The value that answers a logistics question (profile or Application Memory), or None if Ansly doesn't
+    know it."""
+    key = INTENT_KEYS.get(intent)
+    found = resolve_fact(key, profile, facts or []) if key else None
+    return found.value if found else None
