@@ -6,10 +6,19 @@ import type {
   CreateSavedAnswerRequest,
   GenerateAnswerRequest,
   MasterResumeResponse,
+  MemoryItem,
+  MemoryResponse,
   RegenerateAnswerRequest,
+  ResolveConflictRequest,
+  RewriteRequest,
+  RewriteResponse,
+  UpdateMemoryRequest,
   ResumeListResponse,
   ResumeRecord,
   SavedAnswer,
+  SaveMissingRequest,
+  SaveMissingResponse,
+  TrackEventRequest,
   StartTailoringRequest,
   StartTailoringResponse,
   TailoringDownloadResponse,
@@ -76,6 +85,28 @@ export const generateAnswer = (req: GenerateAnswerRequest) => call<AnswerRespons
 export const regenerateAnswer = (req: RegenerateAnswerRequest) => call<AnswerResponse>('/api/v1/answers/regenerate', req)
 
 export const saveAnswer = (req: CreateSavedAnswerRequest) => call<SavedAnswer>('/api/v1/saved-answers', req)
+
+/** Saves answers to the questions a resume doesn't cover (onboarding) or that Ansly asked for. */
+export const saveMissing = (req: SaveMissingRequest) => call<SaveMissingResponse>('/api/v1/profile/missing', req)
+
+/** A non-sensitive product event (no question or answer text). Never fails the caller. */
+export const trackEvent = (req: TrackEventRequest) => call<null>('/api/v1/events', req).catch(() => null)
+
+export const rewriteAnswer = (req: RewriteRequest) => call<RewriteResponse>('/api/v1/answers/rewrite', req)
+
+// Application Memory: everything Ansly learned, with provenance (see llm/src/app/memory).
+
+export const getMemory = () => request<MemoryResponse>('GET', '/api/v1/memory')
+
+export const updateMemory = (id: string, req: UpdateMemoryRequest) =>
+  request<MemoryItem>('PATCH', `/api/v1/memory/${encodeURIComponent(id)}`, req)
+
+export const confirmMemory = (id: string) => call<MemoryItem>(`/api/v1/memory/${encodeURIComponent(id)}/confirm`, {})
+
+export const deleteMemory = (id: string) => request<void>('DELETE', `/api/v1/memory/${encodeURIComponent(id)}`)
+
+export const resolveMemoryConflict = (req: ResolveConflictRequest) =>
+  call<MemoryResponse>('/api/v1/memory/conflicts/resolve', req)
 
 // v1.2 resume tailoring. Reads go through `@/lib/cache` (see the KEYS); every write invalidates what it changes.
 

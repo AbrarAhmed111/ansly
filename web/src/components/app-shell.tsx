@@ -1,7 +1,7 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { BookmarkCheck, FilePen, FileText, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, Wand2, type LucideIcon } from 'lucide-react'
+import { BookmarkCheck, Brain, FilePen, Rocket, FileText, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -21,7 +21,12 @@ interface NavItem {
 }
 
 const GROUPS: { label?: string; items: NavItem[] }[] = [
-  { items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }] },
+  {
+    items: [
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/setup', label: 'Get Ansly ready', icon: Rocket },
+    ],
+  },
   {
     label: 'Profile',
     items: [
@@ -40,6 +45,7 @@ const GROUPS: { label?: string; items: NavItem[] }[] = [
     label: 'Workspace',
     items: [
       { href: '/playground', label: 'Try it', icon: Wand2 },
+      { href: '/memory', label: 'Application Memory', icon: Brain },
       { href: '/saved-answers', label: 'Saved answers', icon: BookmarkCheck },
       { href: '/extension', label: 'Extension', icon: Puzzle },
       { href: '/settings', label: 'Settings', icon: Settings },

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { safeNext } from '@/lib/safe-next'
 import { supabaseKey, supabaseUrl } from '@/lib/supabase/env'
 
-const PROTECTED = ['/dashboard', '/profile', '/resume', '/saved-answers', '/settings', '/extension', '/playground']
+const PROTECTED = ['/dashboard', '/profile', '/resume', '/saved-answers', '/settings', '/extension', '/playground', '/memory', '/setup']
 const AUTH_PAGES = ['/login']
 // Static pages that work the same signed in or out: no auth check, so they're served without waiting on Supabase.
 const PUBLIC = ['/', '/privacy', '/api/status']
