@@ -22,7 +22,7 @@ CATEGORY_GROUPS: Dict[str, str] = {
     "skill_check": "Skills", "skill_experience": "Skills", "skill_years": "Skills",
     "experience": "Experience", "project": "Experience", "behavioral": "Experience", "achievement": "Experience",
     "leadership": "Experience", "challenge": "Experience", "technical_challenge": "Experience",
-    "conflict": "Experience", "failure": "Experience", "strengths": "Experience",
+    "conflict": "Experience", "failure": "Experience", "strengths": "Experience", "job_fit": "Experience",
     "education": "Education",
     "about_me": "Personal",
     "motivation": "Preferences", "motivation_role": "Preferences", "motivation_company": "Preferences",
