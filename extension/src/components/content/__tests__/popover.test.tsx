@@ -181,6 +181,27 @@ describe('Popover', () => {
     expect(button('Saved')?.disabled).toBe(true)
   })
 
+  it('saves the user-edited answer to Application Memory separately from filling', async () => {
+    responses.resolve = [resolved(ANSWERED)]
+    responses.saveMemory = [ok({ id: 'memory-1' })]
+    await open()
+    await type(answerBox(), 'I started because I enjoy solving problems.')
+    await click('Save to Memory')
+
+    expect(calls.at(-1)).toEqual({
+      type: 'saveMemory',
+      payload: {
+        question: 'What project are you most proud of?',
+        answer: 'I started because I enjoy solving problems.',
+        job_context: { company: 'Acme', role: 'Engineer' },
+      },
+    })
+    expect(text()).toContain('Saved to Application Memory.')
+    expect(button('Saved to Memory')?.disabled).toBe(true)
+    expect(field.value).toBe('')
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('offers a similar saved answer before generating', async () => {
     responses.resolve = [ok({ savedMatch: SAVED, score: 0.9, answer: null })]
     await open()
