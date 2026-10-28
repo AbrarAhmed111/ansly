@@ -8,7 +8,7 @@ import { EnabledSites } from '@/components/enabled-sites'
 import { ThemeToggle } from '@/components/theme'
 import { Alert, Avatar, Badge, Button, Card, CardHeader, Checkbox, ErrorText, IconButton, Overline, PageHeader, SegmentedControl } from '@/components/ui'
 import { errorMessage, humanize, plural } from '@/lib/format'
-import { exportProfile, exportResumes, planImport, runImport, type ImportPlan } from '@/lib/profile-import'
+import { MAX_PROFILE_IMPORT_BYTES, exportProfile, exportResumes, parseImportJson, runImport, type ImportPlan } from '@/lib/profile-import'
 import { createClient } from '@/lib/supabase/client'
 
 export default function SettingsPage() {
@@ -82,9 +82,10 @@ export default function SettingsPage() {
     setFileName(file?.name ?? null)
     if (!file) return
     try {
-      setPlan(planImport(JSON.parse(await file.text())))
-    } catch {
-      setError('That file is not valid JSON.')
+      if (file.size > MAX_PROFILE_IMPORT_BYTES) throw new Error('JSON files must be 1 MB or smaller.')
+      setPlan(parseImportJson(await file.text()))
+    } catch (e) {
+      setError(errorMessage(e))
     }
   }
 
@@ -253,11 +254,18 @@ export default function SettingsPage() {
                       ))}
                   </div>
                   {plan.errors.length > 0 && (
-                    <Alert tone="warning" title="These items will be skipped until they are filled in:">
+                    <Alert tone="warning" title="Items with these problems will be skipped; other valid items can still be imported:">
                       <ul className="list-disc space-y-0.5 pl-5">
                         {plan.errors.map((e) => (
                           <li key={e}>{e}</li>
                         ))}
+                      </ul>
+                    </Alert>
+                  )}
+                  {plan.warnings.length > 0 && (
+                    <Alert tone="accent" title="Import notes">
+                      <ul className="list-disc space-y-0.5 pl-5">
+                        {plan.warnings.map((warning) => <li key={warning}>{warning}</li>)}
                       </ul>
                     </Alert>
                   )}
