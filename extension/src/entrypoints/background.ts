@@ -104,6 +104,7 @@ const handlers: Handlers = {
   regenerate: (payload) => apiRequest(deps, 'POST', '/api/v1/answers/regenerate', payload),
   matchSaved: (payload) => apiRequest(deps, 'POST', '/api/v1/saved-answers/match', payload),
   saveAnswer: (payload) => apiRequest(deps, 'POST', '/api/v1/saved-answers', payload),
+  saveMemory: (payload) => apiRequest(deps, 'POST', '/api/v1/memory', payload),
   useSaved: ({ id }) => apiRequest(deps, 'POST', `/api/v1/saved-answers/${encodeURIComponent(id)}/use`),
   async track(payload) {
     if (!(await getSettings()).analytics) return ok(null)
