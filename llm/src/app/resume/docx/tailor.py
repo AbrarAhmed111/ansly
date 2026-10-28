@@ -4,7 +4,7 @@ Tailored Resume -> Tailored Word Document.
 The AI decides what changes (the validated tailored resume); this decides how,
 applying each change to a COPY of the user's original .docx in place:
 
-- new title (headline)        -> only the changed characters, inside the original runs
+- new title (headline)        -> only the title's changed characters, inside its runs (a tagline is left alone)
 - rewritten summary / bullet  -> only the changed characters, inside the original runs
 - added bullet                -> a copy of the nearest bullet paragraph, new text
 - removed bullet              -> the original paragraph is deleted
@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from lxml import etree
 
 from src.app.resume.tailoring.apply import ITEM_SECTIONS
+from src.app.resume.tailoring.job_fit import split_headline
 from src.app.schemas.resume import ResumeBullet, StructuredResume
 
 from .edit import KEEP_OUT, clone_paragraph, is_removable, remove_paragraph, replace_text
@@ -133,11 +134,22 @@ class _Tailor:
             return
         self.attempted += 1
         element = self.para(self.m.headline)
-        if new and self.rewrite(element, old, new):
+        if new and self.retitle(element, old, new):
             self.headline = new
             self.ok(element)
         else:
             self.skip("headline", None, "your title")
+
+    def retitle(self, element: Optional[etree._Element], old: str, new: str) -> bool:
+        """Only the title part changes: a tagline after it ("| React, Node, AWS") keeps its text and formatting,
+        even when the document spells it slightly differently (case, dashes, spacing) than the parsed resume."""
+        (old_title, old_tail), (new_title, new_tail) = split_headline(old), split_headline(new)
+        if element is None or not old_tail or norm(old_tail) != norm(new_tail):
+            return self.rewrite(element, old, new)
+        text = visible_text(element)
+        whole = locate(text, old)
+        span = locate(text, old_title, whole[0]) if whole else None
+        return span is not None and replace_text(element, span[0], span[1], new_title)
 
     def apply_summary(self) -> None:
         old, new = self.master.summary or "", self.final.summary or ""
