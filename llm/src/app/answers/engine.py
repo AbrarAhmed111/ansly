@@ -116,12 +116,11 @@ def cache_request(request: GenerateAnswerRequest) -> Dict[str, Any]:
 
 
 def _key_rows(data: Dict[str, Any], analysis: QuestionAnalysis) -> Dict[str, Any]:
-    """The fetched rows this question's answer depends on: what fetch_profile_data reads for it alone. A batch
-    fetches the union of its questions' sections; keying on all of it would make the same question miss when
-    asked on its own, or in a batch with other questions."""
-    keys = {"profile", "profile_facts", *analysis.sections}
-    if analysis.target_skills:
-        keys |= {"skills", "experiences", "projects", "achievements"}
+    """The rows that can contribute to the answer context (logistics use profile fields and saved facts only)."""
+    keys = {"profile", "profile_facts"}
+    if analysis.category == "logistics":
+        return {k: v for k, v in data.items() if k in keys}
+    keys |= {"skills", "experiences", "projects", "education", "achievements"}
     return {k: v for k, v in data.items() if k in keys}
 
 
