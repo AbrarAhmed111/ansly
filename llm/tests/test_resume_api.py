@@ -45,7 +45,7 @@ def tables_with_master():
     data = profile_rows()
     tables = {"profiles": [{**data.pop("profile"), "resume_page_limit": 2}], **data}
     tables["resumes"] = [{
-        "id": "r1", "user_id": USER_ID, "name": "Sam Rivera Resume.docx", "file_path": MASTER_PATH,
+        "id": "r1", "user_id": USER_ID, "name": "Sam Rivera Resume (Full Stack Engineer).docx", "file_path": MASTER_PATH,
         "file_type": "docx", "parsed_content": master().to_json(), "parse_status": "parsed", "parse_error": None,
         "version": 1, "is_master": True, "dismissed_discrepancies": [], "created_at": "2026-10-01T00:00:00+00:00",
         "updated_at": "2026-10-01T00:00:00+00:00",
@@ -246,12 +246,13 @@ async def test_tailoring_runs_end_to_end_and_master_is_unchanged(env):
     assert env.rest.tables["resumes"][0] == master_before
     assert env.storage.files[MASTER_PATH] == resume_docx(master())
 
-    assert download.json()["fileName"] == "Sam Rivera Resume - Tailored - Company X.docx"
-    assert "download=Sam Rivera Resume - Tailored - Company X.docx" in download.json()["url"]
+    assert download.json()["fileName"] == "Sam Rivera Resume (Senior Full Stack Engineer).docx"
+    assert "download=Sam Rivera Resume (Senior Full Stack Engineer).docx" in download.json()["url"]
     preview = files.json()
     assert preview["format"] == "docx"
     assert row["output_file_path"] in preview["tailored"]["url"] and "download=" not in preview["tailored"]["url"]
-    assert MASTER_PATH in preview["original"]["url"] and preview["original"]["fileName"] == "Sam Rivera Resume.docx"
+    assert MASTER_PATH in preview["original"]["url"]
+    assert preview["original"]["fileName"] == "Sam Rivera Resume (Full Stack Engineer).docx"
     assert history.json()["items"][0]["jobTitle"] == "Senior Full Stack Engineer"
     assert [e for e in env.events() if e.startswith(("tailoring", "resume_"))] == [
         "tailoring_started", "tailoring_completed", "resume_downloaded", "resume_previewed"]
