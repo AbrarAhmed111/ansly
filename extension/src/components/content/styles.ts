@@ -19,6 +19,14 @@ ${THEME}
 .root[data-theme="dark"] { --a-shadow: ${SHADOW_DARK}; }
 @media (prefers-color-scheme: dark) { .root[data-theme="system"] { --a-shadow: ${SHADOW_DARK}; } }
 * { box-sizing: border-box; }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--a-border-strong)) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent; border-radius: 999px; background: rgb(var(--a-border-strong)); background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgb(var(--a-muted)); background-clip: padding-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
 
 /* The quiet per-field icon: small and calm until hovered; its glyph and colour say the field's state. */
 .sparkle {
@@ -261,8 +269,13 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 1
 .debug-box.ignored span { background: #6b7280; }
 .saved-preview { border: 1px dashed rgb(var(--a-border-strong)); border-radius: 10px; padding: 10px 12px; background: rgb(var(--a-surface-muted)); white-space: pre-wrap; max-height: 180px; overflow: auto; line-height: 1.6; }
 
-.footer { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid rgb(var(--a-border)); background: rgb(var(--a-surface-muted)); }
-.spacer { flex: 1; }
+.footer { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px; border-top: 1px solid rgb(var(--a-border)); background: rgb(var(--a-surface-muted)); }
+.footer-tools, .footer-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.footer-tools { flex-wrap: wrap; justify-content: space-between; }
+.footer-tools .link { white-space: nowrap; }
+.footer-actions { justify-content: flex-end; }
+.footer-actions .btn { flex: 1; min-width: 0; white-space: nowrap; }
+.footer-actions .btn.primary { flex: 1.5; }
 .btn {
   border: 1px solid rgb(var(--a-border)); background: rgb(var(--a-surface)); color: rgb(var(--a-fg)); border-radius: 8px;
   height: 32px; padding: 0 12px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
