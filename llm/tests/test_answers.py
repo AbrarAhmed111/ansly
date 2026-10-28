@@ -60,7 +60,7 @@ async def test_fetches_only_needed_sections():
     rest.select = AsyncMock(wraps=rest.select)
     await fetch_profile_data(rest, classify_question("What is your degree?"))
     tables = [call.args[0] for call in rest.select.await_args_list]
-    assert tables == ["profiles", "education", "achievements", "profile_facts"]
+    assert tables == ["profiles", "experiences", "projects", "skills", "education", "achievements", "profile_facts"]
 
 
 @pytest.mark.asyncio
@@ -103,7 +103,134 @@ def test_prompt_separates_job_context_from_profile():
     assert "JOB CONTEXT (about the employer, not the candidate)" in message
     assert message.index("JOB CONTEXT") < message.index("CANDIDATE EVIDENCE")
     assert "at most 500 characters" in message
-    assert "Candidate facts come only from CANDIDATE EVIDENCE" in SYSTEM_PROMPT
+    assert "Use CANDIDATE EVIDENCE for candidate claims" in SYSTEM_PROMPT
+
+
+def _domain_context(question, updates=None):
+    data = FakeRest().tables | {"profile": FakeRest().tables["profiles"][0]}
+    data.update(updates or {})
+    analysis = classify_question(question)
+    return analysis, build_context(data, analysis)
+
+
+def test_unfamiliar_database_question_retrieves_cross_section_evidence():
+    analysis, ctx = _domain_context("Which databases have you worked with professionally?", {
+        "skills": [
+            {"id": "s10", "name": "PostgreSQL", "level": "advanced"},
+            {"id": "s11", "name": "MongoDB", "level": "intermediate"},
+            {"id": "s12", "name": "Supabase", "level": "advanced"},
+        ],
+        "projects": [
+            {"id": "p10", "name": "Catalog", "role": "Developer", "description": "Product catalog service.",
+             "technologies": ["MongoDB"]},
+            {"id": "p11", "name": "TaskFlow", "role": "Creator",
+             "description": "Task manager using Supabase as its managed database platform.",
+             "technologies": ["Supabase"]},
+        ],
+    })
+    assert analysis.category in ("general", "experience", "skill_check")
+    assert "PostgreSQL" in ctx.text
+    assert "MongoDB" in ctx.text
+    assert "Supabase" in ctx.text
+    assert "EXPERIENCE:" in ctx.text
+    assert "this list does not establish where or how they were used" in ctx.text
+
+
+def test_external_service_question_retrieves_project_api_evidence():
+    _, ctx = _domain_context("Have you integrated external services into applications?", {
+        "projects": [
+            {"id": "p10", "name": "Billing Portal", "role": "Developer",
+             "description": "Integrated Stripe's REST API for subscription billing.",
+             "technologies": ["Stripe", "REST API"]},
+        ],
+    })
+    assert "Billing Portal" in ctx.text
+    assert "Stripe's REST API" in ctx.text
+
+
+def test_combined_question_can_retrieve_separate_supporting_facts():
+    _, ctx = _domain_context("Have you worked with JSON, OAuth, and third-party API integrations?", {
+        "projects": [
+            {"id": "p10", "name": "Identity Hub", "role": "Developer",
+             "description": "Integrated a partner REST API, exchanged JSON payloads, and added Google sign-in.",
+             "technologies": ["REST API", "JSON", "Google Auth"]},
+        ],
+    })
+    assert "JSON payloads" in ctx.text
+    assert "partner REST API" in ctx.text
+    assert "Google sign-in" in ctx.text
+    assert "For multi-part questions, answer supported parts" in SYSTEM_PROMPT
+
+
+def test_oauth_question_surfaces_auth_evidence_without_equating_google_sign_in():
+    _, ctx = _domain_context("Have you implemented OAuth?", {
+        "projects": [
+            {"id": "p10", "name": "Community App", "role": "Creator",
+             "description": "Added Google authentication for user sign-in.",
+             "technologies": ["Google Auth"]},
+        ],
+    })
+    assert "Google authentication" in ctx.text
+    assert "Google sign-in alone doesn't prove OAuth" in SYSTEM_PROMPT
+
+
+def test_personal_project_does_not_establish_professional_experience():
+    _, ctx = _domain_context("How much professional experience do you have with Deno?", {
+        "skills": [{"id": "s10", "name": "Deno", "level": "intermediate"}],
+        "projects": [
+            {"id": "p10", "name": "Personal Tool", "role": "Creator",
+             "description": "A personal command-line utility.", "technologies": ["Deno"]},
+        ],
+        "experiences": [],
+    })
+    assert "Personal Tool" in ctx.text
+    assert "Deno" in ctx.text
+    assert "a project alone doesn't prove professional or production use" in SYSTEM_PROMPT
+
+
+def test_missing_certification_is_not_fabricated_from_related_skills():
+    _, ctx = _domain_context("Do you have an AWS certification?", {
+        "skills": [{"id": "s10", "name": "AWS", "level": "advanced", "years": 4}],
+        "education": [],
+        "achievements": [],
+    })
+    assert "AWS certification" not in ctx.text
+    assert "If no useful part can be answered, return" in SYSTEM_PROMPT
+
+
+def test_behavioral_question_retrieves_documented_problem_and_outcome():
+    _, ctx = _domain_context("Tell us about a difficult technical problem you solved.", {
+        "projects": [
+            {"id": "p10", "name": "Search Rebuild", "role": "Developer",
+             "description": "Resolved slow document search by adding database indexes; query time fell from 2 seconds "
+                            "to 200 milliseconds.", "technologies": ["PostgreSQL"]},
+        ],
+    })
+    assert "Resolved slow document search" in ctx.text
+    assert "200 milliseconds" in ctx.text
+
+
+def test_unfamiliar_server_side_question_retrieves_backend_work():
+    _, ctx = _domain_context("Tell us about your server-side engineering background.")
+    assert "FastAPI service" in ctx.text
+    assert "PostgreSQL" in ctx.text
+
+
+def test_profile_reasoning_rules_preserve_scope_and_avoid_missing_detail_invention():
+    assert "a project alone doesn't prove professional or production use" in SYSTEM_PROMPT
+    assert "Don't infer years, ownership, scale or implementation details" in SYSTEM_PROMPT
+    assert "answer supported parts and limit or omit unsupported ones" in SYSTEM_PROMPT
+    assert "Only state a number of years if the profile gives one" in _message(
+        "How many years of experience do you have with Python?")
+
+
+def test_paraphrased_database_questions_retrieve_comparable_records():
+    updates = {"skills": [{"id": "s10", "name": "PostgreSQL", "level": "advanced"}]}
+    _, first = _domain_context("Which databases have you worked with?", updates)
+    _, second = _domain_context("What data stores have you used?", updates)
+    assert "PostgreSQL" in first.text and "PostgreSQL" in second.text
+    assert "Software Engineer at Acme Labs" in first.text
+    assert "Software Engineer at Acme Labs" in second.text
 
 
 @pytest.mark.parametrize("question", [
@@ -155,7 +282,7 @@ def test_tone_never_outranks_grounding(tone):
     assert "STYLE (wording only; the grounding rules still apply)" in message
     # Grounding lives in the system prompt and explicitly wins over style.
     assert "Grounding (always wins over STYLE)" in SYSTEM_PROMPT
-    assert "Never add a fact to sound more enthusiastic, confident or detailed" in SYSTEM_PROMPT
+    assert "STYLE changes wording, never claims" in SYSTEM_PROMPT
 
 
 def test_style_instruction_on_generate_and_regenerate():
