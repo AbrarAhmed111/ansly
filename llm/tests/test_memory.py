@@ -137,6 +137,74 @@ async def test_global_preference_goes_to_the_profile_and_is_reused(client, rest)
 
 
 @pytest.mark.asyncio
+async def test_user_approved_answer_memory_is_saved_and_retrieved_for_related_questions(client, rest):
+    response = await client.post("/api/v1/memory", json={
+        "question": "Why did you start programming?",
+        "answer": "I started because I love programming.",
+        "job_context": ACME,
+    })
+    assert response.status_code == 201, response.text
+    saved = response.json()
+    assert saved["sourceType"] == "ask_and_learn"
+    assert saved["group"] == "Preferences"
+    [row] = rest.tables["profile_facts"]
+    assert row["prompt"] == "Why did you start programming?"
+    assert row["answer"] == "I started because I love programming."
+    assert row["confirmed"] is True
+
+    seen = []
+
+    def grounded_answer(message):
+        seen.append(message)
+        assert "Why did you start programming?" in message
+        assert "I started because I love programming." in message
+        return {"status": "answered", "answer": "I enjoy programming.", "confidence": "medium",
+                "usedSources": ["F1"], "missingInformation": None}
+
+    with mock_llm(grounded_answer):
+        answer = await ask(client, "What made you choose a career in programming?")
+    assert answer["status"] == "answered"
+    assert answer["answer"] == "I enjoy programming."
+    assert answer["usedSources"] == [{"type": "fact", "id": row["id"], "label": "Why did you start programming?"}]
+
+
+@pytest.mark.asyncio
+async def test_user_approved_salary_preference_is_reused_and_updated_without_duplicates(client, rest):
+    first = await client.post("/api/v1/memory", json={
+        "question": "What are your salary expectations?",
+        "answer": "We will discuss this in the meeting.",
+        "job_context": ACME,
+    })
+    assert first.status_code == 201, first.text
+    [stored] = rest.tables["profile_facts"]
+    assert (stored["key"], stored["scope"], stored["answer"]) == (
+        "salary_expectation", "category", "We will discuss this in the meeting.")
+
+    updated = await client.post("/api/v1/memory", json={
+        "question": "What compensation range are you looking for?",
+        "answer": "I prefer to discuss this in the meeting.",
+        "job_context": GLOBEX,
+    })
+    assert updated.status_code == 201, updated.text
+    assert len(rest.tables["profile_facts"]) == 1
+    assert rest.tables["profile_facts"][0]["answer"] == "I prefer to discuss this in the meeting."
+
+    answer = await ask(client, "What salary range do you expect?", {"kind": "short_text"}, GLOBEX)
+    assert (answer["answer"], answer["origin"]) == (
+        "I prefer to discuss this in the meeting.", "memory")
+
+
+@pytest.mark.asyncio
+async def test_save_memory_validates_empty_and_oversized_answers(client):
+    empty = await client.post("/api/v1/memory", json={"question": "A valid question?", "answer": "   "})
+    oversized = await client.post("/api/v1/memory", json={
+        "question": "A valid question?", "answer": "x" * 5001,
+    })
+    assert empty.status_code == 422
+    assert oversized.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_depends_on_the_role_is_remembered_in_memory_not_the_profile(client, rest):
     [saved] = await save(client, [{"key": "willing_to_relocate", "value": "Depends on the role",
                                    "target": {"type": "profile_field", "field": "willing_to_relocate"}}], ACME)
