@@ -146,6 +146,8 @@ describe('Fill all panel', () => {
     happyPath()
     await render()
     await click('Fill all')
+    const actions = container.querySelector('.footer-actions')
+    expect(actions?.textContent).toContain('Undo all')
     await click('Undo all')
     expect([value('name'), value('email'), value('why'), value('proj')]).toEqual(['', '', '', 'My own draft'])
     expect((document.getElementById('sp') as HTMLSelectElement).selectedIndex).toBe(0)
