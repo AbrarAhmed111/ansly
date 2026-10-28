@@ -189,7 +189,7 @@ extension/.output/chrome-mv3
 Microsoft Edge:
 
 ```sh
-pnpm --filter @ansly/extension build:edge
+pnpm --filter @ansly/extension dev:edge
 ```
 
 Open `edge://extensions`, enable Developer mode, choose Load unpacked, and select:
