@@ -202,11 +202,12 @@ def _safe_name(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", text)).strip()[:120]
 
 
-def tailored_file_name(resume_name: Optional[str], company: Optional[str], extension: str) -> str:
-    """"Sam Rivera Resume.docx" for Company X -> "Sam Rivera Resume - Tailored - Company X.docx"."""
+def tailored_file_name(resume_name: Optional[str], role: Optional[str], extension: str) -> str:
+    """Replace a source resume's trailing title with the role this copy targets."""
     stem = _safe_name(re.sub(r"\.(docx|pdf)$", "", resume_name or "", flags=re.IGNORECASE)) or "Resume"
-    company = _safe_name(company or "")
-    return f"{stem} - Tailored{f' - {company}' if company else ''}.{extension}"
+    stem = re.sub(r"\s*\([^()]*\)\s*$", "", stem).strip() or "Resume"
+    role = _safe_name(role or "")
+    return f"{stem}{f' ({role})' if role else ''}.{extension}"
 
 
 async def _ready_files(rest: SupabaseRest, tailoring_id: str):
@@ -219,7 +220,7 @@ async def _ready_files(rest: SupabaseRest, tailoring_id: str):
         rows = await rest.select("resumes", {"id": f"eq.{row['resume_id']}", "select": "name,file_path", "limit": "1"})
         source = rows[0] if rows else None
     extension = "pdf" if row["output_file_path"].lower().endswith(".pdf") else "docx"
-    name = tailored_file_name((source or {}).get("name"), jobs.get(row["job_context_id"], {}).get("company"), extension)
+    name = tailored_file_name((source or {}).get("name"), jobs.get(row["job_context_id"], {}).get("title"), extension)
     return row, source, extension, name
 
 
