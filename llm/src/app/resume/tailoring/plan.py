@@ -10,13 +10,14 @@ applied to a copy of the user's own Word file.
 """
 
 import json
+import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
 from pydantic import ValidationError
 
 from src.app.answers.profile_context import relevance_terms
-from src.app.core.token_budget import TAILORING
+from src.app.core.token_budget import TAILORING, TAILORING_SUMMARY
 from src.app.gateway import LLMGateway
 from src.app.resume.llm import Usage, call_json
 from src.app.resume.matching.evidence import EvidenceCorpus
@@ -25,6 +26,8 @@ from src.app.schemas.job import JobAnalysis
 from src.app.schemas.matching import RequirementMatch
 from src.app.schemas.resume import StructuredResume
 from src.app.schemas.tailoring import TailoringChange, TailoringPlan
+
+logger = logging.getLogger(__name__)
 
 MAX_CHANGES = 40
 MAX_RESPONSIBILITIES = 5
@@ -40,7 +43,7 @@ Operations (no others):
 - add_bullet: one new bullet on an existing experience or project ("item"; optional "position") when evidence about that same job or project shows something relevant no bullet covers; cite only that item's evidence.
 - select: section "projects", "achievements" or "certifications"; "values" = item ids to keep.
 - reduce: remove a less relevant bullet ("item" + "bulletId"), item ("item"), or skills ("values").
-- update_summary: "text" = a new 2–4 sentence summary written only from evidence.
+- update_summary: "text" = the SUMMARY rewritten for this job, 2–4 sentences, about its current length. Always include it when there is a SUMMARY. Present the candidate as the job's ROLE (the same plain title as the headline, no company or level code), then lead with the experience, skills and responsibilities that best match the job's requirements. Written only from evidence; keep the SUMMARY's own facts and numbers.
 - update_headline: "text" = the title line under the name changed to the job's role, plain name only (no company, team, location, level code or "(Remote)"; keep Senior/Lead/Staff/Principal only if the candidate's own titles have it). Only when there is a HEADLINE and it differs from the role.
 
 Hard rules:
@@ -49,7 +52,7 @@ Hard rules:
 - Never add or change a number, percentage, team size, money amount or duration; keep existing metrics exactly.
 - Never change job titles at employers, company names, dates, URLs or contact details (the HEADLINE may change).
 - A rewrite keeps the bullet's meaning and roughly its length; no keyword stuffing. Keep the resume's length.
-- Few, high-value edits: at most 3 rewrites per job, 1 new bullet per job or project and 2 overall, 15 changes overall.
+- Few, high-value edits: at most 3 rewrites per job, 1 new bullet per job or project and 2 overall, 15 changes overall (the summary and headline always count as worth it).
 
 Return only a JSON object:
 {"changes": [{"section": str, "item": str|null, "action": str, "evidenceIds": [str], "reason": str,
@@ -158,10 +161,50 @@ async def generate_plan(
     # Text edits to an item whose bullets the model didn't see are dropped: it can't reword what it hasn't read.
     plan.changes = [c for c in plan.changes if c.action not in TEXT_ACTIONS or c.section not in ("experience", "projects")
                     or c.item in editable]
+    if resume.summary and not any(c.section == "summary" and (c.text or "").strip() for c in plan.changes):
+        summary = await _summary_change(gateway, message, usage)
+        if summary is not None:
+            plan.changes.append(summary)
     for change in plan.changes:
         # A resume line cited without its "R:" prefix is still that line.
         change.evidence_ids = [i if corpus.has(i) or not corpus.has(f"R:{i}") else f"R:{i}" for i in change.evidence_ids]
     return plan
+
+
+SUMMARY_PROMPT = """You rewrite one resume summary for a job. It must stay 100% truthful: it goes to a real employer.
+
+Write 2–4 sentences, about the current SUMMARY's length. Present the candidate as the job's ROLE (plain title: no company, team, location, level code or "(Remote)"; keep Senior/Lead/Staff/Principal only if the candidate's own titles have it), then lead with the experience, skills and responsibilities that best match the job's requirements.
+
+Hard rules:
+- Every claim comes from the RESUME or EVIDENCE; cite them in "evidenceIds" (EVIDENCE ids, or resume lines as "R:<id>").
+- Never add a technology, tool, employer, title, certification or achievement the evidence lacks. Never claim or imply anything under NOT SUPPORTED.
+- Never add or change a number, percentage, team size, money amount or duration; keep the SUMMARY's facts.
+- No keyword stuffing.
+
+Return only a JSON object: {"text": str, "evidenceIds": [str], "reason": str}"""
+
+
+def _parse_summary(data: Dict[str, Any]) -> TailoringChange:
+    text = data.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("Model output has no summary text")
+    ids = data.get("evidenceIds")
+    return TailoringChange.model_validate({
+        "section": "summary", "action": "update_summary", "text": text.strip(),
+        "evidenceIds": [i for i in ids if isinstance(i, str)] if isinstance(ids, list) else [],
+        "reason": str(data.get("reason") or "Summary written for this job."),
+    })
+
+
+async def _summary_change(gateway: LLMGateway, message: str, usage: Optional[Usage]) -> Optional[TailoringChange]:
+    """The summary on its own, when the plan left it out. Best effort: without it the plan still runs."""
+    try:
+        return await call_json(gateway, SUMMARY_PROMPT, message.replace("Return the JSON plan now.",
+                                                                        "Return the JSON summary now."),
+                               _parse_summary, TAILORING_SUMMARY, usage=usage, max_tokens=800, temperature=0.3)
+    except Exception:  # noqa: BLE001 - any provider or parse failure just leaves the summary as it is
+        logger.warning("Summary rewrite skipped", exc_info=True)
+        return None
 
 
 # Rendered profile evidence per plan prompt (~600 tokens); the resume itself is shown in full above it.
