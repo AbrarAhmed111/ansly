@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Alert, Button, Card, Chip, ErrorText, Input, PageHeader, Skeleton, StepMarker, buttonStyles } from '@/components/ui'
+import { ProfileJsonImport } from '@/components/profile-json-import'
 import { getMasterResume, saveMissing, trackEvent } from '@/lib/api'
 import { errorMessage, plural } from '@/lib/format'
 import { loadFullProfile } from '@/lib/profile'
@@ -226,6 +227,12 @@ export default function SetupPage() {
                   Upload resume <ArrowRight className="h-4 w-4" />
                 </Link>
               </>
+            )}
+            {userId && (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-body-sm font-medium text-fg">Have a JSON profile? Import it here</summary>
+                <ProfileJsonImport userId={userId} onImported={() => { void load() }} />
+              </details>
             )}
           </StepCard>
 
