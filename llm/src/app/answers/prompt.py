@@ -48,6 +48,13 @@ INTENT_HINTS: Dict[str, str] = {
     "skill_check": "Start with a direct yes or no, then give the concrete evidence from the profile.",
     "skill_experience": "Describe where and how the candidate used the technology, citing specific roles or projects.",
     "skill_years": "Only state a number of years if the profile gives one or it follows directly from dated roles that use the skill. Otherwise describe the experience without a number.",
+    "job_fit": (
+        "Answer from the job, not with a general bio. First pick the two or three most important needs in the JOB "
+        "CONTEXT (its role, requirements and responsibilities). For each, name the candidate's matching work from the "
+        "profile (the role, project or skill, and what they did) and tie it to that need in the job's own terms. Open "
+        "with the role, skip needs the profile doesn't support, and don't list unrelated experience. Without a job "
+        "description, build it around the role's title and the candidate's most relevant work."
+    ),
     "strengths": "Name one or two strengths and back each with evidence from the profile.",
     "weakness": "Only answer if the profile gives something to base it on; otherwise report insufficient information.",
     "about_me": "Summarize the candidate's background, focus, and most relevant work.",
@@ -104,11 +111,16 @@ JOB_DESCRIPTION_CHARS: Dict[str, int] = {
     "strengths": 1000, "project": 1000, "experience": 1000, "general": 1000, "about_me": 1200,
     "motivation": 1600, "cover_letter": 2400,
 }
+# Intents that need more of the description than their category: a job-fit answer maps the job's requirements.
+JOB_DESCRIPTION_INTENT_CHARS: Dict[str, int] = {"job_fit": 2000}
 INTRO_CATEGORIES = {"motivation", "cover_letter", "about_me"}
+# The question's own words ("great fit for this role") say nothing about which parts of the job matter.
+JOB_DRIVEN_INTENTS = {"job_fit"}
 
 
 def job_description_budget(analyses: List[QuestionAnalysis], max_chars: int) -> int:
-    return min(max_chars, max((JOB_DESCRIPTION_CHARS.get(a.category, 1000) for a in analyses), default=1000))
+    return min(max_chars, max((JOB_DESCRIPTION_INTENT_CHARS.get(a.intent, JOB_DESCRIPTION_CHARS.get(a.category, 1000))
+                               for a in analyses), default=1000))
 
 
 # Rough characters per word, used to fit a word target into a character limit.
@@ -204,7 +216,8 @@ def _job_part(job: Optional[JobContext], analyses: List[QuestionAnalysis], max_c
         lines.append(f"Company: {job.company}")
     if job.role:
         lines.append(f"Role: {job.role}")
-    query = " ".join([a.question for a in analyses] + [s for a in analyses for s in a.target_skills])
+    query = " ".join([a.question for a in analyses if a.intent not in JOB_DRIVEN_INTENTS]
+                     + [s for a in analyses for s in a.target_skills])
     description = digest(job.description, job_description_budget(analyses, max_chars), query,
                          prefer_intro=any(a.category in INTRO_CATEGORIES for a in analyses))
     if description:
