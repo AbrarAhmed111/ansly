@@ -125,6 +125,26 @@ def test_executor_rejects_changes_that_do_not_fit():
     assert "Kubernetes" not in {s for g in result.resume.skills for s in g.items}
 
 
+def test_supported_skill_is_not_inserted_into_an_unrelated_group():
+    source = master()
+    source.skills = [
+        source.skills[0].model_copy(update={"label": "Databases", "items": ["SQL", "NoSQL"]}),
+        source.skills[1].model_copy(update={"label": "Containerization", "items": ["Podman"]}),
+        source.skills[2].model_copy(update={"label": "AI / LLM", "items": ["LangChain", "RAG"]}),
+    ]
+    plan = parse_plan({"changes": [
+        {"section": "skills", "action": "emphasize", "values": ["Docker", "SQL"], "reason": "Job relevance"},
+    ]})
+    applied = apply_plan(source, plan, corpus())
+    final = validate(source, applied.resume, applied.applied, corpus(), analysis()).resume
+
+    assert [(group.label, group.items) for group in final.skills] == [
+        ("Databases", ["SQL", "NoSQL"]),
+        ("Containerization", ["Podman"]),
+        ("AI / LLM", ["LangChain", "RAG"]),
+    ]
+
+
 # -- validation: the adversarial set ---------------------------------------------------
 
 
