@@ -48,6 +48,7 @@ ALIASES = {
     "reactjs": "react", "node": "nodejs", "next": "nextjs", "vue": "vuejs", "golang": "go",
     "amazonwebservices": "aws", "googlecloud": "gcp", "googlecloudplatform": "gcp", "azurecloud": "azure",
     "largelanguagemodels": "llm", "llms": "llm", "artificialintelligence": "ai", "machinelearning": "ml",
+    "auth": "authentication",
     "tailwindcss": "tailwind", "mongo": "mongodb", "cicd": "cicd", "ci-cd": "cicd",
 }
 # Generic trailing words: "CI/CD pipelines" is satisfied by "CI/CD".
@@ -199,11 +200,11 @@ MAX_RECORDS: Dict[str, int] = {"skill_check": 3, "education": 2, "about_me": 5, 
 DEFAULT_MAX_RECORDS = 4
 # Records per question when one context serves several questions (fill all).
 RECORDS_PER_QUESTION = 3
-BATCH_EVIDENCE_BUDGET_MAX = 6000
+BATCH_EVIDENCE_BUDGET_MAX = 5600
 # Questions about the candidate as a whole or about the job: the job decides what's relevant, so job overlap counts
 # as support, and the profile summary is shown.
 JOB_DRIVEN = {"about_me", "cover_letter", "motivation", "strengths", "general"}
-SKILLS_SHOWN = 12
+SKILLS_SHOWN = 8
 LINK_QUESTION = re.compile(r"\b(?:links?|url|github|linkedin|portfolio|website)\b", re.IGNORECASE)
 # Logistics lines shown to the model for logistics questions: (label, intent).
 LOGISTICS_LINES = [("Work authorization", "work_authorization"), ("Requires visa sponsorship", "sponsorship"),
@@ -221,12 +222,53 @@ resolved situation moment occasion greatest biggest favorite favourite proud you
 why answer question please briefly detail details
 """.split())
 
+# Small concept expansions help unfamiliar wording reach records that describe the same work in different terms.
+# Technology names are inferred from the candidate's own profile rather than maintained as a fixed tool catalogue.
+DOMAIN_CUES = {
+    "database": ("database", "databases", "relational", "nonrelational", "non-relational", "data store", "data storage"),
+    "backend": ("backend", "back-end", "server-side", "server side", "server-side engineering"),
+    "integration": ("third-party", "third party", "external service", "external services", "integrat"),
+    "authentication": ("oauth", "authentication", "authorization", "identity", "sign-in", "sign in"),
+}
+DOMAIN_TERMS = {
+    "database": relevance_terms("database SQL NoSQL relational non-relational data storage persistence"),
+    "backend": relevance_terms("backend server-side server API endpoint service database"),
+    "integration": relevance_terms("API REST integration external third-party service authentication payment"),
+    "authentication": relevance_terms("auth authentication authorization OAuth identity login sign-in"),
+}
+DOMAIN_TECH_PATTERNS = {
+    "database": re.compile(r"(?:sql|postgres|mongo|redis|dynamo|database|sqlite|oracle|mysql)", re.I),
+    "backend": re.compile(r"(?:backend|server|api|fastapi|django|flask|express|spring|laravel|rails)", re.I),
+}
+
 
 def question_relevance_terms(analysis: QuestionAnalysis) -> Set[str]:
     if analysis.intent == "job_fit":
         # "Why are you a great fit for this role?": the job's terms decide which records matter, not these words.
-        return relevance_terms(" ".join(analysis.target_skills))
-    return relevance_terms(" ".join([analysis.question, *analysis.target_skills])) - QUESTION_FILLER
+        terms = relevance_terms(" ".join(analysis.target_skills))
+    else:
+        terms = relevance_terms(" ".join([analysis.question, *analysis.target_skills])) - QUESTION_FILLER
+    text = analysis.question.lower()
+    for domain, cues in DOMAIN_CUES.items():
+        if any(cue in text for cue in cues):
+            terms.update(DOMAIN_TERMS[domain])
+    return terms
+
+
+def _domain_skill_terms(skills: List[Dict[str, Any]], analysis: QuestionAnalysis) -> Set[str]:
+    """Relate a generic domain question to technology names actually present in the candidate's skill list."""
+    text = analysis.question.lower()
+    terms: Set[str] = set()
+    for domain, cues in DOMAIN_CUES.items():
+        if not any(cue in text for cue in cues):
+            continue
+        pattern = DOMAIN_TECH_PATTERNS.get(domain)
+        for skill in skills:
+            name = str(skill.get("name") or "")
+            category = str(skill.get("category") or "").lower()
+            if category == domain or (pattern and pattern.search(name)):
+                terms.update(relevance_terms(name))
+    return terms
 
 
 def profile_budget(analysis: QuestionAnalysis) -> int:
@@ -312,8 +354,8 @@ def _render(rec: _Record, ref: str) -> Tuple[str, str, str]:
             str(r.get("prompt", ""))[:80])
 
 
-def _select(records: List[_Record], analyses: List[QuestionAnalysis], job_terms: Set[str], budget: int,
-            boost: Dict[str, float]) -> Tuple[List[_Record], bool, List[List[_Record]]]:
+def _select(records: List[_Record], analyses: List[QuestionAnalysis], skills: List[Dict[str, Any]],
+            job_terms: Set[str], budget: int, boost: Dict[str, float]) -> Tuple[List[_Record], bool, List[List[_Record]]]:
     """The records to show, whether retrieval was confident, and the records retrieved for each question.
     Several questions share one deduplicated set: a record two questions need is shown once."""
     single = len(analyses) == 1
@@ -321,9 +363,17 @@ def _select(records: List[_Record], analyses: List[QuestionAnalysis], job_terms:
     per_question: List[List[_Record]] = []
     strong_total = 0
     for analysis in analyses:
-        question_terms = question_relevance_terms(analysis)
+        # Skill rows provide query expansion, but are not evidence of professional use on their own.
+        question_terms = question_relevance_terms(analysis) | _domain_skill_terms(skills, analysis)
         scored = [_score(rec, analysis, question_terms, job_terms, boost) for rec in records
                   if rec.section == "profile_facts" or rec.section in analysis.sections]
+        # A narrowly classified question can still benefit from a directly matching record in another section.
+        # Keep that cross-section recall, but don't let unrelated sections enter the low-confidence filler set.
+        for rec in records:
+            if rec.section != "profile_facts" and rec.section not in analysis.sections:
+                extra = _score(rec, analysis, question_terms, set(), boost)
+                if extra.strong:
+                    scored.append(extra)
         scored.sort(key=lambda s: (-s.score, s.record.order))
         limit = MAX_RECORDS.get(analysis.category, DEFAULT_MAX_RECORDS) if single else RECORDS_PER_QUESTION
         strong = [s.record for s in scored if s.strong][:limit]
@@ -351,7 +401,9 @@ def _select(records: List[_Record], analyses: List[QuestionAnalysis], job_terms:
 
 def _relevant_skills(skills: List[Dict[str, Any]], analyses: List[QuestionAnalysis], job_terms: Set[str]) -> List[Dict[str, Any]]:
     wanted = {canonicalize(s) for a in analyses for s in a.target_skills}
-    question_terms = set().union(*(question_relevance_terms(a) for a in analyses)) if analyses else set()
+    question_terms = (set().union(*(question_relevance_terms(a) for a in analyses)) if analyses else set())
+    for analysis in analyses:
+        question_terms.update(_domain_skill_terms(skills, analysis))
     broad = any(a.category in ("about_me", "cover_letter", "strengths") for a in analyses)
     hits = [r for r in skills if canonicalize(r["name"]) in wanted | question_terms
             or (broad and canonicalize(r["name"]) in job_terms)]
@@ -433,11 +485,17 @@ def build_context(
                 for r in shown:
                     detail = ", ".join(x for x in [r.get("level"), f"{r['years']:g} yrs" if r.get("years") else None] if x)
                     parts.append(f"{r['name']} ({detail})" if detail else r["name"])
-                out.append("[S] SKILLS: " + "; ".join(parts))
+                out.append("[S] PROFILE-LISTED SKILLS (this list does not establish where or how they were used): "
+                           + "; ".join(parts))
 
-        sections = sorted({s for a in open_targets for s in a.sections})
+        # Fetching is broad, but only selected, ranked records are sent to the model. This lets evidence in a
+        # different profile section answer a question even when classification selected a narrower category.
+        sections = sorted({s for a in open_targets for s in a.sections} | {
+            "experiences", "projects", "skills", "education", "achievements",
+        })
         records = _records({**data, "profile_facts": all_facts}, sections)
-        chosen, ctx.low_confidence, per_question = _select(records, open_targets, job_terms, budget, boost or {})
+        chosen, ctx.low_confidence, per_question = _select(
+            records, open_targets, data["skills"], job_terms, budget, boost or {})
         if job_terms and any(a.category == "cover_letter" for a in open_targets):
             out.append("(Experience and projects are listed most relevant to this job first.)")
         order = ["experiences", "projects", "achievements", "education", "profile_facts"]
@@ -507,12 +565,10 @@ async def _rows(rest: SupabaseRest, user_id: Optional[str], table: str, params: 
 
 async def fetch_profile_data(rest: SupabaseRest, analysis: QuestionAnalysis,
                              user_id: Optional[str] = None) -> Dict[str, Any]:
-    """Fetches the profile row plus the sections the question needs (and skills, for skill checks), in parallel.
+    """Fetches the profile row and candidate evidence sections in parallel.
     With `user_id`, recently fetched rows are reused (see PROFILE_CACHE_SECONDS)."""
-    sections = list(analysis.sections)
-    # Skill presence is checked against every section that can mention a technology.
-    if analysis.target_skills:
-        sections += [s for s in ("skills", "experiences", "projects", "achievements") if s not in sections]
+    sections = (list(analysis.sections) if analysis.category == "logistics" else
+                ["experiences", "projects", "skills", "education", "achievements"])
     queries: Dict[str, Tuple[str, Dict[str, str]]] = {"profile": ("profiles", {"limit": "1"})}
     for section in sections:
         queries[section] = (section, {"order": SECTION_ORDER[section],
