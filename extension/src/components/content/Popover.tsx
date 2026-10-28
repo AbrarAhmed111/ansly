@@ -30,6 +30,7 @@ type AnswerState = {
   /** The answer as Ansly gave it (or as last saved): "edited" compares against it. */
   original: string
   savedId: string | null
+  memorySavedText: string | null
   busy: Busy
   fillError: string | null
   notice: Notice
@@ -59,11 +60,12 @@ type Action =
   | { type: 'undoRewrite' }
   | { type: 'notice'; notice: Notice }
   | { type: 'saved'; id: string }
+  | { type: 'memorySaved'; text: string }
   | { type: 'fillError'; message: string }
   | { type: 'failed'; error: ApiFailure; retry: 'generate' | 'match' }
 
 const answerState = (text: string, rest: Partial<AnswerState> = {}): AnswerState => ({
-  step: 'answer', response: null, text, original: text, savedId: null, busy: null, fillError: null, notice: null, previous: null, ...rest,
+  step: 'answer', response: null, text, original: text, savedId: null, memorySavedText: null, busy: null, fillError: null, notice: null, previous: null, ...rest,
 })
 
 function reducer(state: State, action: Action): State {
@@ -86,7 +88,7 @@ function reducer(state: State, action: Action): State {
     case 'learning':
       return state.step === 'insufficient' ? { ...state, learning: action.busy, learnError: action.error ?? null } : state
     case 'edit':
-      return state.step === 'answer' ? { ...state, text: action.text, fillError: null } : state
+      return state.step === 'answer' ? { ...state, text: action.text, memorySavedText: null, fillError: null } : state
     case 'busy':
       return state.step === 'answer' ? { ...state, busy: action.busy } : state
     case 'rewritten':
@@ -100,6 +102,10 @@ function reducer(state: State, action: Action): State {
       return state.step === 'answer' ? { ...state, notice: action.notice, busy: null } : state
     case 'saved':
       return state.step === 'answer' ? { ...state, savedId: action.id, original: state.text, busy: null } : state
+    case 'memorySaved':
+      return state.step === 'answer'
+        ? { ...state, memorySavedText: action.text, busy: null, notice: { tone: 'success', text: 'Saved to Application Memory.' } }
+        : state
     case 'fillError':
       return state.step === 'answer' ? { ...state, fillError: action.message } : state
     case 'failed':
@@ -416,6 +422,22 @@ export function Popover({
     }
   }
 
+  async function saveToMemory() {
+    if (state.step !== 'answer' || !state.text.trim()) return
+    dispatch({ type: 'busy', busy: 'memory' })
+    const result = await send('saveMemory', {
+      question: target.question,
+      answer: state.text.trim(),
+      job_context: getJobContext(),
+    })
+    if (!alive.current) return
+    if (result.ok) dispatch({ type: 'memorySaved', text: state.text.trim() })
+    else dispatch({
+      type: 'notice',
+      notice: { tone: 'warning', text: friendlyError(result.error, 'save to Application Memory').title },
+    })
+  }
+
   function fill() {
     if (state.step !== 'answer' || !state.text.trim()) return
     const result = fillField(target.el, state.text.trim())
@@ -691,6 +713,14 @@ export function Popover({
                 title="Offer this answer next time a similar question comes up"
               >
                 {busy === 'save' ? 'Saving…' : state.savedId !== null && state.text === state.original ? 'Saved' : 'Save'}
+              </button>
+              <button
+                className="link"
+                disabled={busy !== null || !state.text.trim() || state.memorySavedText === state.text.trim()}
+                onClick={() => void saveToMemory()}
+                title="Save this question and your final answer to Application Memory"
+              >
+                {busy === 'memory' ? 'Saving…' : state.memorySavedText === state.text.trim() ? 'Saved to Memory' : 'Save to Memory'}
               </button>
               <button className="link" disabled={busy !== null} onClick={() => void regenerate()} title="Write a new version from your profile">
                 {busy === 'regenerate' ? 'Regenerating…' : 'Regenerate'}
