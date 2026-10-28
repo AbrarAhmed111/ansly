@@ -8,6 +8,7 @@
 
 import type { MemoryScope, Profile, SavedAnswer, Skill, SkillLevel, UsageEventKind } from './database'
 import type { FieldKind } from './fields'
+import type { MemoryItem } from './memory'
 
 export type ServiceStatus = 'ok' | 'error' | 'not_configured'
 
@@ -291,6 +292,15 @@ export interface CreateSavedAnswerRequest {
   company?: string | null
   role?: string | null
 }
+
+/** `POST /api/v1/memory` */
+export interface SaveMemoryRequest {
+  question: string
+  answer: string
+  job_context?: JobContext | null
+}
+
+export type SaveMemoryResponse = MemoryItem
 
 /** `POST /api/v1/saved-answers/{id}/use` */
 export type UseSavedAnswerResponse = SavedAnswer
