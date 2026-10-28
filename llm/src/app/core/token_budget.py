@@ -22,6 +22,8 @@ RESUME_PARSE = "resume_parse"
 JOB_ANALYSIS = "job_analysis"
 MATCHING = "matching"
 TAILORING = "tailoring_plan"
+# The summary alone, when the plan left it out (tailoring/plan.py).
+TAILORING_SUMMARY = "tailoring_summary"
 VALIDATION = "validation_review"
 ANSWER = "answer"
 ANSWER_BATCH = "answer_batch"
@@ -52,6 +54,7 @@ BUDGETS: Dict[str, Budget] = {
     JOB_ANALYSIS: Budget(input=2500, output=1000),
     MATCHING: Budget(input=2500, output=800),
     TAILORING: Budget(input=2500, output=1500),
+    TAILORING_SUMMARY: Budget(input=2500, output=400),
     VALIDATION: Budget(input=1500, output=400),
     ANSWER: Budget(input=1500, output=500),
     ANSWER_SIMPLE: Budget(input=1200, output=300),
@@ -77,7 +80,7 @@ BUDGETS: Dict[str, Budget] = {
 FAST, STRONG = "fast", "strong"
 STAGE_TIER: Dict[str, str] = {
     JOB_ANALYSIS: FAST, VALIDATION: FAST, ADAPTATION: FAST, ANSWER_SIMPLE: FAST, REWRITE: FAST,
-    RESUME_PARSE: STRONG, MATCHING: STRONG, TAILORING: STRONG, ANSWER: STRONG, ANSWER_COMPLEX: STRONG,
+    RESUME_PARSE: STRONG, MATCHING: STRONG, TAILORING: STRONG, TAILORING_SUMMARY: STRONG, ANSWER: STRONG, ANSWER_COMPLEX: STRONG,
     ANSWER_BATCH: STRONG, REGENERATION: STRONG,
 }
 FAST_MODEL_STAGES = {stage for stage, tier in STAGE_TIER.items() if tier == FAST}
