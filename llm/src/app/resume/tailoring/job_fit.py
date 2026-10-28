@@ -41,7 +41,7 @@ def _bare(word: str) -> str:
     return word.lower().strip(".,()")
 
 
-def _split(headline: str) -> Tuple[str, str]:
+def split_headline(headline: str) -> Tuple[str, str]:
     """("Full Stack AI Engineer", " | Building LLM apps"): the title and whatever follows it."""
     match = SEPARATOR.search(headline)
     return (headline[: match.start()], headline[match.start():]) if match else (headline, "")
@@ -56,7 +56,7 @@ def clean_title(text: str, own_titles: List[str], strict: bool = False) -> Optio
     if strict and NOT_A_TITLE.search(text or ""):
         return None
     text = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", text or "")
-    text, _ = _split(text.strip())
+    text, _ = split_headline(text.strip())
     own = {_bare(w) for t in own_titles for w in _words(t)}
     kept = [w for w in _words(text)
             if _bare(w) not in NOISE and not any(c.isdigit() for c in w)
@@ -72,10 +72,10 @@ def fit_headline(master: Optional[str], proposed: Optional[str], role: Optional[
     """The headline to use. Without a headline in the master there's nothing in the document to change."""
     if not master or not master.strip():
         return master
-    old_title, tagline = _split(master)
+    old_title, tagline = split_headline(master)
     candidate = None
     if proposed and proposed.strip() != master.strip():
-        candidate = clean_title(_split(proposed)[0], own_titles, strict=True)
+        candidate = clean_title(split_headline(proposed)[0], own_titles, strict=True)
     if candidate is None and role:
         candidate = clean_title(role, own_titles)
     if candidate is None or canonicalize(candidate) == canonicalize(old_title):
