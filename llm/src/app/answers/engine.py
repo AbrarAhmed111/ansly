@@ -210,7 +210,7 @@ def skill_missing(name: str) -> MissingInfo:
 
 
 # Questions whose answer is about one employer or role: what the user writes is kept for that job only.
-JOB_SPECIFIC_INTENTS = {"motivation_company", "motivation_role", "cover_letter"}
+JOB_SPECIFIC_INTENTS = {"motivation_company", "motivation_role", "cover_letter", "job_fit"}
 
 
 def fact_missing(analysis: QuestionAnalysis, prompt: Optional[str]) -> MissingInfo:
