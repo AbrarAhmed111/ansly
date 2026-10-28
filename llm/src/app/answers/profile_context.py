@@ -223,6 +223,9 @@ why answer question please briefly detail details
 
 
 def question_relevance_terms(analysis: QuestionAnalysis) -> Set[str]:
+    if analysis.intent == "job_fit":
+        # "Why are you a great fit for this role?": the job's terms decide which records matter, not these words.
+        return relevance_terms(" ".join(analysis.target_skills))
     return relevance_terms(" ".join([analysis.question, *analysis.target_skills])) - QUESTION_FILLER
 
 
