@@ -279,6 +279,27 @@ async def test_plan_citation_without_r_prefix_is_resolved():
     assert plan.changes[0].evidence_ids == ["R:exp_1_b1", "E1"]
 
 
+@pytest.mark.asyncio
+async def test_plan_without_a_summary_gets_one_from_a_follow_up_call():
+    corpus = build_corpus(tailoring_data.profile_rows(), tailoring_data.master())
+    gateway = FakeGateway({
+        "You tailor a candidate's resume": lambda user: {"changes": []},
+        "You rewrite one resume summary": lambda user: {"text": "Full stack engineer building SaaS apps.",
+                                                         "evidenceIds": ["exp_1_b1"], "reason": "fit"},
+    })
+    plan = await generate_plan(gateway, tailoring_data.analysis(), [], tailoring_data.master(), corpus)
+    assert [(c.action, c.text, c.evidence_ids) for c in plan.changes] == [
+        ("update_summary", "Full stack engineer building SaaS apps.", ["R:exp_1_b1"])]
+
+
+@pytest.mark.asyncio
+async def test_failed_summary_follow_up_leaves_the_plan_as_it_was():
+    corpus = build_corpus(tailoring_data.profile_rows(), tailoring_data.master())
+    gateway = FakeGateway({"You tailor a candidate's resume": lambda user: {"changes": []}})
+    plan = await generate_plan(gateway, tailoring_data.analysis(), [], tailoring_data.master(), corpus)
+    assert plan.changes == []
+
+
 # --- per-stage logging, budgets and effort --------------------------------------
 
 def test_over_budget_reports_input_and_output():
