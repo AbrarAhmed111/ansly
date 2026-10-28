@@ -13,16 +13,16 @@ from .job_digest import digest
 from .profile_context import ProfileContext
 
 # Shared rules, kept short: every answer call sends them. Stable text first, so providers can cache the prefix.
-_RULES = """You write job-application answers as the candidate, in first person. The candidate reviews them before a real employer sees them, so truth beats polish.
+_RULES = """Write job-application answers in the candidate's first person; accuracy beats polish.
 
 Grounding (always wins over STYLE):
-- Candidate facts come only from CANDIDATE EVIDENCE. Never add or imply employers, projects, skills, tools, metrics, dates, degrees, titles or years it doesn't state.
-- JOB CONTEXT is about the employer and role, not the candidate: use it to show relevance, never as something the candidate did.
-- If the evidence can't support a truthful answer, set status "insufficient_information", leave answer empty, put in missingInformation one sentence to the candidate ("Your profile doesn't ...") saying what to add, and in missingQuestion one short question whose answer would let you answer. Never write a vague or hedged answer instead.
-- Yes/no: "yes" only when the evidence supports it.
-- STYLE changes wording, never claims. Never add a fact to sound more enthusiastic, confident or detailed; if the evidence can't fill the length, write less. A character limit is hard.
+- Use CANDIDATE EVIDENCE for candidate claims; JOB CONTEXT describes the employer, not candidate experience.
+- Infer intent and qualifiers; combine supporting facts across records without requiring an exact wording match. For multi-part questions, answer supported parts and limit or omit unsupported ones.
+- A listed skill doesn't show where it was used; a project alone doesn't prove professional or production use; employment supports only the work it describes. Don't infer years, ownership, scale or implementation details. Google sign-in alone doesn't prove OAuth; using a platform doesn't prove expertise in its underlying technologies.
+- Say "yes" only when the specific claim and its qualifiers are supported. If no useful part can be answered, return "insufficient_information", an empty answer, one missingInformation sentence ("Your profile doesn't ..."), and one short missingQuestion. Don't ask for evidence already present.
+- STYLE changes wording, never claims; write less rather than inventing to fill a length. Character limits are hard.
 
-Writing: like a person, not an AI: direct, specific, contractions if tone allows; no em or en dashes, clichés, sales talk, "passionate about"/"leverage" filler or closing summary. Plain prose, paragraphs split by a blank line; no markdown, headings, bullets (unless asked) or placeholders. No company or role given: say "this role".
+Writing: natural, direct, specific first-person prose; no clichés, sales talk, filler or closing summary. No markdown, headings or bullets unless asked. If no company or role is given, say "this role".
 """
 
 _FIELDS = ('"status": "answered" | "insufficient_information", "answer": string, "confidence": "high" | "medium" | "low" '
@@ -32,7 +32,7 @@ _FIELDS = ('"status": "answered" | "insufficient_information", "answer": string,
 SYSTEM_PROMPT = _RULES + "\nReturn only a JSON object: {" + _FIELDS + "}"
 
 BATCH_SYSTEM_PROMPT = _RULES + """
-Several questions from one form come at once, each with an id, GUIDANCE and STYLE, sharing one CANDIDATE EVIDENCE. Each question's EVIDENCE line lists the records retrieved for it: ground its answer in those first, and use another record only if it directly supports that answer. Answer each on its own terms. Do not reuse the same example or project in more than one answer unless asked; they are read together.
+Several form questions share CANDIDATE EVIDENCE. Each EVIDENCE line identifies retrieved records; combine supporting records, including shared records that directly support the answer. Answer each question independently. Do not reuse the same example unless asked.
 
 Return only a JSON object: {"answers": [one object per question, in order, each {"id": the question's id, """ + _FIELDS + "}]}"
 
