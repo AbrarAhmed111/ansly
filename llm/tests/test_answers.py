@@ -40,6 +40,12 @@ from tests.fakes import FakeRest
     ("What is your greatest strength?", "strengths", "strengths", []),
     ("Tell us about yourself.", "about_me", "about_me", []),
     ("Anything else you would like us to know?", "general", "general", []),
+    ("After reviewing the job description, please explain why you would be a great fit for this role.", "strengths",
+     "job_fit", []),
+    ("Why should we hire you?", "strengths", "job_fit", []),
+    ("Why are you a strong candidate for this job?", "strengths", "job_fit", []),
+    ("How do your skills match the requirements of this role?", "strengths", "job_fit", []),
+    ("Do you meet the minimum qualifications for this job?", "general", "general", []),
 ])
 def test_classify_question(question, category, intent, skills):
     analysis = classify_question(question)
@@ -381,3 +387,13 @@ def test_cover_letter_guidance_maps_job_needs_to_real_work():
 def test_strip_dashes(text, expected):
     from src.app.answers.parser import strip_dashes
     assert strip_dashes(text) == expected
+
+
+def test_job_fit_answer_draws_on_the_work_the_job_asks_for():
+    job = "Machine Learning Engineer. You will build LLM features: RAG pipelines, prompt evaluation, Python services."
+    analysis = classify_question("After reviewing the job description, please explain why you would be a great fit "
+                                 "for this role.")
+    ctx = build_context(_cover_letter_profile(), analysis, job_text=job)
+    assert _order(ctx, "PROJECT")[0] == "DocChat"
+    message = build_user_message(analysis, ctx, JobContext(role="ML Engineer", description=job), None)
+    assert "Answer from the job, not with a general bio" in message and "RAG pipelines" in message
