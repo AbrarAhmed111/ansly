@@ -398,24 +398,27 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
       </div>
 
       <div className="footer">
-        {prepared && !running && (
-          <div className="secondary">
-            <button className="link" onClick={() => all.forEach(({ f, row }) => row.status === 'ready' && row.answer && update(f.id, { selected: true }))}>Select all ready</button>
-            <button className="link" aria-pressed={onlyWarnings} onClick={() => setOnlyWarnings((v) => !v)}>{onlyWarnings ? 'Show all' : 'Review only warnings'}</button>
-          </div>
-        )}
-        <button className="link" aria-expanded={showSettings} onClick={() => setShowSettings((v) => !v)}>Settings</button>
-        <span className="spacer" />
-        {filled.length > 0 && <button className="btn" disabled={running} onClick={undoAll}>Undo all</button>}
-        {selected.length > 0 && !running ? (
-          <button className="btn primary" onClick={() => void fillSelected()}>
-            Fill {selected.length} {selected.every(({ row }) => row.status === 'ready') ? 'ready ' : ''}answer{selected.length === 1 ? '' : 's'}
-          </button>
-        ) : (
-          <button className="btn primary" disabled={running || fields.length === 0} onClick={() => void prepare()}>
-            {running ? 'Preparing…' : defaults.reviewBeforeFill ? (prepared ? 'Prepare the rest' : 'Prepare answers') : 'Fill all'}
-          </button>
-        )}
+        <div className="footer-tools">
+          {prepared && !running && (
+            <>
+              <button className="link" onClick={() => all.forEach(({ f, row }) => row.status === 'ready' && row.answer && update(f.id, { selected: true }))}>Select all ready</button>
+              <button className="link" aria-pressed={onlyWarnings} onClick={() => setOnlyWarnings((v) => !v)}>{onlyWarnings ? 'Show all' : 'Review only warnings'}</button>
+            </>
+          )}
+          <button className="link" aria-expanded={showSettings} onClick={() => setShowSettings((v) => !v)}>Settings</button>
+        </div>
+        <div className="footer-actions">
+          {filled.length > 0 && <button className="btn" disabled={running} onClick={undoAll}>Undo all</button>}
+          {selected.length > 0 && !running ? (
+            <button className="btn primary" onClick={() => void fillSelected()}>
+              Fill {selected.length} {selected.every(({ row }) => row.status === 'ready') ? 'ready ' : ''}answer{selected.length === 1 ? '' : 's'}
+            </button>
+          ) : (
+            <button className="btn primary" disabled={running || fields.length === 0} onClick={() => void prepare()}>
+              {running ? 'Preparing…' : defaults.reviewBeforeFill ? (prepared ? 'Prepare the rest' : 'Prepare answers') : 'Fill all'}
+            </button>
+          )}
+        </div>
       </div>
       <p className="panel-foot muted">Uses your profile only · Never submits automatically · Review before you submit</p>
     </div>
