@@ -1,1809 +1,530 @@
-You are a senior product designer, UX engineer, browser-extension engineer, Next.js engineer, React engineer, FastAPI engineer, and AI product architect.
+# Ansly — Universal Resume Tailoring, JSON Profile Import, Persistent Memory, and Context-Aware Answers
 
-I am improving **Ansly**, an AI job-application assistant.
+Inspect the existing Ansly codebase and implement all the improvements below end to end. The solution must work for different users, resume formats, professions, skill sets, and job types—not just one user's resume or technology stack.
 
-The product already has:
+Do not hardcode my personal resume, profile structure, or skills as the universal solution. Adapt to each user's actual information and the existing application architecture.
 
-- structured candidate profile
-- profile facts
-- saved answers
-- Ask-and-Learn for missing information
-- browser-extension answer popovers
-- Fill All
-- answer editing
-- regeneration
-- resume tailoring
-- job context
-- deterministic answers
-- application usage tracking
-- strict truthfulness / no-invention behavior
+## Part 1: Fix Universal Resume-Tailoring Accuracy
 
-The next phase is NOT mainly about token optimization.
+### 1. Investigate the root cause
 
-The next phase is about making Ansly feel polished, intelligent, trustworthy, fast, and easy to use.
+Trace the complete resume-tailoring pipeline, including:
 
-Focus on these six areas:
+- Resume parsing and profile extraction.
+- Job-description analysis.
+- Skill matching and prioritization.
+- Skill categorization.
+- LLM prompts and response processing.
+- Final resume generation and validation.
 
-1. Turn Ask-and-Learn into a killer feature
-2. Build Application Memory that works reliably
-3. Replace unnecessary full regeneration with lightweight rewrite controls
-4. Add excellent character-limit intelligence
-5. Dramatically improve onboarding
-6. Fully improve the extension UI and overall user experience
+Identify why skills can end up under incorrect categories. Check for hardcoded resume structures, predefined skill lists, category assumptions, prompt problems, and overreliance on LLM-generated output.
 
-Do not do a broad rewrite.
+Implement a general solution rather than adding one-off patches for individual skills.
 
-Inspect the current implementation and improve it incrementally while preserving:
+### 2. Support different resume structures and professions
 
-- truthfulness
-- user control
-- privacy
-- RLS
-- current API compatibility where practical
-- low token usage
-- fast response times
+Users may have different resume formats, section headings, industries, and professional backgrounds.
 
----
+Requirements:
 
-# PART 1 — ASK-AND-LEARN SHOULD BECOME A CORE PRODUCT FEATURE
+- Preserve the user's original resume structure and headings wherever practical.
+- Support technical and non-technical professions.
+- Support custom categories when predefined categories are insufficient.
+- Handle resumes without a dedicated skills section.
+- Do not force every user into a software-engineering resume template.
+- Adapt the tailoring process to each user's actual profile and target role.
 
-Current behavior:
+### 3. Separate skill selection from skill categorization
 
-When Ansly lacks enough information, it can ask the user for missing information and save it through the profile/missing flow.
+The tailoring pipeline should:
 
-This is good technically, but it should feel like the product is intelligently learning from the user.
-
-The UX should make this obvious.
-
-## Goal
-
-When Ansly does not know something, instead of simply failing or saying "insufficient information", show a compact contextual learning flow.
-
-Example:
-
-```text
-Ansly needs one detail
-
-This application asks:
-
-"Are you willing to relocate to Austin?"
-
-Your profile doesn't have a relocation preference for this case.
-
-○ Yes
-○ No
-○ Depends on the role
-
-☑ Remember this for future applications
-
-[Save & Continue]
-```
-
-After save:
-
-```text
-Saved to your Application Memory
-
-Ansly can now answer similar questions automatically.
-```
-
-Then immediately retry the original answer.
-
-The user should NOT need to:
-
-```text
-leave the page
-open profile
-find settings
-edit profile
-return to application
-generate again
-```
-
-Everything should happen inline.
-
----
-
-# 2. SUPPORT MULTIPLE MISSING FACTS IN ONE FLOW
-
-If a job application reveals multiple missing facts, do not interrupt the user repeatedly.
-
-Instead show:
-
-```text
-Ansly needs 3 details
-
-1. Are you willing to relocate?
-   [Yes] [No] [Depends]
-
-2. Do you require visa sponsorship?
-   [Yes] [No]
-
-3. Expected salary?
-   [____________]
-
-☑ Remember these answers
-
-[Save 3 details & Continue]
-```
-
-Save all compatible facts in one request if possible.
-
-Then regenerate all blocked answers automatically.
-
----
-
-# 3. GROUP MISSING INFORMATION BY TYPE
-
-Create clear categories:
-
-```text
-Personal
-Work authorization
-Availability
-Relocation
-Compensation
-Skills
-Experience
-Education
-Preferences
-Other
-```
-
-Use the category to determine UI.
+1. Extract skills and experience supported by the user's resume and profile.
+2. Analyze the target job description.
+3. Match job requirements against the candidate's existing evidence.
+4. Select and prioritize relevant, supported skills.
+5. Categorize skills according to their actual meaning and professional context.
+6. Generate the tailored resume.
+7. Validate the final output.
 
 Examples:
 
-## Boolean
+- SQL and NoSQL belong in database-related categories.
+- Docker belongs in containerization, DevOps, or infrastructure-related categories.
+- LangChain and RAG belong in AI/LLM-related categories.
+- Financial modeling belongs in finance-related categories.
+- Figma belongs in design-related categories.
 
-```text
-Do you require sponsorship?
-[Yes] [No]
-```
+These are illustrative examples, not an exhaustive list or a fixed taxonomy.
 
-## Number
+The job description may influence skill relevance and ordering, but must not arbitrarily determine skill categories. If a skill spans multiple domains, assign it an appropriate primary category and avoid unnecessary duplication.
 
-```text
-Years of Kubernetes experience
-[  3  ]
-```
+### 4. Preserve factual accuracy
 
-## Choice
+- Never invent skills, qualifications, projects, employers, responsibilities, or achievements.
+- Never treat a skill mentioned in a job description as proof that the candidate possesses it.
+- Never exaggerate proficiency or experience.
+- Preserve the meaning of the original resume.
+- Handle ambiguous information conservatively.
+- Keep claims grounded in the user's resume, profile, or other verified information.
 
-```text
-Preferred work arrangement
-[Remote] [Hybrid] [On-site]
-```
+### 5. Validate the final resume
 
-## Text
+Use deterministic validation for clear rules and AI-based classification where contextual reasoning is necessary.
 
-```text
-Notice period
-[2 weeks]
-```
+Validate that:
 
-## Skill state
+- Skills are placed in appropriate categories.
+- Unrelated categories have not been mixed together.
+- Relevant original information has been preserved.
+- Unsupported skills or achievements have not been introduced.
+- The user's resume structure is respected.
+- The final document remains suitable for ATS parsing.
 
-```text
-Do you have Terraform experience?
+If validation fails, correct the affected output or safely regenerate it instead of silently returning a corrupted resume.
 
-[Yes]
-[No]
-[Some exposure]
-```
+### 6. Add regression tests
 
-Do not use one generic text input for every fact.
+Include tests for:
 
----
-
-# 4. DISTINGUISH FACTS FROM JOB-SPECIFIC PREFERENCES
-
-Not everything should become permanent memory.
-
-Before saving, determine whether a fact is:
-
-```text
-GLOBAL
-JOB_SPECIFIC
-TEMPORARY
-```
-
-Examples:
-
-### Global
-
-```text
-work authorization
-degree
-years of Python experience
-notice period
-location
-```
-
-### Preference that may vary
-
-```text
-salary expectation
-relocation
-willingness to travel
-remote/on-site preference
-```
-
-### Job-specific
-
-```text
-Why are you interested in Acme?
-Availability for this interview date
-Desired salary for this particular role
-```
-
-Do NOT permanently store job-specific answers as universal user facts.
-
----
-
-# 5. ADD MEMORY SCOPE
-
-Every learned fact should have a scope.
-
-Conceptually:
-
-```text
-scope = global
-scope = category
-scope = company
-scope = job
-```
-
-Examples:
-
-```text
-"I require sponsorship"
-→ global
-
-"I would relocate for a senior role"
-→ preference/category
-
-"My expected salary for this role is $120k"
-→ job-specific
-```
-
-This prevents memory from becoming incorrect over time.
-
----
-
-# PART 2 — APPLICATION MEMORY
-
-Build an explicit **Application Memory** feature.
-
-This should be the user's source of truth for everything Ansly has learned outside of the structured resume/profile sections.
-
-The user should be able to view and edit it.
-
----
-
-# 6. APPLICATION MEMORY PAGE
-
-Create a dedicated page such as:
-
-```text
-/application-memory
-```
-
-or:
-
-```text
-/profile/memory
-```
-
-Show:
-
-```text
-Application Memory
-
-Work authorization
-✓ Authorized to work in Pakistan
-✓ Sponsorship preference known
-
-Availability
-✓ Notice period: 30 days
-
-Work preferences
-✓ Remote preferred
-✓ Open to hybrid
-✓ Relocation depends on role
-
-Skills
-✓ Kubernetes: 2 years
-✓ Terraform: no professional experience
-
-Learned facts
-12
-
-Saved application preferences
-8
-```
-
----
-
-# 7. MEMORY SHOULD SHOW WHERE EACH FACT CAME FROM
-
-Every fact should show provenance.
-
-Example:
-
-```text
-Open to relocation
-
-Source:
-Asked during an application to Acme
-October 5, 2026
-```
-
-or:
-
-```text
-Python: 4 years
-
-Source:
-Profile → Skills
-```
-
-or:
-
-```text
-Work authorization: Yes
-
-Source:
-You answered this during a job application
-```
-
-This dramatically increases trust.
-
----
-
-# 8. MEMORY CONFIDENCE / SOURCE PRIORITY
-
-Create a deterministic priority model.
-
-For example:
-
-```text
-1. Explicit structured profile
-2. User-confirmed learned fact
-3. Saved answer
-4. Resume evidence
-5. Inferred job-specific context
-```
-
-Never let an old saved answer silently override a newer explicit profile fact.
-
-Memory resolution should always be deterministic.
-
----
-
-# 9. MEMORY VERSIONING / LAST UPDATED
-
-Facts should track:
-
-```text
-created_at
-updated_at
-source_type
-source_id
-scope
-```
-
-Display:
-
-```text
-Last updated 12 days ago
-```
-
-For potentially stale preferences, optionally show:
-
-```text
-Still accurate?
-
-Remote preferred
-Last confirmed 8 months ago
-
-[Yes] [Update]
-```
-
-Do not annoy users frequently.
-
-Only surface this for facts likely to change.
-
----
-
-# 10. MEMORY CONFLICT DETECTION
-
-If two sources disagree:
-
-```text
-Resume:
-3 years Python
-
-Profile:
-4 years Python
-```
-
-or:
-
-```text
-Old learned fact:
-Requires sponsorship
-
-Profile:
-Does not require sponsorship
-```
-
-Do not silently choose.
-
-Use a clear resolution rule and optionally surface:
-
-```text
-Ansly found conflicting information
-
-Work authorization
-
-Profile:
-Does not require sponsorship
-
-Older application memory:
-Requires sponsorship
-
-[Use profile]
-[Update memory]
-```
-
-Structured profile should generally win unless the user explicitly changes it.
-
----
-
-# 11. MEMORY SHOULD POWER ANSWERS DIRECTLY
-
-Application Memory should be part of deterministic answer resolution.
-
-Ideal path:
-
-```text
-Question
-↓
-Structured profile
-↓
-Application Memory
-↓
-Saved answers
-↓
-Relevant evidence
-↓
-LLM only if needed
-```
-
-This should increase:
-
-```text
-0-token answer rate
-```
-
-and reduce unnecessary generation.
-
----
-
-# 12. MEMORY SHOULD BE EDITABLE INLINE
-
-From an answer popover, allow:
-
-```text
-Used memory:
-Relocation → Yes
-
-[Edit]
-```
-
-Clicking opens:
-
-```text
-Relocation preference
-
-● Yes
-○ No
-○ Depends
-
-☑ Save globally
-
-[Update]
-```
-
-No need to leave the application page.
-
----
-
-# 13. ADD MEMORY CONTROLS
-
-Users should be able to:
-
-```text
-Edit
-Delete
-Change scope
-Mark outdated
-Confirm
-```
-
-Do not create memory users cannot control.
-
----
-
-# PART 3 — REWRITE CONTROLS INSTEAD OF FULL REGENERATION
-
-Currently users can regenerate answers.
-
-Full regeneration is often unnecessary, slower, and more expensive.
-
-Add lightweight transformations.
-
----
-
-# 14. REWRITE TOOLBAR
-
-For generated text answers, show:
-
-```text
-Shorter
-Longer
-More natural
-More professional
-More concise
-More technical
-More confident
-Simpler
-```
-
-Keep the default toolbar small.
-
-For example:
-
-```text
-[Shorter] [Natural] [Professional] [More ▾]
-```
-
----
-
-# 15. REWRITE SHOULD USE EXISTING ANSWER AS SOURCE
-
-Do NOT rebuild the answer from the full candidate profile unless necessary.
-
-Rewrite request should contain:
-
-```text
-original answer
-rewrite instruction
-field character limit
-small job context only if needed
-```
-
-Target very low token usage.
-
-The rewrite must preserve facts.
-
----
-
-# 16. DO NOT ALLOW REWRITE TO INVENT FACTS
-
-Before accepting rewritten output, validate:
-
-- names
-- employers
-- years
-- numbers
-- technologies
-- metrics
-- degrees
-- work authorization
-- salary
-- dates
-
-If the rewrite introduces unsupported claims:
-
-reject it and preserve the original answer.
-
----
-
-# 17. CUSTOM REWRITE
-
-Add:
-
-```text
-Rewrite...
-```
-
-Then a small input:
-
-```text
-"Make this more direct and emphasize backend experience."
-```
-
-Keep this contextual.
-
-Do not require a full chat interface.
-
----
-
-# 18. EDIT-FIRST UX
-
-Users may manually edit text.
-
-Preserve their edits.
-
-If they click:
-
-```text
-Shorter
-```
-
-after manually editing:
-
-rewrite the user's latest edited version, NOT the old generated version.
-
----
-
-# PART 4 — CHARACTER-LIMIT INTELLIGENCE
-
-This should feel excellent.
-
----
-
-# 19. ALWAYS DETECT FIELD LIMITS
-
-Use:
-
-```text
-maxlength
-visible helper text
-aria descriptions
-nearby text
-question text
-```
-
-Examples:
-
-```text
-Maximum 500 characters
-Max 250 words
-Minimum 100 characters
-```
-
-Store constraint metadata with the detected field.
-
----
-
-# 20. SHOW LIVE COUNT
-
-For text answers:
-
-```text
-423 / 500 characters
-```
-
-For word-limited fields:
-
-```text
-178 / 250 words
-```
-
-Use clear states:
-
-```text
-382 / 500
-```
-
-```text
-492 / 500 — near limit
-```
-
-```text
-531 / 500 — 31 over
-```
-
----
-
-# 21. FIT TO LIMIT
-
-If the answer is too long:
-
-```text
-31 characters over
-
-[Fit to limit]
-```
-
-Do not automatically truncate.
-
-Use rewrite/compression logic.
-
-Preserve important evidence and meaning.
-
----
-
-# 22. GENERATE TO TARGET LENGTH
-
-When generating from scratch, the prompt should know:
-
-```text
-field max chars
-field max words
-desired length
-```
-
-Generate inside the target where possible.
-
-Example:
-
-```text
-Target:
-350–450 characters
-
-Hard max:
-500
-```
-
-Avoid generating 900 characters and then shortening.
-
----
-
-# 23. SMART LENGTH PRESETS
+- A software engineer applying for an AI role where SQL, NoSQL, and Docker must remain correctly categorized.
+- Different resume structures and custom headings.
+- Candidates from non-technical professions.
+- Resumes without an explicit skills section.
+- Unfamiliar skills and custom categories.
+- Job descriptions containing skills the candidate does not possess.
+- Ambiguous skills and overlapping domains.
+- Preservation of original sections and factual accuracy.
 
-For unrestricted fields:
+Tests must verify the final generated resume, not merely whether the LLM returns valid JSON.
 
-```text
-Short
-Standard
-Detailed
-```
-
-Map them to approximate output budgets.
-
-For example:
-
-```text
-Short:
-50–90 words
-
-Standard:
-100–160 words
-
-Detailed:
-180–250 words
-```
-
-Adapt by question type.
-
----
-
-# PART 5 — ONBOARDING
-
-The current onboarding requires users to understand profile sections, resume upload, extension connection, permissions, etc.
-
-Make it dramatically simpler.
-
----
-
-# 24. NEW ONBOARDING PRINCIPLE
-
-Do not ask users to manually fill a full profile before getting value.
-
-Ideal flow:
-
-```text
-Create account
-↓
-Upload resume
-↓
-Ansly extracts profile
-↓
-Review important facts
-↓
-Answer 4–6 application preferences
-↓
-Install/connect extension
-↓
-Test one example
-↓
-Ready
-```
-
----
-
-# 25. RESUME-FIRST ONBOARDING
-
-Step 1:
-
-```text
-Let's build your profile
-
-Upload your resume and Ansly will extract:
-
-✓ experience
-✓ skills
-✓ projects
-✓ education
-✓ contact details
-
-[Upload resume]
-```
-
-Then parse.
-
----
-
-# 26. PROFILE REVIEW
-
-After parsing:
-
-```text
-We found:
-
-4 experiences
-23 skills
-5 projects
-1 degree
-
-[Review profile]
-```
-
-Do not show users a giant form immediately.
-
-Use section cards.
-
----
-
-# 27. ASK ONLY WHAT A RESUME DOESN'T CONTAIN
-
-Then ask:
-
-```text
-Work authorization
-Sponsorship
-Notice period
-Relocation
-Preferred work mode
-Salary preference
-```
-
-Use quick choices.
-
----
-
-# 28. ONBOARDING PROGRESS
-
-Show:
-
-```text
-Get Ansly ready
-
-████████░░ 80%
-
-✓ Account
-✓ Resume
-✓ Profile
-✓ Preferences
-○ Connect extension
-○ Try your first answer
-```
-
-Avoid making users feel blocked.
-
----
-
-# 29. ALLOW SKIP
-
-Every non-essential onboarding step should support:
-
-```text
-Skip for now
-```
-
-Then Ask-and-Learn can collect missing information later.
-
----
-
-# 30. FIRST VALUE MOMENT
-
-After extension connection, immediately give the user something useful.
-
-Example:
-
-```text
-Try Ansly
-
-Question:
-"Why are you interested in this role?"
-
-[Generate sample answer]
-```
-
-or open the Playground preconfigured.
-
-The user should understand the product within 2–3 minutes.
-
----
-
-# PART 6 — FULL EXTENSION UI REDESIGN
-
-The extension is the core daily experience.
-
-Improve it substantially.
-
-Do not make it visually noisy.
-
----
-
-# 31. ONE GLOBAL ANSLY WIDGET
-
-Instead of many disconnected interactions, create a compact page-level widget.
-
-Example:
-
-```text
-Ansly
-
-9 fields detected
-
-5 ready instantly
-3 need AI
-1 needs information
-
-[Review & Fill]
-```
-
-Keep it collapsed by default.
-
----
-
-# 32. FIELD-LEVEL BUTTONS SHOULD BE QUIET
-
-Use a small subtle icon beside eligible fields.
-
-States:
-
-```text
-sparkle → available
-spinner → generating
-check → ready
-warning → needs review
-question → missing info
-```
-
-Avoid large floating buttons beside every field.
-
----
-
-# 33. POPOVER STRUCTURE
-
-Redesign answer popover:
-
-```text
-Ansly
-────────────────
-
-Question
-Why do you want to work here?
-
-Answer
-[editable textarea]
-
-382 / 500 characters
-
-Based on
-• Job description
-• Nizam LLC experience
-• OnTask project
-
-[Shorter] [Natural] [More ▾]
-
-[Fill answer]
-```
-
-Secondary actions:
-
-```text
-Save
-Regenerate
-Edit memory
-```
-
-Keep primary action obvious.
-
----
-
-# 34. SHOW ANSWER SOURCE
-
-Use simple status:
-
-```text
-Instant
-From your profile
-```
-
-```text
-Saved answer
-Adapted for this job
-```
-
-```text
-AI generated
-Grounded in 3 profile records
-```
-
-Do not expose internal model names by default.
-
-That belongs in debug/details.
-
----
-
-# 35. LOW CONFIDENCE UX
-
-Use clear language.
-
-Good:
-
-```text
-Review recommended
-
-Ansly found limited supporting information.
-```
-
-Bad:
-
-```text
-Confidence: 0.63
-```
-
-Users understand explanations better than model-style numbers.
-
----
-
-# 36. MISSING INFORMATION UX
-
-Inline:
-
-```text
-Ansly needs one detail
-
-How many years of Docker experience do you have?
-
-[____ years]
-
-☑ Remember this
-
-[Save & continue]
-```
-
-This is where Ask-and-Learn and Application Memory should feel seamless.
-
----
-
-# 37. FILL ALL PANEL REDESIGN
-
-Structure:
-
-```text
-Application Assistant
-
-9 questions
-
-Ready              6
-Review              2
-Need info           1
-```
-
-Then cards:
-
-```text
-✓ Work authorization
-Ready instantly
-
-✓ Python experience
-Ready instantly
-
-⚠ Why this company?
-Review recommended
-
-? Willing to relocate?
-Needs information
-```
-
----
-
-# 38. REVIEW BEFORE FILL
-
-The user should be able to:
-
-```text
-Select all ready
-```
-
-and:
-
-```text
-Review only warnings
-```
-
-Do not force users to open every good answer.
-
----
-
-# 39. FILL ALL FINAL ACTION
-
-Example:
-
-```text
-7 answers ready
-1 needs review
-1 needs info
-
-[Fill 7 ready answers]
-```
-
-After fill:
-
-```text
-7 fields filled
-
-[Undo all]
-```
-
----
-
-# 40. GENERATE REST TOGETHER
-
-Keep the successful batching UX.
-
-If multiple generative questions remain:
-
-```text
-5 longer questions remain
-
-Answer them together for faster generation.
-
-[Answer the rest together]
-```
-
-This should remain prominent.
-
----
-
-# 41. PAGE-LEVEL STATUS
-
-At the bottom/corner:
-
-```text
-Ansly
-
-✓ 8 answered
-⚠ 1 review
-? 1 missing
-
-[Open]
-```
-
-Users should always know application state.
-
 ---
 
-# 42. JOB DETECTION UI
+## Part 2: Improve New-User JSON Profile Import
 
-On a job page:
+### 1. Add a paste-or-type JSON editor
 
-```text
-Ansly found this job
+During signup or initial profile setup, users should be able to import profile information using either:
 
-Software Engineer
-Acme
+- **Upload JSON file:** Preserve existing functionality.
+- **Paste or enter JSON:** Add a multiline editor where users can type or paste their profile JSON directly.
 
-12 requirements analyzed
+Both methods must use the same parsing, validation, preview, and database-import pipeline.
 
-[Prepare application]
-```
-
-Do not immediately run expensive actions.
-
-User initiates preparation.
-
----
-
-# PART 7 — FULL USER EXPERIENCE IMPROVEMENTS
-
----
-
-# 43. CONSISTENT STATUS LANGUAGE
-
-Use the same states everywhere:
-
-```text
-Ready
-Generating
-Review
-Needs info
-Saved
-Filled
-Failed
-```
-
-Do not use different terminology between:
-
-- extension
-- web
-- resume workflow
-- playground
-
----
+Use the project's existing UI components and conventions. Reuse a suitable code editor if one already exists; otherwise, implement a lightweight, accessible editor with readable indentation and helpful error feedback.
 
-# 44. USER-FRIENDLY ERRORS
+### 2. Explain the supported JSON format
 
-Never show:
+Add a clearly accessible section such as **"View JSON format"** or **"Example JSON"** near the editor.
 
-```text
-500
-validation_error
-generation_failed
-```
+Explain:
 
-Show:
+- Supported and required fields.
+- Expected data types for each field.
+- Optional fields.
+- Supported nested objects and arrays.
+- Rules for empty, missing, and null values.
+- Handling of unknown fields.
+- Date formats and field-specific validation requirements.
 
-```text
-Ansly couldn't generate this answer.
+Generate this guidance from the actual profile schema and validation rules wherever possible. Do not invent a schema based on assumptions.
 
-Your profile information is safe.
+Provide a complete, valid example JSON object users can copy and customize.
 
-[Try again]
-```
+### 3. Support JSON data types appropriately
 
-If provider issue:
+Support the types permitted by the actual profile schema:
 
-```text
-AI service is temporarily busy.
+- Strings, such as `"name": "Alex"`.
+- Numbers, such as `"yearsExperience": 4`.
+- Booleans, such as `"activelyLooking": true`.
+- Arrays of strings, such as `"skills": ["React", "PostgreSQL"]`.
+- Nested objects, such as `"contact": {"email": "alex@example.com"}`.
+- Arrays of objects, where supported by the schema.
+- Null values only for fields where null is permitted.
 
-[Retry]
-```
+Explain that JSON does not support `undefined`, comments, trailing commas, or native date objects. Dates must follow the existing schema's expected format, typically ISO 8601 strings where applicable.
 
-If data missing:
+These examples illustrate JSON types; they do not require every user's profile to contain these exact fields.
 
-```text
-Ansly needs more information from you.
-```
+### 4. Validate before saving
 
----
+The import process should:
 
-# 45. OPTIMISTIC UI
+1. Parse the JSON and detect syntax errors.
+2. Validate the structure against the actual profile schema.
+3. Check required fields, data types, nested structures, arrays, and constraints.
+4. Display clear errors with the relevant field or JSON path.
+5. Preserve entered content when validation fails.
+6. Preview the validated profile before saving, where appropriate.
+7. Save using the existing database layer and server-side validation.
 
-When the user clicks Generate:
+Do not silently coerce invalid values or discard important fields without informing the user.
 
-popover should react instantly:
+### 5. Protect profile data
 
-```text
-Generating answer...
-```
+- Use existing authentication and authorization.
+- Only allow users to modify fields they are authorized to change.
+- Prevent imports from overwriting system-controlled fields such as user IDs, roles, permissions, or ownership.
+- Validate on the server as well as the client.
+- Handle oversized input and unexpected nested structures safely.
+- Never execute imported JSON as code.
+- Prevent accidental overwrites of existing profile information.
+- Explain whether importing merges with or replaces existing data.
 
-Do not leave the UI unchanged waiting for network response.
+### 6. Preserve compatibility
 
----
+Imported profile information must be available to the existing:
 
-# 46. SKELETONS INSTEAD OF SPINNERS WHERE USEFUL
+- Resume-tailoring pipeline.
+- Job application question-answering pipeline.
+- Profile-grounded answer generation.
+- Persistent memory feature described in Part 3.
 
-For:
+Do not require every user to have the same profile fields or resume structure.
 
-- dashboard
-- resume lists
-- tailoring review
-- application memory
+### 7. Add import tests
 
-use lightweight skeleton content.
+Test valid pasted JSON, valid uploaded JSON, malformed JSON, missing required fields, incorrect data types, invalid nested objects and array elements, optional and nullable fields, unknown fields, empty and oversized input, protected-field modification attempts, database errors, duplicate submissions, content preservation after errors, and successful import followed by profile retrieval and resume tailoring.
 
 ---
-
-# 47. PRESERVE USER WORK
 
-If user edits an answer and accidentally closes/reopens the popover:
+## Part 3: Add "Answer and Save to Memory" to the Browser Extension
 
-preserve draft locally for that field/session.
+### 1. Allow users to provide or correct answers
 
-Do not lose their edits.
+When Ansly generates an answer to a job application question in the browser extension:
 
----
+- Display the generated answer in an editable field.
+- Let the user modify it or write their own answer from scratch.
+- Add a **"Save to Memory"** button near the answer.
+- Keep saving memory separate from filling the application form.
+- Preserve the existing review, edit, and fill-on-approval workflow.
 
-# 48. LOCAL DRAFT CACHE
+Users must be able to provide and save an answer even when Ansly initially has no relevant context.
 
-Key conceptually by:
+### 2. Save reusable context
 
-```text
-job URL
-field identifier
-question hash
-```
+When the user explicitly clicks **"Save to Memory"**, save the question, the user's final answer, and relevant metadata using the existing profile and database architecture.
 
-Short-lived.
+**Example A — Salary expectations**
 
-Clear after fill or explicit discard.
+Question: "What are your salary expectations?"
 
----
+User answer: "We will discuss this in the meeting."
 
-# 49. KEYBOARD EXPERIENCE
+Ansly should remember that the user prefers this response for salary-expectation questions. It should use this preference in relevant future applications instead of inventing a salary range.
 
-Support:
+**Example B — Motivation for programming**
 
-```text
-Enter → primary action where safe
-Esc → close
-Cmd/Ctrl + Enter → Fill
-```
+Question: "Why did you start programming?"
 
-Do not interfere with text editing.
+User answer: "I started because I love programming."
 
----
+Ansly should recognize this as personal context about the user's motivation. It may use this information naturally when answering future questions about career motivation, interest in software development, or reasons for choosing programming.
 
-# 50. ACCESSIBILITY
+It must not force this context into unrelated answers.
 
-Audit:
+### 3. Distinguish memory types
 
-- focus order
-- keyboard navigation
-- aria labels
-- screen reader status
-- contrast
-- focus traps in popovers/panels
-- tooltip accessibility
+Support flexible categories such as:
 
-The shadow-DOM extension UI must remain accessible.
+- **Answer preference:** A response the user prefers for a question or topic.
+- **Personal context:** User-provided motivations, interests, and experiences.
+- **Professional context:** Skills, career goals, work preferences, and professional experience.
+- **Other context:** Useful information that does not fit existing categories.
 
----
+Use the existing data model where possible and extend it only as needed. Do not hardcode the system to the example questions.
 
-# 51. REDUCE VISUAL CLUTTER
+Infer the likely memory type from the question and answer, but allow users to review what will be saved. Preserve the original question and answer so the memory retains its meaning.
 
-Do not show:
+For example, "We will discuss this in the meeting" is primarily an answer preference for salary questions, while "I started because I love programming" is personal context.
 
-```text
-provider
-model
-tokens
-retrieval mode
-confidence numeric score
-debug IDs
-```
+### 4. Retrieve relevant memories for future answers
 
-in normal UI.
+Integrate saved memories into the existing answer-generation pipeline.
 
-Move those into:
+The process should:
 
-```text
-Details
-```
+1. Receive a new application question.
+2. Retrieve relevant profile information and saved memories.
+3. Identify applicable answer preferences, personal context, and professional facts.
+4. Generate an answer using the relevant context.
+5. Respect the user's preferences and factual information.
+6. Allow the user to review and edit the answer before filling the form.
 
-or developer diagnostics.
+Use relevance-based retrieval rather than injecting every saved memory into every prompt.
 
----
+Prioritize a saved preference when it directly matches the new question. Reuse personal context when it is relevant to differently worded questions. Do not blindly copy the original answer into every response.
 
-# 52. TRUST UI
+If context is insufficient, do not fabricate facts. Ask the user or follow the application's existing cautious-answer behavior.
 
-Make these visible:
+### 5. Give users control over memory
 
-```text
-Uses your profile only
-Never submits automatically
-Review before fill
-```
+After the user clicks "Save to Memory":
 
-Especially during onboarding and first use.
+- Confirm success only after the database confirms persistence.
+- Display useful error feedback if saving fails.
+- Prevent duplicate entries where practical.
+- Allow users to view, edit, and delete saved memories through an existing or newly implemented memory-management interface.
+- Allow users to update an existing preference without accidentally creating conflicting entries.
+- Clearly show which answer or context will be saved.
 
----
+Saving must require an explicit user action. Generating, editing, or filling an answer must not silently create persistent memory.
 
-# 53. MEMORY UX SHOULD FEEL SMART, NOT CREEPY
+### 6. Handle conflicting and outdated memories
 
-Use explicit feedback:
+Support cases where users change a preference, correct a professional detail, provide contradictory answers, or replace outdated information.
 
-```text
-Remembered because you chose "Remember this".
-```
+Update a related memory rather than accumulating conflicting records indefinitely. Do not automatically overwrite unrelated memories merely because their topics are similar.
 
-Do not silently create broad personal facts from generated text.
+If the system cannot confidently determine whether a new answer replaces an existing memory, let the user decide.
 
-Only save:
+### 7. Protect memory data
 
-- explicit user input
-- explicitly confirmed information
-- structured profile edits
+- Associate each memory with the correct authenticated user.
+- Enforce server-side authorization for reading, creating, updating, and deleting memories.
+- Prevent cross-user memory access.
+- Validate stored data.
+- Reuse existing database and API patterns.
+- Avoid storing sensitive information unnecessarily.
+- Do not infer personal facts that the user did not provide.
+- Ensure memory retrieval accesses only the current user's authorized context.
 
----
+### 8. Add memory tests
 
-# PART 8 — DATA MODEL / BACKEND FOR MEMORY
-
-Inspect current:
-
-```text
-profile_facts
-profiles
-skills
-saved_answers
-```
-
-Do not duplicate data unnecessarily.
-
-Create a clean memory abstraction around existing data if possible.
-
-If extending `profile_facts`, consider fields such as:
-
-```text
-id
-user_id
-key
-value
-value_type
-category
-scope
-company
-job_key
-source_type
-source_id
-confidence
-confirmed
-created_at
-updated_at
-last_used_at
-```
-
-Do not store raw question text unless required.
-
-Prefer normalized keys.
-
-Examples:
-
-```text
-relocation_preference
-notice_period
-years_kubernetes
-travel_willingness
-```
+Test saving new answers, saving revised answers, retrieving memories for semantically similar questions, reusing preferences appropriately, reusing personal context, avoiding irrelevant memory injection, updating preferences without conflicting duplicates, handling outdated memories, failed database writes, user isolation, explicit-consent requirements, and verifying that saved memories actually affect subsequent answer generation.
 
 ---
 
-# 54. MEMORY RESOLUTION SERVICE
+## Part 4: Make Ansly's Answer Generation Context-Aware
 
-Create one backend service/helper responsible for:
+### Problem
 
-```text
-resolve_fact(...)
-save_fact(...)
-update_fact(...)
-delete_fact(...)
-find_conflicts(...)
-```
+Currently, Ansly appears to reuse saved answers mainly when a new question closely matches the original question's wording. This limits its usefulness.
 
-Do not scatter memory resolution logic across many endpoints.
+Ansly should understand the meaning and intent of a question and use relevant information from the user's profile, resume, projects, work experience, and saved context to generate a personalized answer—even when the wording differs or the question asks about related experiences.
 
----
+**The objective is not simply to retrieve an old answer. It is to retrieve relevant evidence and use it to generate a better answer for the new question.**
 
-# 55. MEMORY PRECEDENCE
+### 1. Build unified context retrieval
 
-Implement explicit precedence.
+Before generating an answer, retrieve relevant information from all available sources:
 
-Suggested:
+- **Saved memories:** User-approved facts, preferences, motivations, and previous answers.
+- **Resume content:** Work experience, responsibilities, achievements, education, and skills.
+- **Profile data:** Career goals, preferred roles, experience level, work preferences, and other supplied information.
+- **Project information:** Project descriptions, technologies, responsibilities, implementation details, and supported accomplishments.
+- **Previous answers:** Relevant user-provided or user-approved answers, including their underlying factual context and preferences.
+- **Current workflow context:** Relevant information available from the current conversation or application session.
 
-```text
-explicit current profile field
->
-explicit confirmed memory
->
-structured skill/experience evidence
->
-saved answer
->
-generated answer
-```
+Use only sources that actually exist and are accessible to the current user. Do not assume every user has every type of information.
 
-Generated answers should NEVER automatically become factual memory.
+Avoid maintaining separate, disconnected versions of the user's profile and memory when the existing architecture can provide a unified retrieval layer.
 
----
+### 2. Retrieve by meaning, not exact wording
 
-# 56. MEMORY INVALIDATION
+Replace or improve exact-question matching as the primary retrieval mechanism.
 
-When the user changes:
+The system should identify the intent behind a question and retrieve relevant information even when the wording differs.
 
-```text
-profile
-skill
-experience
-preference
-```
+For example, if the user previously saved:
 
-invalidate or mark conflicting learned memory as superseded where appropriate.
+Question: "Why did you start programming?"
 
----
+Answer: "I started because I love programming."
 
-# PART 9 — ANALYTICS
+Ansly should recognize that this information may also help answer:
 
-Track only non-sensitive product events.
+- "What attracted you to software development?"
+- "Why did you choose a career in technology?"
+- "What motivates you as a developer?"
+- "Why are you passionate about programming?"
 
-Examples:
+Generate a response appropriate to each question rather than requiring an exact match or blindly repeating the original answer.
 
-```text
-ask_and_learn_shown
-ask_and_learn_completed
-memory_fact_saved
-memory_fact_edited
-memory_fact_deleted
-rewrite_used
-fit_to_limit_used
-answer_filled
-fill_all_completed
-undo_used
-```
+These questions are not necessarily interchangeable. Use the context only when it genuinely helps answer the new question.
 
-Do NOT store answer/question text.
+### 3. Combine multiple relevant sources
 
----
+Do not generate answers from memory alone. Combine the most relevant information from the resume, projects, work experience, profile, saved memories, and previous user-confirmed answers.
 
-# 57. UX SUCCESS METRICS
+**Example**
 
-Track:
+A user's profile contains:
 
-```text
-% answers resolved without generation
-% missing-info prompts completed
-% missing-info prompts abandoned
-% learned facts reused
-% rewrites vs regenerations
-% answers filled without editing
-% answers edited before fill
-% Fill All completion
-% undo rate
-```
+- Resume: Full Stack Engineer with Next.js and PostgreSQL experience.
+- Project: OnTask, a work execution and collaboration platform.
+- Project details: Designed database schemas and implemented backend logic.
+- Saved personal context: "I enjoy solving practical problems through programming."
 
-Important:
+Question: "Tell us about a project where you solved a challenging technical problem."
 
-```text
-regeneration rate
-```
+Ansly should retrieve the relevant project details and generate a coherent, evidence-based answer.
 
-should go DOWN if rewrite controls improve UX.
+It may include the user's motivation if relevant, but must not invent a specific challenge, outcome, metric, or achievement that is not supported by the available information.
 
----
+If the profile lacks details about the actual challenge, ask the user for more information or generate a cautious answer from the verified facts available.
 
-# 58. ONBOARDING METRICS
+### 4. Separate facts from preferences and inferences
 
-Track:
+Distinguish between:
 
-```text
-signup → resume uploaded
-signup → profile ready
-signup → extension connected
-signup → first answer
-signup → first Fill All
-```
+- **Factual evidence:** What the user did, built, learned, achieved, or experienced.
+- **Personal context:** Motivations, interests, values, and career goals.
+- **Answer preferences:** Responses the user prefers for specific topics.
+- **Context-specific instructions:** Preferences that apply only to a particular application, employer, or question.
+- **Unverified inference:** Information suggested by the model but not confirmed by the user.
 
-Measure drop-off.
+Use factual evidence to answer experience questions, personal context to personalize motivation questions, and answer preferences for matching topics.
 
-Do not just count signups.
+A previously generated answer must not automatically become a verified fact merely because Ansly generated it. Use it as factual evidence only when supported by the user's profile or confirmed by the user.
 
----
+### 5. Implement relevance-based context assembly
 
-# PART 10 — IMPLEMENTATION ORDER
+Before generating a response:
 
-Do this incrementally.
+1. Understand the question's intent and expected answer type.
+2. Extract its key concepts and requirements.
+3. Search the user's accessible profile, resume, projects, experience, saved memories, and relevant previous answers.
+4. Rank retrieved information by semantic relevance, factual reliability, specificity, and recency where appropriate.
+5. Resolve conflicts conservatively.
+6. Assemble a concise context containing only useful information.
+7. Generate an answer that directly addresses the question.
+8. Validate factual claims against retrieved evidence.
+9. Return the answer through the existing review, edit, and fill workflow.
 
-## P0 — Core memory
+Use the existing architecture and technologies wherever practical. If current retrieval relies only on exact string matching, improve it with semantic matching and structured retrieval.
 
-1. Audit `profile_facts` and Ask-and-Learn
-2. Create memory resolver
-3. Add scopes/provenance/conflict handling
-4. Add Application Memory page
-5. Connect memory directly to deterministic answers
+Embeddings or a vector database may be appropriate if the existing system cannot reliably find relevant context, but evaluate the current architecture, data volume, cost, latency, and maintenance burden before adding infrastructure. For small profiles, structured filtering and semantic similarity may be sufficient.
 
-## P0 — Ask-and-Learn
+### 6. Generate better answers, not just retrieve text
 
-6. Redesign inline missing-info form
-7. Support multiple missing facts
-8. Save and automatically retry
-9. Add "Remember this" behavior
-10. Add inline memory editing
+Generated answers should:
 
-## P0 — Extension UX
+- Directly address the current question.
+- Use specific evidence from the user's actual experience.
+- Combine related information when it improves the answer.
+- Avoid irrelevant details and unnecessary repetition.
+- Adapt tone, length, and structure to the question and application.
+- Sound natural rather than like copied profile fields.
+- Preserve factual meaning and stated preferences.
+- Avoid repeating the same project or introduction in every answer unless relevant.
 
-11. Redesign answer popover
-12. Redesign Fill All panel
-13. Add page-level status widget
-14. Simplify field-level buttons
-15. Add clear Ready / Review / Need info states
+### 7. Handle missing information intelligently
 
-## P1 — Rewrite controls
+When relevant context is unavailable:
 
-16. Add Shorter/Natural/Professional/etc.
-17. Add custom rewrite
-18. Preserve manual edits
-19. Validate rewritten facts
-20. Reduce full regenerations
+- Do not invent experience, accomplishments, motivations, or qualifications.
+- Use related verified evidence only when it genuinely supports the answer.
+- Ask the user for additional information when it is essential.
+- If the workflow requires an immediate answer, provide a cautious response based on supported facts.
 
-## P1 — Character limits
+When the user supplies new information and explicitly saves it to memory, make it available for relevant future answers.
 
-21. Detect char/word limits
-22. Add live counts
-23. Add Fit to limit
-24. Pass limits into initial generation
+### 8. Resolve conflicting sources
 
-## P1 — Onboarding
+When information from the resume, profile, memories, and previous answers conflicts:
 
-25. Resume-first setup
-26. Parsed profile review
-27. Ask only missing preferences
-28. Add setup checklist
-29. Connect extension
-30. Give first-value example
+- Prefer explicit, recent user corrections over older information.
+- Treat user-confirmed facts as stronger evidence than AI-generated inferences.
+- Do not silently combine contradictory dates, roles, skills, or achievements.
+- Ask for clarification when a material contradiction cannot be resolved.
+- Keep answer preferences separate from factual claims.
 
-## P2 — UX polish
+### 9. Test context retrieval and generation
 
-31. Local draft preservation
-32. Keyboard shortcuts
-33. Accessibility audit
-34. Better errors
-35. Loading skeletons
-36. Consistent status language
+Include tests for:
 
----
+- Exact repeats of previously answered questions.
+- Semantically equivalent questions with different wording.
+- Motivation questions answered using saved personal context.
+- Project questions answered using resume and project details together.
+- Experience questions combining multiple relevant, verified facts.
+- Questions that should use a saved answer preference.
+- Questions where a saved memory is irrelevant and must not be included.
+- Missing context that requires clarification.
+- Conflicting resume and memory information.
+- AI-generated previous answers containing unsupported information.
+- Different professions, profile structures, and amounts of stored data.
+- Users with no saved memories but useful resume or project information.
 
-# PART 11 — TESTING
-
-Add tests for:
-
-## Memory
-
-- save global fact
-- save job-scoped fact
-- profile overrides memory
-- conflict detection
-- delete fact
-- edit fact
-- stale fact behavior
-- fact reuse
-- no cross-user access
-
-## Ask-and-Learn
-
-- one missing fact
-- several missing facts
-- save and retry
-- skip
-- invalid value
-- field limit
-- skill = none
-
-## Rewrite
-
-- shorter
-- more natural
-- professional
-- custom rewrite
-- preserves facts
-- rejects invented numbers
-- respects character limit
-- uses latest edited text
-
-## Extension
-
-- popover states
-- Fill All states
-- undo
-- missing info
-- memory edit
-- draft preservation
-- keyboard navigation
-
-## Onboarding
-
-- resume upload
-- parse success
-- parse failure
-- skip
-- extension connection
-- setup completion
+Evaluate both retrieval quality and final answer quality. A successful response must be relevant, grounded, and accurate—not merely technically successful.
 
 ---
-
-# PART 12 — FINAL REPORT
-
-When complete, report:
-
-## Ask-and-Learn
 
-Before:
-...
+## Part 5: Integration, Security, Testing, and Delivery
 
-After:
-...
+### 1. Inspect the existing architecture first
 
-## Application Memory
+Before coding, inspect:
 
-Data model:
-...
+- Repository structure and conventions.
+- Browser extension UI and question-answering flow.
+- Profile schema and database models.
+- JSON import and onboarding components.
+- Resume parsing and tailoring services.
+- LLM prompts, provider integrations, and validation.
+- Authentication, API authorization, and persistence.
+- Memory retrieval and answer-generation services.
+- Existing tests and CI checks.
 
-Resolution precedence:
-...
+Identify the root causes and provide a concise implementation plan before making changes.
 
-Conflict behavior:
-...
+### 2. Integrate all features
 
-## Rewrite
+All four improvements must work together:
 
-Old:
-full regeneration
+- JSON-imported information must become available to profile retrieval and answer generation.
+- Saved memories must persist across sessions and be available to future relevant questions.
+- Resume tailoring must use supported profile evidence without inventing qualifications.
+- Context-aware answer generation must use relevant information from the user's resume, projects, experience, profile, and memories.
+- Memory retrieval must use the same user's authorized information and respect user preferences.
+- Existing browser-extension review/edit/fill behavior must remain functional.
 
-New:
-lightweight transformation
+Do not create disconnected profile systems, duplicate memory databases, or parallel import pipelines if the existing architecture can be extended safely.
 
-Token/latency impact:
-...
+### 3. Preserve existing functionality
 
-## Character limits
+- Keep existing JSON file uploads working.
+- Avoid unnecessary redesigns of onboarding or the extension.
+- Preserve existing authentication and authorization.
+- Maintain compatibility with saved resumes and existing profile records.
+- Keep the UI accessible and responsive.
+- Follow existing coding, logging, error-handling, and security conventions.
+- Avoid unrelated refactoring.
 
-Detection coverage:
-...
+### 4. Implement and verify
 
-Generation behavior:
-...
+Complete the work rather than returning recommendations or pseudocode.
 
-## Onboarding
+1. Identify the root causes.
+2. Implement the fixes.
+3. Add database migrations or schema changes only where necessary.
+4. Add automated tests for all corrected and new behavior.
+5. Run relevant tests, linting, type checks, and build commands.
+6. Fix regressions caused by the changes.
+7. Review security, authorization, backward compatibility, and error handling.
 
-Old steps:
-...
+At completion, report:
 
-New steps:
-...
+- Root causes identified.
+- Features implemented.
+- Files changed.
+- Database or migration changes.
+- Tests and checks executed, with their actual results.
+- Any remaining limitations or work that could not be completed.
 
-## Extension UI
+## Final Principles
 
-List every major visual/interaction change.
+Ansly must:
 
-## UX metrics
-
-List events and success metrics.
-
-## Tests
-
-List test/build/typecheck results.
-
-## Remaining gaps
-
-Be specific.
-
----
+- Adapt to each user's actual resume, profile, profession, and skills.
+- Categorize skills correctly and preserve factual accuracy.
+- Allow users to import profile information using either a JSON file or pasted JSON.
+- Learn additional context only through explicit user-approved memory actions.
+- Reuse relevant memories across semantically related questions.
+- Combine resume evidence, projects, work experience, profile information, and confirmed answers to generate better responses.
+- Avoid hallucinating qualifications, inventing achievements, or forcing irrelevant context into answers.
+- Protect user data and preserve user control over saved information.
 
-# PRIMARY SUCCESS CRITERIA
-
-The phase succeeds if:
-
-1. Missing information can be answered inline without leaving the job page.
-2. New facts are saved only when the user explicitly confirms them.
-3. Application Memory has clear provenance and scope.
-4. Memory conflicts never silently produce incorrect answers.
-5. Structured profile always has clear precedence.
-6. Users can edit/delete memory.
-7. Similar future questions reuse memory automatically.
-8. Rewrite controls replace many full regenerations.
-9. Rewrite preserves factual grounding.
-10. Character-limited fields are handled intelligently.
-11. Onboarding is resume-first and significantly shorter.
-12. The extension feels like one cohesive assistant rather than scattered buttons.
-13. Ready / Review / Need info states are consistent everywhere.
-14. User edits are not accidentally lost.
-15. No automatic submission is introduced.
-16. Privacy and RLS remain intact.
-17. Normal UI hides technical implementation details.
-18. Ansly feels faster, calmer, and more trustworthy.
-
-The guiding product principle is:
-
-**Ansly should know what it knows, clearly ask when it doesn't know, remember only what the user explicitly teaches it, and make every future application easier because of that learning.**
-
-Start by inspecting the current Ask-and-Learn, profile facts, popover, Fill All, onboarding, and profile architecture.
-
-Then implement this plan incrementally without breaking existing answer generation or resume tailoring.
+**Success means that Ansly understands the candidate's background and uses it intelligently to answer new questions—not that it simply finds an old answer when the wording matches.**

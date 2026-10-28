@@ -25,3 +25,4 @@ supabase/.temp/
 
 # End-to-end test credentials
 .env.e2e
+documents/improvement.md
