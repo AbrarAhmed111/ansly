@@ -14,18 +14,31 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from src.app.answers.classifier import classify_question
 from src.app.answers.profile_context import invalidate_profile_cache
 from src.app.api.deps import get_rest
 from src.app.core.auth import AuthUser, get_current_user
 from src.app.core.concurrency import gather_all
+from src.app.core.token_budget import job_key
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.memory import service as memory
-from src.app.memory.keys import FACT_KEYS, GROUPS, PROFILE_FIELD_KEYS, display, group_for, label_for, to_profile
+from src.app.memory.keys import (
+    CATEGORY_GROUPS,
+    FACT_KEYS,
+    GROUPS,
+    INTENT_KEYS,
+    PROFILE_FIELD_KEYS,
+    display,
+    group_for,
+    label_for,
+    to_profile,
+)
 from src.app.schemas.memory import (
     MemoryConflict,
     MemoryItem,
     MemoryResponse,
     ResolveConflictRequest,
+    SaveMemoryRequest,
     UpdateMemoryRequest,
 )
 
@@ -141,6 +154,41 @@ async def list_memory(user: AuthUser = Depends(get_current_user),
             "conflicts": len(conflicts),
         },
     )
+
+
+@router.post("", response_model=MemoryItem, response_model_by_alias=True, status_code=status.HTTP_201_CREATED,
+             summary="Save an answer the user explicitly approved as Application Memory")
+async def save_memory(request: SaveMemoryRequest, user: AuthUser = Depends(get_current_user),
+                      rest: SupabaseRest = Depends(get_rest)) -> MemoryItem:
+    question = request.question.strip()
+    answer = request.answer.strip()
+    if not question or not answer:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Question and answer must not be empty.")
+
+    analysis = classify_question(question)
+    key = INTENT_KEYS.get(analysis.intent) if analysis.category == "logistics" else None
+    category = analysis.intent if analysis.intent in CATEGORY_GROUPS else analysis.category
+    spec = FACT_KEYS.get(key or "")
+    scope = spec.default_scope if spec else "global"
+    job = request.job_context
+    source_label = " · ".join(value for value in (job.company, job.role) if value) if job else None
+    scoped_job_key = job_key(job.url, job.company, job.role) if job else None
+    try:
+        facts = await rest.select("profile_facts", {"limit": "500"})
+        row = await memory.save_fact(
+            rest, value=answer, key=key, prompt=question, category=category, scope=scope,
+            company=job.company if job else None, job_key=scoped_job_key if scope == "job" else None,
+            source_type="ask_and_learn", source_label=source_label, existing=facts,
+        )
+    except ValueError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    except SupabaseError as e:
+        raise _supabase(e) from e
+    finally:
+        invalidate_profile_cache(user.id)
+    item = _fact_item(row)
+    await _event(rest, "memory_fact_saved", item.group)
+    return item
 
 
 async def _update_profile_field(rest: SupabaseRest, user: AuthUser, field: str, value: str) -> MemoryItem:
