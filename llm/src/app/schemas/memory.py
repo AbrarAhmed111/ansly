@@ -7,7 +7,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .answers import MemoryScope
+from .answers import JobContext, MemoryScope
 
 MemorySourceType = Literal["profile", "skills", "ask_and_learn", "web", "onboarding", "memory_edit"]
 MemoryStatus = Literal["active", "outdated", "superseded"]
@@ -57,6 +57,12 @@ class MemoryResponse(_Out):
     conflicts: List[MemoryConflict]
     groups: List[str]
     counts: Dict[str, int]
+
+
+class SaveMemoryRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=1000)
+    answer: str = Field(min_length=1, max_length=5000)
+    job_context: Optional[JobContext] = None
 
 
 class UpdateMemoryRequest(BaseModel):
