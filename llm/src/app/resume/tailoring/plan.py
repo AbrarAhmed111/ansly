@@ -37,7 +37,7 @@ SYSTEM_PROMPT = """You tailor a candidate's resume to a job with a few controlle
 
 Operations (no others):
 - reorder: move an item (experience, project, skills group, education, achievement, certification) to "position" (0 = top).
-- emphasize: section "skills"; "values" = existing skills to move first (only skills in the resume or EVIDENCE).
+- emphasize: section "skills"; "values" = skills already in the resume to move first. Do not add skills to a group.
 - rewrite_bullet: reword one bullet ("item" + "bulletId") to foreground a capability the evidence supports; "text" = new bullet.
 - align_terms: as rewrite_bullet, but only swaps in the job's wording for what the bullet already says.
 - add_bullet: one new bullet on an existing experience or project ("item"; optional "position") when evidence about that same job or project shows something relevant no bullet covers; cite only that item's evidence.
