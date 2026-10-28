@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 
 from src.app.answers.profile_context import canonicalize
 from src.app.resume.matching.evidence import EvidenceCorpus
-from src.app.schemas.resume import ResumeBullet, ResumeSkillGroup, StructuredResume
+from src.app.schemas.resume import ResumeBullet, StructuredResume
 from src.app.schemas.tailoring import TailoringChange, TailoringPlan
 
 ITEM_SECTIONS = {
@@ -154,16 +154,10 @@ def apply_plan(source: StructuredResume, plan: TailoringPlan, corpus: EvidenceCo
                     group.items.remove(existing)
                     group.items.insert(0, existing)
                     moved.insert(0, existing)
-                elif corpus.has_term(value):
-                    if not resume.skills:
-                        resume.skills.append(ResumeSkillGroup(id="skills_tailored", label=None, items=[]))
-                    _, target = _find(resume.skills, change.item)
-                    (target or resume.skills[0]).items.insert(0, value.strip()[:100])
-                    moved.insert(0, value.strip())
             if moved:
                 result.applied.append(AppliedChange(change, label=", ".join(moved)))
             else:
-                reject(change, "None of the skills to emphasize are in your evidence.")
+                reject(change, "Only skills already in a resume skill group can be emphasized.")
 
         elif action == "select":
             if section not in REMOVABLE_ITEM_SECTIONS or not change.values:
