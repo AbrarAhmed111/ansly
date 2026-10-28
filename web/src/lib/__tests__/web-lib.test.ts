@@ -1,6 +1,11 @@
 import { profileCompleteness, type FullProfile } from '@ansly/types'
 import seed from '../../../../supabase/seed/profile.seed.json'
-import { planImport } from '../profile-import'
+import {
+  MAX_PROFILE_IMPORT_BYTES,
+  parseImportJson,
+  planImport,
+  PROFILE_IMPORT_EXAMPLE,
+} from '../profile-import'
 import { companyKey, fileStem, linesToBullets, masterPath, resumeFileProblem, stepState, wordDiff } from '../resume'
 import { safeNext } from '../safe-next'
 import { sectionBySlug, toFormValues, toRow, type Row } from '../sections'
@@ -97,6 +102,58 @@ describe('planImport', () => {
     expect(plan.rows.find((r) => r.table === 'projects')!.rows).toHaveLength(3)
     // Experiences need real titles before they can be imported.
     expect(plan.errors.filter((e) => e.startsWith('Experience'))).toHaveLength(2)
+  })
+
+  it('accepts a complete example and validates its nested structures and JSON types', () => {
+    const plan = planImport(PROFILE_IMPORT_EXAMPLE)
+    expect(plan.errors).toEqual([])
+    expect(plan.rows.find((row) => row.table === 'experiences')?.rows[0]).toMatchObject({
+      highlights: ['Improved the weekly reporting process'],
+      is_current: true,
+      end_date: null,
+    })
+    expect(plan.rows.find((row) => row.table === 'skills')?.rows[0]).toMatchObject({
+      name: 'Process improvement',
+      years: 3,
+      category: 'other',
+    })
+  })
+
+  it('skips invalid rows instead of coercing invalid JSON values', () => {
+    const plan = planImport({
+      profile: { requires_sponsorship: 'false' },
+      experiences: [{ title: 'Coordinator', company: 'Northstar', is_current: 'false', highlights: 'An array' }],
+      skills: [{ name: 'Planning', years: '4' }],
+    })
+    expect(plan.profile).toBeNull()
+    expect(plan.rows.find((row) => row.table === 'experiences')?.rows).toEqual([])
+    expect(plan.rows.find((row) => row.table === 'skills')?.rows).toEqual([])
+    expect(plan.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining('Profile.requires_sponsorship'),
+      expect.stringContaining('Experience #1.is_current'),
+      expect.stringContaining('Experience #1.highlights'),
+      expect.stringContaining('Skills #1.years'),
+    ]))
+  })
+
+  it('reports ignored protected and unknown fields', () => {
+    const plan = planImport({
+      profile: { full_name: 'Alex Morgan', id: 'other-user', mystery: 'value' },
+      skills: [{ name: 'Planning', user_id: 'other-user', category: 'other' }],
+    })
+    expect(plan.profile).toEqual({ full_name: 'Alex Morgan' })
+    expect(plan.rows.find((row) => row.table === 'skills')?.rows[0]).not.toHaveProperty('user_id')
+    expect(plan.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('system-controlled fields were ignored: id'),
+      expect.stringContaining('unknown fields were ignored: mystery'),
+      expect.stringContaining('system-controlled fields were ignored: user_id'),
+    ]))
+  })
+
+  it('validates JSON syntax and rejects an array root', () => {
+    expect(() => parseImportJson('{bad json')).toThrow('Could not parse JSON')
+    expect(planImport([]).errors).toContain('The JSON root must be an object.')
+    expect(() => parseImportJson('x'.repeat(MAX_PROFILE_IMPORT_BYTES + 1))).toThrow('1 MB or smaller')
   })
 })
 
