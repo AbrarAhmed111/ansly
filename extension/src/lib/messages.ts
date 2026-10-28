@@ -19,6 +19,8 @@ import type {
   SaveMissingResponse,
   AnswerResponse,
   CreateSavedAnswerRequest,
+  SaveMemoryRequest,
+  MemoryItem,
   ExtensionSession,
   GenerateAnswerRequest,
   MatchSavedAnswerResponse,
@@ -26,7 +28,6 @@ import type {
   RegenerateAnswerRequest,
   RewriteRequest,
   RewriteResponse,
-  MemoryItem,
   UpdateMemoryRequest,
   SavedAnswer,
   TrackEventRequest,
@@ -63,6 +64,7 @@ export interface RequestMap {
   regenerate: { payload: RegenerateAnswerRequest; response: AnswerResponse }
   matchSaved: { payload: { question: string }; response: MatchSavedAnswerResponse }
   saveAnswer: { payload: CreateSavedAnswerRequest; response: SavedAnswer }
+  saveMemory: { payload: SaveMemoryRequest; response: MemoryItem }
   useSaved: { payload: { id: string }; response: SavedAnswer }
   track: { payload: TrackEventRequest; response: null }
   getConnection: { payload: null; response: ConnectionState }
