@@ -23,6 +23,7 @@ const apiUrl = env('WXT_API_URL') || 'http://localhost:8000'
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   srcDir: 'src',
+  publicDir: 'src/public',
   // Keep the dev server off port 3000, which belongs to the web app (Next.js).
   dev: { server: { port: 3100, origin: 'http://localhost:3100' } },
   modules: ['@wxt-dev/module-react'],
