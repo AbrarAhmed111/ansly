@@ -312,6 +312,24 @@ def test_rewrite_text_goes_into_the_main_run_not_a_bold_lead_in():
         [r[0] for r in runs(p)] == ["Migrated the billing service to new APIs."]
 
 
+def test_new_title_stays_in_the_bold_title_run_and_leaves_the_tagline_alone():
+    source = master()
+    source.contact.headline = "Full Stack Developer - React, Node, AWS"
+    final = source.model_copy(deep=True)
+    final.contact.headline = "Backend Engineer - React, Node, AWS"
+    package = DocxPackage(resume_docx(source))
+    p = next(p for p in paragraphs(package.body) if visible_text(p) == source.contact.headline)
+    for r in list(p.iter(w("r"))):
+        p.remove(r)
+    # The file spells the tagline a little differently from the parsed resume (an en dash, lowercase "aws").
+    p.append(etree.fromstring(f'<w:r xmlns:w="{w("x")[1:-2]}"><w:rPr><w:b/></w:rPr><w:t>Full Stack Developer</w:t></w:r>'))
+    p.append(etree.fromstring(f'<w:r xmlns:w="{w("x")[1:-2]}"><w:t xml:space="preserve"> – React, Node, aws</w:t></w:r>'))
+    result = tailor_docx(package.to_bytes(), source, final)
+    title = para_with(result.content, "Backend Engineer")
+    assert [(t, b"<w:b" in props) for t, props in runs(title)] == [("Backend Engineer", True),
+                                                                    (" – React, Node, aws", False)]
+
+
 def test_clone_without_a_span_keeps_the_paragraph_and_run_formatting():
     template = para_with(resume_docx(master()), "Improved page load")
     clone = clone_paragraph(template, None, "New bullet.")
