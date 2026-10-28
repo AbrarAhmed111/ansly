@@ -217,7 +217,7 @@ async def save_fact(
     row = {
         "key": key,
         "category": (category or (spec.group if spec else None) or "general")[:50],
-        "prompt": (label_for(key, prompt) or text)[:1000],
+        "prompt": (prompt or label_for(key, None) or text)[:1000],
         "answer": text[:5000],
         "value_type": spec.input if spec and spec.input in ("text", "boolean", "number", "choice") else "text",
         "scope": scope,
