@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { explainNoJob, extractJob, jobKey, peekJob } from '../job/detect'
-import { BLOG_POST, CAREER_PAGE, GREENHOUSE_JSON_LD, INDEED, LINKEDIN_SEARCH, LINKEDIN_VIEW, SHORT_POSTING } from './job-fixtures'
+import {
+  BLOG_POST,
+  CAREER_PAGE,
+  GREENHOUSE_JSON_LD,
+  INDEED,
+  LINKEDIN_SEARCH,
+  LINKEDIN_VIEW,
+  SHORT_POSTING,
+  UNUSUAL_CLASS_JOB,
+  WORK_AT_A_STARTUP,
+} from './job-fixtures'
 
 function load(fixture: { html: string }) {
   document.head.innerHTML = ''
@@ -16,6 +26,8 @@ describe('peekJob', () => {
     ['Indeed split view', INDEED, { title: 'Backend Developer', company: 'Fabrikam', source: 'indeed' }],
     ['JSON-LD career page', GREENHOUSE_JSON_LD, { title: 'Data Engineer', company: 'Example Corp', source: 'json-ld' }],
     ['generic career page', CAREER_PAGE, { title: 'Senior Product Designer', company: 'Litware', source: 'generic' }],
+    ['Work at a Startup', WORK_AT_A_STARTUP, { title: 'Forward Deployed Engineer', company: 'Aktoria Robotics', source: 'generic' }],
+    ['unusual job markup', UNUSUAL_CLASS_JOB, { title: 'Platform Engineer', company: 'Northstar', source: 'generic' }],
   ])('%s', (_name, fixture, expected) => {
     const job = peekJob(load(fixture), fixture.url)
     expect(job).toMatchObject(expected)
@@ -55,6 +67,67 @@ describe('extractJob', () => {
     expect(result.job).toMatchObject({ location: 'Berlin, DE', employmentType: 'full time', source: 'json-ld' })
     expect(result.job.description).toContain('Responsibilities\n')
     expect(result.job.description).not.toContain('<li>')
+  })
+
+  it('extracts nested Work at a Startup content and labeled job details without navigation text', () => {
+    const result = extractJob(load(WORK_AT_A_STARTUP), WORK_AT_A_STARTUP.url)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.job).toMatchObject({
+      company: 'Aktoria Robotics',
+      title: 'Forward Deployed Engineer',
+      location: 'Noida, India',
+      employmentType: 'Full-time',
+    })
+    expect(result.job.description).toContain('₹12–20 LPA')
+    expect(result.job.description).toContain('Lead customer calls and product demos.')
+    expect(result.job.description).toContain('Python and Linux.')
+    expect(result.job.description).not.toContain('Companies')
+    expect(result.job.description).not.toContain('irrelevant decoration')
+    expect(result.job.description).not.toContain('Apply')
+  })
+
+  it('uses semantic containers when classes do not identify the job description', () => {
+    const result = extractJob(load(UNUSUAL_CLASS_JOB), UNUSUAL_CLASS_JOB.url)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.job.company).toBe('Northstar')
+    expect(result.job.description).toContain('incident response experience')
+  })
+
+  it('refreshes a listing when its description is populated after initial render', () => {
+    const doc = load(UNUSUAL_CLASS_JOB)
+    const key = jobKey(doc, UNUSUAL_CLASS_JOB.url)
+    const first = extractJob(doc, UNUSUAL_CLASS_JOB.url)
+    doc.querySelector('main article section')!.innerHTML =
+      `<h2>Responsibilities</h2><p>${'Build platform services for product teams. '.repeat(6)}</p><h2>Requirements</h2><p>Python and Linux.</p>`
+    const second = extractJob(doc, UNUSUAL_CLASS_JOB.url)
+    expect(first.ok && first.job.description).toContain('internal services')
+    expect(second.ok && second.job.description).toContain('platform services')
+    expect(jobKey(doc, UNUSUAL_CLASS_JOB.url)).toBe(key)
+  })
+
+  it('does not reuse stale JSON-LD when the visible single-page listing changes', () => {
+    const doc = load({
+      html: `<title>Old Engineer - Old Company</title>
+        <script type="application/ld+json">${JSON.stringify({
+          '@type': 'JobPosting',
+          title: 'Old Engineer',
+          hiringOrganization: { name: 'Old Company' },
+          description: `Responsibilities: ${'Build services and support customers. '.repeat(8)}`,
+        })}</script>
+        <h1>Data Engineer</h1><div data-testid="company-name">New Company</div>
+        <main><article><h2>Responsibilities</h2><p>${'Build data pipelines and maintain analytics services. '.repeat(8)}</p>
+        <h2>Requirements</h2><p>SQL and Python.</p></article></main>`,
+    })
+    expect(peekJob(doc, 'https://jobs.example.com/123')).toMatchObject({
+      title: 'Data Engineer',
+      company: 'New Company',
+      source: 'generic',
+    })
+    const extracted = extractJob(doc, 'https://jobs.example.com/123')
+    expect(extracted.ok && extracted.job.description).toContain('data pipelines')
+    expect(extracted.ok && extracted.job.description).not.toContain('support customers')
   })
 
   it('refuses a description that is too short, keeping what it found for the paste fallback', () => {
