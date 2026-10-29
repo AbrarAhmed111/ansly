@@ -61,15 +61,18 @@ to Supabase.
 
 ## Job listings and application messages
 
-Resume tailoring uses the existing JSON-LD and Indeed / LinkedIn paths first,
-then a generic visible-content heuristic for compatible job pages. It ignores
-hidden content and page controls. Description extraction runs locally to check
-the offer, and the description is sent only after you choose **Tailor resume**.
+Resume tailoring uses the existing JSON-LD and Indeed / LinkedIn / Work at a
+Startup paths first, then a generic visible-content heuristic for compatible
+job pages. The Work at a Startup adapter reads the role, company, and
+technology sections by their headings, and falls back to generic extraction if
+the role section is unavailable. It ignores hidden content and page controls.
+Description extraction runs locally to check the offer, and the description is
+sent only after you choose **Tailor resume**.
 The same generic description is available to answer generation when job
 descriptions are enabled (cover and motivation letters include it
-automatically). A Work at a Startup-style fixture exercises the generic path;
-the automated tests use representative markup rather than a live-site
-integration.
+automatically). Automated tests use both a generic Work at a Startup-style
+fixture and representative markup from an actual listing, rather than a
+live-site integration.
 
 Conversational prompts such as **“Start a conversation with the team”** use the
 normal answer engine and profile retrieval. The draft uses verified profile
