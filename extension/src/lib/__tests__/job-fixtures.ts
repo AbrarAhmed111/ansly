@@ -91,3 +91,39 @@ export const SHORT_POSTING = {
     description: 'Apply now.',
   })}</script>`,
 }
+
+const STARTUP_DESCRIPTION = `
+  <h2>About the role</h2>
+  <p>As a Forward Deployed Engineer, you will work directly with customers from discovery through deployment.</p>
+  <h3>Responsibilities</h3>
+  <ul><li>Lead customer calls and product demos.</li><li>Deploy, debug, and support production systems.</li></ul>
+  <h3>Requirements</h3>
+  <ul><li>Build with Python and Linux.</li><li>Communicate clearly in English and own work end to end.</li></ul>
+  <p>Compensation: ₹12–20 LPA. We build robotics software for warehouse operations.</p>`
+
+export const WORK_AT_A_STARTUP = {
+  url: 'https://workatastartup.com/companies/aktoria/jobs/forward-deployed-engineer',
+  html: `
+<title>Forward Deployed Engineer at Aktoria Robotics | Work at a Startup</title>
+<meta property="og:site_name" content="Work at a Startup">
+<nav><a>Jobs</a><a>Companies</a><button>Apply</button></nav>
+<main><article>
+  <h1>Forward Deployed Engineer</h1>
+  <div data-testid="company-name"><span>Aktoria Robotics</span></div>
+  <dl><dt>Location</dt><dd>Noida, India</dd><dt>Employment type</dt><dd>Full-time</dd></dl>
+  <section class="f3a1"><div><div>${STARTUP_DESCRIPTION}</div></div></section>
+  <svg aria-hidden="true"><text>irrelevant decoration</text></svg>
+</article></main>`,
+}
+
+export const UNUSUAL_CLASS_JOB = {
+  url: 'https://careers.example.com/openings/17',
+  html: `
+<title>Platform Engineer - Northstar</title>
+<main><article><h1>Platform Engineer</h1>
+  <section><h2>What you'll do</h2>
+    <p>${'Build and operate reliable internal services for product teams. '.repeat(5)}</p>
+    <h2>What we're looking for</h2><p>Python, Linux, and incident response experience.</p>
+  </section>
+</article></main>`,
+}
