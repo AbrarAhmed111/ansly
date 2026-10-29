@@ -73,11 +73,20 @@ export function looksLikeJobText(text: string): boolean {
 export function pageJobTitle(doc: Document): { title: string; company: string } {
   const h1 = doc.querySelector('h1')
   const heading = h1 ? cleanText(visibleText(h1)) : ''
+  const headingCompanyElement = h1?.querySelector<HTMLAnchorElement>('a[href*="/companies/"]')
+  const headingCompany = headingCompanyElement ? cleanText(visibleText(headingCompanyElement)) : ''
+  const headingTitle = headingCompany
+    ? heading.replace(new RegExp(`\\s+at\\s+${headingCompany.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*\\([^)]*\\))?$`, 'i'), '')
+    : heading
   const parsed = parseTitle(meta(doc, 'og:title') ?? doc.title)
-  const usableHeading = heading && heading.length < 120 && !NOT_A_ROLE.test(heading)
-  const title = usableHeading ? heading : (parsed.role ?? '')
+  const usableHeading = headingTitle && headingTitle.length < 120 && !NOT_A_ROLE.test(headingTitle)
+  const title = usableHeading ? headingTitle : (parsed.role ?? '')
   const site = meta(doc, 'og:site_name')
-  const company = pageCompany(doc) || parsed.company || (site && !/^(careers?|jobs?|work at a startup)$/i.test(site) ? site : '')
+  const company =
+    pageCompany(doc) ||
+    headingCompany ||
+    parsed.company ||
+    (site && !/^(careers?|jobs?|work at a startup)$/i.test(site) ? site : '')
   return { title: cleanText(title), company: cleanText(company).replace(/\s+(careers?|jobs?|hiring)$/i, '') }
 }
 
