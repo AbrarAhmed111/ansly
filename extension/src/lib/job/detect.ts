@@ -6,9 +6,9 @@
  *   3. Generic heuristic (role title + long description block)
  *   4. Manual fallback: paste the description in the web app
  *
- * `peekJob` runs locally to decide whether to offer the card (title and company
- * only; nothing is sent). `extractJob` reads the description and runs only
- * after the user clicks Tailor Resume. There is no crawling.
+ * `peekJob` reads only the local title and company. `extractJob` reads the
+ * description locally to check the offer and when the user clicks Tailor
+ * Resume; nothing is sent until the user asks to tailor. There is no crawling.
  */
 
 import type { JobPosting } from '@ansly/types'
@@ -18,7 +18,7 @@ import { DESCRIPTION_SELECTORS, MIN_DESCRIPTION_CHARS, fromGeneric, jobSignals, 
 import { fromJsonLd, largestDescriptionBlock } from './json-ld'
 import type { DetectedJob } from './types'
 
-export { MIN_DESCRIPTION_CHARS }
+export { DESCRIPTION_SELECTORS, MIN_DESCRIPTION_CHARS }
 export type { DetectedJob }
 
 const DESCRIPTION_MAX = 20_000
@@ -32,10 +32,25 @@ function detect(doc: Document, url: URL, withDescription: boolean): DetectedJob 
   const siteJob = fromLinkedIn(doc, url, withDescription) ?? fromIndeed(doc, url, withDescription)
   const ld = fromJsonLd(doc, withDescription)
   if (ld) {
-    // JSON-LD can be stale in single-page apps; the site adapter wins if it names a different job.
-    if (siteJob && siteJob.title !== ld.title) return siteJob
+    // JSON-LD can be stale in single-page apps; a site adapter wins if it names a different job.
+    if (
+      siteJob &&
+      (siteJob.title !== ld.title || (siteJob.company && ld.company && siteJob.company !== ld.company))
+    ) return siteJob
+    const page = pageJobTitle(doc)
+    if (
+      (!siteJob || (siteJob.title === ld.title && siteJob.company === ld.company)) &&
+      ((page.title && page.title !== ld.title) || (page.company && ld.company && page.company !== ld.company))
+    ) {
+      return fromGeneric(doc, withDescription) ?? null
+    }
     if (withDescription && !ld.description && siteJob?.description) return { ...ld, description: siteJob.description }
-    return ld
+    return {
+      ...ld,
+      company: ld.company || siteJob?.company || page.company,
+      location: ld.location ?? siteJob?.location ?? null,
+      employmentType: ld.employmentType ?? siteJob?.employmentType ?? null,
+    }
   }
   if (siteJob) return siteJob
   if (ADAPTER_SITES.test(url.hostname)) {
@@ -95,9 +110,9 @@ export function jobKey(doc: Document, href = doc.defaultView?.location.href ?? '
   const job = peekJob(doc, href)
   if (!job) return null
   try {
-    return `${jobUrl(new URL(href))}|${job.title}`
+    return JSON.stringify([jobUrl(new URL(href)), job.title, job.company, job.location])
   } catch {
-    return job.title
+    return JSON.stringify([job.title, job.company, job.location])
   }
 }
 
