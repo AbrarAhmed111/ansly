@@ -3,7 +3,8 @@
  * the most reliable source (structured, written by the employer).
  */
 
-import { cleanText, visibleText } from '../detection/question'
+import { cleanText } from '../detection/question'
+import { largestJobDescriptionBlock } from './dom'
 import type { DetectedJob } from './types'
 
 export interface JobPostingLd {
@@ -85,11 +86,5 @@ export function fromJsonLd(doc: Document, withDescription: boolean): DetectedJob
 
 /** The largest text block that looks like a job description (not a form). */
 export function largestDescriptionBlock(doc: Document, selectors: string): string {
-  let best = ''
-  doc.querySelectorAll<HTMLElement>(selectors).forEach((el) => {
-    if (el.querySelector('form, input, textarea')) return
-    const text = visibleText(el)
-    if (text.length > best.length) best = text
-  })
-  return best
+  return largestJobDescriptionBlock(doc, selectors)
 }
