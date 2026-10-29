@@ -38,7 +38,19 @@ Return only a JSON object: {"answers": [one object per question, in order, each 
 
 INTENT_HINTS: Dict[str, str] = {
     "motivation_role": "Connect specific parts of the candidate's real experience to what this role involves.",
-    "motivation_company": "Connect the candidate's real experience to what the company does, using only the job context for facts about the company.",
+    "motivation_company": (
+        "Connect the candidate's real experience to the company's actual product or work only when JOB CONTEXT "
+        "provides those facts. If it does not, focus on the role and relevant evidence; do not invent a reason for "
+        "company-specific interest."
+    ),
+    "conversational_intro": (
+        "Write a concise, natural first-person note to the hiring team, usually 80-150 words (shorter when the field "
+        "is short). Respond to the prompt's invitation selectively: introduce the candidate through the most relevant "
+        "verified work, connect it to the role, and mention career goals only if the profile or saved facts state them. "
+        "Refer to the company's product or mission only when JOB CONTEXT actually describes it. If company details are "
+        "missing, focus on the role and the candidate's relevant evidence. Avoid generic praise, a resume-style list, "
+        "and claims of personal motivation that the evidence does not support."
+    ),
     "favorite_project": "Pick one project and say what it is, what the candidate did, and why it stands out.",
     "technical_challenge": "Describe one concrete technical problem from the profile, what the candidate did, and the outcome. Use situation, action, result if the profile has enough detail.",
     "challenge": "Use one concrete situation from the profile (situation, action, result). If the profile has no such situation, report insufficient information.",
