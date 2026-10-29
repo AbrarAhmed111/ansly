@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extractJobContext, isCoverLetter, parseTitle } from '../job-context'
+import { WORK_AT_A_STARTUP } from './job-fixtures'
 
 function page(head: string, body = '') {
   document.head.innerHTML = head
@@ -73,6 +74,31 @@ describe('extractJobContext', () => {
     const long = 'Responsibilities include building things. '.repeat(10)
     page('<title>Acme - Engineer</title>', `<div class="job-description">${long}</div><form class="description"><textarea></textarea></form>`)
     expect(extractJobContext(document, { includeDescription: true }).description?.trim()).toBe(long.trim())
+  })
+
+  it('shares generic job extraction with application-answer context on Work at a Startup', () => {
+    page('', WORK_AT_A_STARTUP.html)
+    document.title = document.querySelector('title')?.textContent ?? ''
+    const context = extractJobContext(document, { includeDescription: true })
+    expect(context).toMatchObject({ company: 'Aktoria Robotics', role: 'Forward Deployed Engineer' })
+    expect(context.description).toContain('Lead customer calls and product demos.')
+    expect(context.description).toContain('Python and Linux.')
+    expect(context.description).not.toContain('Companies')
+  })
+
+  it('prefers the visible job identity over stale JSON-LD from a previous SPA listing', () => {
+    page(
+      `<script type="application/ld+json">${JSON.stringify({
+        '@type': 'JobPosting',
+        title: 'Old Engineer',
+        hiringOrganization: { name: 'Old Company' },
+      })}</script>`,
+      '<h1>Data Engineer</h1><div data-testid="company-name">New Company</div>',
+    )
+    expect(extractJobContext(document, { includeDescription: false })).toMatchObject({
+      company: 'New Company',
+      role: 'Data Engineer',
+    })
   })
 
   it('url drops the query string', () => {
