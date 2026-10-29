@@ -54,6 +54,11 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("behavioral", "challenge", [r"\b(?:tell (?:us|me) about|describe|share|give (?:us|me)? ?an example of) a (?:time|situation|moment)\b", r"\bchalleng\w*\b", r"\bunder pressure\b", r"\btight deadline\b"]),
     ("project", "favorite_project", [r"\bproject\b.*\b(?:proud|favou?rite|enjoy\w*|love\w*|best|most)\b", r"\b(?:proud|favou?rite|enjoy\w*|love\w*|best|most)\b.*\bproject\b", r"\bproud of\b"]),
     ("project", "project", [r"\bprojects?\b", r"\b(?:something|anything) you(?:'ve| have)? built\b", r"\bside project\b", r"\bportfolio\b"]),
+    ("about_me", "conversational_intro", [
+        r"\bstart (?:a |the )?conversation\b",
+        r"\b(?:send|write|leave|share) (?:a |an )?(?:short )?(?:introductory )?(?:message|note) to (?:the )?(?:hiring )?team\b",
+        r"\b(?:share|tell us) something about yourself\b.*\b(?:looking for|interests? you|why)\b",
+    ]),
     ("motivation", "motivation_company", [r"\bwhy (?:do you want to |would you like to )?(?:work|join)\b.*\b(?:us|here|company|team)\b", r"\bwhy (?:do you want to|would you like to) (?:work (?:at|for|with)|join)\b", r"\bwhy (?:us|our company)\b", r"\bwhat (?:do you know|interests you) about (?:us|our|the company)\b"]),
     ("motivation", "motivation_role", [
         r"\bwhy (?:are you|do you|would you)\b.*\b(?:interest\w*|want|apply\w*|excit\w*|attract\w*)\b",
