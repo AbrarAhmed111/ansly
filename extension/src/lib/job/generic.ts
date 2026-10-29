@@ -7,12 +7,11 @@
  */
 
 import { cleanText, visibleText } from '../detection/question'
-import { parseTitle } from '../job-context'
-import { largestDescriptionBlock } from './json-ld'
+import { largestJobDescriptionBlock, JOB_DESCRIPTION_SELECTORS, visibleJobText } from './dom'
+import { parseTitle } from './title'
 import type { DetectedJob } from './types'
 
-export const DESCRIPTION_SELECTORS =
-  '[id*="description" i], [class*="description" i], [data-testid*="description" i], [class*="job-details" i], [id*="job-details" i], [class*="jobDetails" i], [class*="posting" i], [class*="job-content" i], [class*="jobcontent" i], article, main, [role="main"]'
+export const DESCRIPTION_SELECTORS = JOB_DESCRIPTION_SELECTORS
 
 /** Phrases a job description almost always has. */
 const JOB_SIGNALS =
@@ -25,6 +24,39 @@ const NOT_A_ROLE = /^(apply|application|job application|careers?|jobs?|home|sign
 
 const meta = (doc: Document, name: string) =>
   doc.querySelector<HTMLMetaElement>(`meta[property="${name}"], meta[name="${name}"]`)?.content?.trim() || null
+
+function pageCompany(doc: Document): string {
+  const selectors = [
+    '[itemprop="hiringOrganization"] [itemprop="name"]',
+    '[itemprop="hiringOrganization"]',
+    '[data-testid*="company" i]',
+    '[data-automation-id*="company" i]',
+    '[class*="company-name" i]',
+    '[class*="companyName" i]',
+    '[class*="employer-name" i]',
+  ]
+  for (const selector of selectors) {
+    const element = doc.querySelector<HTMLElement>(selector)
+    const text = element ? cleanText(visibleText(element)) : ''
+    if (text && text.length <= 200) return text
+  }
+  return ''
+}
+
+function pageField(doc: Document, selectors: string[], label: RegExp): string | null {
+  for (const selector of selectors) {
+    const element = doc.querySelector<HTMLElement>(selector)
+    const text = element ? cleanText(visibleJobText(element)) : ''
+    if (text && text.length <= 300) return text
+  }
+  for (const term of doc.querySelectorAll('dt, th')) {
+    if (!label.test(cleanText(visibleText(term)))) continue
+    const value = term.nextElementSibling
+    const text = value ? cleanText(visibleJobText(value)) : ''
+    if (text && text.length <= 300) return text
+  }
+  return null
+}
 
 export const MIN_DESCRIPTION_CHARS = 200
 
@@ -43,9 +75,9 @@ export function pageJobTitle(doc: Document): { title: string; company: string } 
   const heading = h1 ? cleanText(visibleText(h1)) : ''
   const parsed = parseTitle(meta(doc, 'og:title') ?? doc.title)
   const usableHeading = heading && heading.length < 120 && !NOT_A_ROLE.test(heading)
-  const title = usableHeading && (ROLE_WORDS.test(heading) || !parsed.role) ? heading : (parsed.role ?? '')
+  const title = usableHeading ? heading : (parsed.role ?? '')
   const site = meta(doc, 'og:site_name')
-  const company = site && !/^(careers?|jobs?)$/i.test(site) ? site : (parsed.company ?? '')
+  const company = pageCompany(doc) || parsed.company || (site && !/^(careers?|jobs?|work at a startup)$/i.test(site) ? site : '')
   return { title: cleanText(title), company: cleanText(company).replace(/\s+(careers?|jobs?|hiring)$/i, '') }
 }
 
@@ -56,15 +88,23 @@ export function pageJobTitle(doc: Document): { title: string; company: string } 
 export function fromGeneric(doc: Document, withDescription: boolean, selectors = DESCRIPTION_SELECTORS): DetectedJob | null {
   const { title, company } = pageJobTitle(doc)
   if (!title) return null
-  const description = largestDescriptionBlock(doc, selectors)
+  const description = largestJobDescriptionBlock(doc, selectors)
   if (description.length < MIN_DESCRIPTION_CHARS) return null
   const signals = jobSignals(description)
   if (!(signals >= 3 || (signals >= 1 && ROLE_WORDS.test(title)))) return null
   return {
     title: title.slice(0, 300),
     company,
-    location: null,
-    employmentType: null,
+    location: pageField(
+      doc,
+      ['[itemprop="jobLocation"]', '[data-testid*="location" i]', '[class*="job-location" i]', '[class*="location" i]'],
+      /\b(location|workplace|office)\b/i,
+    ),
+    employmentType: pageField(
+      doc,
+      ['[itemprop="employmentType"]', '[data-testid*="employment" i]', '[class*="employment-type" i]', '[class*="employmentType" i]'],
+      /\b(employment|job) type\b/i,
+    ),
     description: withDescription ? description : '',
     source: 'generic',
   }
