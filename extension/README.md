@@ -25,7 +25,8 @@ src/
     detection/             Typed field detection (no per-site rules): open/short text, profile, choices, numbers, ignored
     fill.ts                Filling that React & rich editors notice; choices; undo snapshots
     diagnostics.ts         Sanitized detection report (no values) for "Copy diagnostics"
-    job-context.ts         Company / role / (opt-in) description from the page
+    job/                   JSON-LD, Indeed / LinkedIn adapters, and generic visible job-description extraction
+    job-context.ts         Company / role / shared (opt-in) description for answer generation
     api.ts, session.ts     Background-only: API calls and the extension's own Supabase session
     settings.ts            Synced settings (on/off, length/tone defaults, review/overwrite, debug, analytics, theme)
 ```
@@ -58,6 +59,29 @@ your password there signs the extension into its own Supabase session, which
 the page hands over through `web-bridge.content.ts`. The password is sent only
 to Supabase.
 
+## Job listings and application messages
+
+Resume tailoring uses the existing JSON-LD and Indeed / LinkedIn paths first,
+then a generic visible-content heuristic for compatible job pages. It ignores
+hidden content and page controls. Description extraction runs locally to check
+the offer, and the description is sent only after you choose **Tailor resume**.
+The same generic description is available to answer generation when job
+descriptions are enabled (cover and motivation letters include it
+automatically). A Work at a Startup-style fixture exercises the generic path;
+the automated tests use representative markup rather than a live-site
+integration.
+
+Conversational prompts such as **“Start a conversation with the team”** use the
+normal answer engine and profile retrieval. The draft uses verified profile
+evidence, is editable, and is never sent or submitted automatically.
+
+To manually test the generic job path, enable Ansly for a Work at a Startup
+listing, open a listing with a substantial description, and use **Tailor
+resume**. Confirm that the company, role, and description match the page before
+reviewing the preview. To test a conversational prompt, enable job descriptions
+if you want role details included, open an application with a “Start a
+conversation” field, generate a draft, and review/edit it before filling.
+
 ## Privacy
 
 - Ansly runs only on sites you enabled (or the page you scanned).
@@ -68,7 +92,8 @@ to Supabase.
 - Gender, race, veteran and disability questions are never answered.
 - A generate request contains the question, the field's character limit, and
   the company/role from the page. The job description is sent only if you turn
-  on **Use job descriptions**.
+  on **Use job descriptions**, except for cover and motivation letters, which
+  need it to be tailored to the job.
 - The extension never sends what you type into forms and never submits. Fill all
   looks at fields locally only to skip ones you've filled and to undo its own fills.
 
