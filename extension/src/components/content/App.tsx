@@ -8,6 +8,8 @@ import { hasValue } from '@/lib/fill'
 import { isOnScreen, sparklePosition, type Box } from '@/lib/geometry'
 import { extractJobContext, isCoverLetter } from '@/lib/job-context'
 import { explainNoJob, extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
+import { DESCRIPTION_SELECTORS } from '@/lib/job/generic'
+import { JOB_DESCRIPTION_CONTENT_SELECTORS } from '@/lib/job/dom'
 import { detectLimits } from '@/lib/limits'
 import { send, type TabMessage } from '@/lib/messages'
 import { firstTailorOffer, type Settings } from '@/lib/settings'
@@ -32,7 +34,7 @@ function useJobPage(active: boolean, debug = false): { key: string; job: Detecte
     }
     let signature = ''
     let attempts = 0
-    const check = () => {
+    const check = (fromMutation = false) => {
       // A hidden tab can wait: the check runs again when it is shown.
       if (document.hidden) return
       const next = `${window.location.href}|${document.title}`
@@ -40,6 +42,7 @@ function useJobPage(active: boolean, debug = false): { key: string; job: Detecte
         signature = next
         attempts = 0
       }
+      if (fromMutation) attempts = 0
       if (attempts >= JOB_CHECK_ATTEMPTS) return
       attempts++
       const job = peekJob(document)
@@ -52,10 +55,45 @@ function useJobPage(active: boolean, debug = false): { key: string; job: Detecte
     }
     check()
     const timer = setInterval(check, JOB_CHECK_MS)
-    document.addEventListener('visibilitychange', check)
+    let mutationTimer: number | undefined
+    let lastMutationCheck = 0
+    const observer = new MutationObserver((records) => {
+      const relevant = records.some((record) => {
+        const target = record.target instanceof Element ? record.target : record.target.parentElement
+        if (!target) return false
+        if (target.tagName === 'TITLE' || target.tagName === 'HEAD') return true
+        if (target.closest('form, nav, header, footer, aside, button, [role="dialog"], ansly-root')) return false
+        if (target.matches(JOB_DESCRIPTION_CONTENT_SELECTORS) || target.closest(JOB_DESCRIPTION_CONTENT_SELECTORS)) return true
+        if (record.type !== 'attributes' && target.closest('main, article, [role="main"]')) return true
+        return [...record.addedNodes].some(
+          (node) =>
+            node instanceof Element &&
+            !node.matches('form, nav, header, footer, aside, button') &&
+            (node.matches(DESCRIPTION_SELECTORS) || Boolean(node.querySelector(DESCRIPTION_SELECTORS)) || (node.textContent?.length ?? 0) >= 200),
+        )
+      })
+      if (!relevant || mutationTimer !== undefined) return
+      const delay = Math.max(400, 1000 - (Date.now() - lastMutationCheck))
+      mutationTimer = window.setTimeout(() => {
+        mutationTimer = undefined
+        lastMutationCheck = Date.now()
+        check(true)
+      }, delay)
+    })
+    observer.observe(document.documentElement, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'hidden', 'aria-hidden', 'style'],
+    })
+    const onVisibility = () => check()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       clearInterval(timer)
-      document.removeEventListener('visibilitychange', check)
+      observer.disconnect()
+      if (mutationTimer !== undefined) clearTimeout(mutationTimer)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [active, debug])
   return page
@@ -181,7 +219,7 @@ export function App({ host, initialSettings, subscribe }: {
   const enabled = settings.enabled
   const settingsRef = useRef(settings)
   // The stored job for this page once the user tailored to it, so answers count toward that application's tokens.
-  const jobContextIdRef = useRef<{ url: string; id: string } | null>(null)
+  const jobContextIdRef = useRef<{ url: string; key: string; id: string } | null>(null)
   settingsRef.current = settings
   const allRef = useRef(all)
   allRef.current = all
@@ -261,7 +299,8 @@ export function App({ host, initialSettings, subscribe }: {
         includeDescription: settingsRef.current.useJobDescription || questions.some(isCoverLetter),
       })
       const stored = jobContextIdRef.current
-      return stored && stored.url === location.href ? { ...context, id: stored.id } : context
+      const key = jobKey(document)
+      return stored && stored.url === location.href && stored.key === key ? { ...context, id: stored.id } : context
     },
     [],
   )
@@ -458,7 +497,7 @@ export function App({ host, initialSettings, subscribe }: {
             stacked={detected.length > 0}
             autoOpen={autoOpen[jobPage.key]}
             onDismiss={() => setDismissedJobs((s) => new Set(s).add(jobPage.key))}
-            onJobContextId={(id) => (jobContextIdRef.current = { url: location.href, id })}
+            onJobContextId={(id) => (jobContextIdRef.current = { url: location.href, key: jobPage.key, id })}
           />
         </div>
       )}
