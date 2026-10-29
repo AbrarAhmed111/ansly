@@ -2,7 +2,7 @@
  * Job-page detection for resume tailoring.
  *
  *   1. schema.org JobPosting JSON-LD
- *   2. Site adapters: LinkedIn, Indeed
+ *   2. Site adapters: LinkedIn, Indeed, Work at a Startup
  *   3. Generic heuristic (role title + long description block)
  *   4. Manual fallback: paste the description in the web app
  *
@@ -14,6 +14,7 @@
 import type { JobPosting } from '@ansly/types'
 import { indeedJobUrl, fromIndeed, isIndeedJob } from './adapters/indeed'
 import { fromLinkedIn, isLinkedInJob, linkedInJobUrl } from './adapters/linkedin'
+import { fromWorkAtAStartup, isWorkAtAStartupJob } from './adapters/work-at-a-startup'
 import { DESCRIPTION_SELECTORS, MIN_DESCRIPTION_CHARS, fromGeneric, jobSignals, pageJobTitle } from './generic'
 import { fromJsonLd, largestDescriptionBlock } from './json-ld'
 import type { DetectedJob } from './types'
@@ -29,7 +30,10 @@ const BOARD_DESCRIPTIONS =
   '#job-details, [class*="jobs-description" i], [class*="job-details" i], #jobDescriptionText, [id*="jobDescription" i], [class*="jobsearch-jobDescription" i], [class*="description" i]'
 
 function detect(doc: Document, url: URL, withDescription: boolean): DetectedJob | null {
-  const siteJob = fromLinkedIn(doc, url, withDescription) ?? fromIndeed(doc, url, withDescription)
+  const siteJob =
+    fromLinkedIn(doc, url, withDescription) ??
+    fromIndeed(doc, url, withDescription) ??
+    (isWorkAtAStartupJob(url) ? fromWorkAtAStartup(doc, withDescription) : null)
   const ld = fromJsonLd(doc, withDescription)
   if (ld) {
     // JSON-LD can be stale in single-page apps; a site adapter wins if it names a different job.
