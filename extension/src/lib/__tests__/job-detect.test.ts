@@ -10,6 +10,7 @@ import {
   SHORT_POSTING,
   UNUSUAL_CLASS_JOB,
   WORK_AT_A_STARTUP,
+  WORK_AT_A_STARTUP_ACTUAL,
 } from './job-fixtures'
 
 function load(fixture: { html: string }) {
@@ -27,6 +28,7 @@ describe('peekJob', () => {
     ['JSON-LD career page', GREENHOUSE_JSON_LD, { title: 'Data Engineer', company: 'Example Corp', source: 'json-ld' }],
     ['generic career page', CAREER_PAGE, { title: 'Senior Product Designer', company: 'Litware', source: 'generic' }],
     ['Work at a Startup', WORK_AT_A_STARTUP, { title: 'Forward Deployed Engineer', company: 'Aktoria Robotics', source: 'generic' }],
+    ['Work at a Startup listing markup', WORK_AT_A_STARTUP_ACTUAL, { title: 'Forward Deployed Engineer', company: 'Aktoria Robotics', source: 'generic' }],
     ['unusual job markup', UNUSUAL_CLASS_JOB, { title: 'Platform Engineer', company: 'Northstar', source: 'generic' }],
   ])('%s', (_name, fixture, expected) => {
     const job = peekJob(load(fixture), fixture.url)
@@ -85,6 +87,40 @@ describe('extractJob', () => {
     expect(result.job.description).not.toContain('Companies')
     expect(result.job.description).not.toContain('irrelevant decoration')
     expect(result.job.description).not.toContain('Apply')
+  })
+
+  it('extracts the role section and keeps company and technology context separate on Work at a Startup', () => {
+    const result = extractJob(load(WORK_AT_A_STARTUP_ACTUAL), WORK_AT_A_STARTUP_ACTUAL.url)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.job).toMatchObject({
+      company: 'Aktoria Robotics',
+      title: 'Forward Deployed Engineer',
+    })
+    expect(result.job.description).toContain('About the role')
+    expect(result.job.description).toContain('Take customer calls and run demos')
+    expect(result.job.description).toContain('Set up and support customer deployments')
+    expect(result.job.description).toContain('Strong Python and Linux skills')
+    expect(result.job.description).toContain('Ownership from first call to resolution')
+    expect(result.job.description).toContain('About Aktoria Robotics')
+    expect(result.job.description).toContain('Aktoria builds remote teleoperation software for robots')
+    expect(result.job.description).toContain('Technology')
+    expect(result.job.description).toContain('Low-latency, high-fidelity data streaming')
+    expect(result.job.description).not.toContain('(S26)')
+    expect(result.job.description).not.toContain('US citizenship/visa not required')
+  })
+
+  it('falls back to generic extraction when the Work at a Startup role section is missing', () => {
+    const fixture = {
+      ...WORK_AT_A_STARTUP_ACTUAL,
+      html: WORK_AT_A_STARTUP_ACTUAL.html.replace('About the role', 'Responsibilities'),
+    }
+    const result = extractJob(load(fixture), fixture.url)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.job.title).toBe('Forward Deployed Engineer')
+    expect(result.job.company).toBe('Aktoria Robotics')
+    expect(result.job.description).toContain('Take customer calls and run demos')
   })
 
   it('uses semantic containers when classes do not identify the job description', () => {
