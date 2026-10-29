@@ -116,6 +116,61 @@ export const WORK_AT_A_STARTUP = {
 </article></main>`,
 }
 
+export const WORK_AT_A_STARTUP_ACTUAL = {
+  url: 'https://www.workatastartup.com/jobs/110498',
+  html: `
+<title>Forward Deployed Engineer at Aktoria Robotics | Work at a Startup</title>
+<main>
+  <div class="my-3 rounded-md border border-gray-300 bg-beige-lighter p-3 sm:pr-5">
+    <h1>Forward Deployed Engineer at <a href="/companies/aktoria-robotics">Aktoria Robotics</a><span>(S26)</span></h1>
+    <div><span>₹1.2M - ₹2M INR</span></div>
+    <div>Noida, UP, IN / Noida, Uttar Pradesh, IN</div>
+    <div><span>Full-time</span><span>US citizenship/visa not required</span></div>
+    <div class="mt-5 border-t border-gray-300 pt-4">
+      <span class="text-xl">About Aktoria Robotics</span>
+      <div class="prose prose-p:mb-2 mt-2 max-w-none">
+        <p>Aktoria builds remote teleoperation software for robots. A remote operator can run a robot anywhere in the world as if standing right next to it. Our product is what makes deployed robots useful today.</p>
+      </div>
+    </div>
+    <div class="mt-3 border-t border-gray-300 pt-4">
+      <span class="text-xl">About the role</span>
+      <div class="prose prose-p:mb-2 mt-2 max-w-none">
+        <p>We're hiring an engineer who enjoys working with customers.</p>
+        <p><strong>What you'll do</strong></p>
+        <p>- Take customer calls and run demos</p>
+        <p>- Set up and support customer deployments</p>
+        <p>- Debug technical issues end to end</p>
+        <p>- Follow up with customers and keep things moving</p>
+        <p><strong>What you need</strong></p>
+        <p>- 1-3 years in an engineering role</p>
+        <p>- Strong Python and Linux skills</p>
+        <p>- Clear, confident communication in English</p>
+        <p>- Ownership from first call to resolution</p>
+        <p><strong>Nice to have</strong></p>
+        <p>- Robotics experience</p>
+        <p>- Customer-facing or startup experience</p>
+        <p><strong>Details</strong></p>
+        <p>- Noida, on-site, full-time</p>
+        <p>- Some evening overlap with US time zones</p>
+        <p>- ₹12-20 LPA</p>
+      </div>
+    </div>
+    <div class="mt-3 border-t border-gray-300 pt-4">
+      <span class="text-xl">Technology</span>
+      <div class="prose prose-p:mb-2 mt-2 max-w-none">
+        <p>Remote teleoperation of robots over the public internet. Core problems:</p>
+        <ul>
+          <li>Remote operations over unreliable networks.</li>
+          <li>Low-latency, high-fidelity data streaming for high telepresence.</li>
+          <li>A custom transport and networking stack built for real-time control.</li>
+          <li>Supporting different robots and hardware in the field, over varying connections.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</main>`,
+}
+
 export const UNUSUAL_CLASS_JOB = {
   url: 'https://careers.example.com/openings/17',
   html: `
