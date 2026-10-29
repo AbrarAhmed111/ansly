@@ -23,6 +23,8 @@ from tests.fakes import FakeRest
 @pytest.mark.parametrize("question,category,intent,skills", [
     ("Why are you interested in this position?", "motivation", "motivation_role", []),
     ("Why do you want to work at Example AI?", "motivation", "motivation_company", []),
+    ("Start a conversation with the team at Stacksync. Share something about you, what you're looking for, or why Stacksync interests you.", "about_me", "conversational_intro", []),
+    ("Why do you want to work here?", "motivation", "motivation_company", []),
     ("Tell us about a project you're proud of.", "project", "favorite_project", []),
     ("What's the project you've enjoyed building most?", "project", "favorite_project", []),
     ("Tell us about a technically challenging project you worked on.", "project", "technical_challenge", []),
@@ -104,6 +106,30 @@ def test_prompt_separates_job_context_from_profile():
     assert message.index("JOB CONTEXT") < message.index("CANDIDATE EVIDENCE")
     assert "at most 500 characters" in message
     assert "Use CANDIDATE EVIDENCE for candidate claims" in SYSTEM_PROMPT
+
+
+def test_conversational_intro_prompt_is_personal_concise_and_grounded():
+    question = (
+        "Start a conversation with the team at Stacksync. Share something about you, what you're looking for, "
+        "or why Stacksync interests you."
+    )
+    analysis = classify_question(question)
+    ctx = build_context(FakeRest().tables | {"profile": FakeRest().tables["profiles"][0]}, analysis)
+    message = build_user_message(
+        analysis,
+        ctx,
+        JobContext(company="Stacksync", role="Forward Deployed Engineer", description="Customer deployments and debugging."),
+        FieldContext(kind="textarea", max_length=900),
+    )
+    assert "Write a concise, natural first-person note to the hiring team" in message
+    assert "80-150 words" in message
+    assert "career goals only if the profile or saved facts state them" in message
+    assert "Refer to the company's product or mission only when JOB CONTEXT actually describes it" in message
+
+
+def test_company_motivation_does_not_invent_company_research_when_context_is_missing():
+    message = _message("Why do you want to work at Example?")
+    assert "do not invent a reason for company-specific interest" in message
 
 
 def _domain_context(question, updates=None):
@@ -341,6 +367,29 @@ async def test_engine_answers_with_resolved_sources():
     assert [(s.type, s.id, s.label) for s in response.used_sources] == [
         ("project", "p1", "TaskFlow"), ("experience", "e1", "Software Engineer at Acme Labs")]
     assert (response.category, response.provider) == ("project", "Mock")
+
+
+@pytest.mark.asyncio
+async def test_engine_sends_conversational_intro_with_matching_job_and_profile_context():
+    gateway = _gateway_returning({
+        "status": "answered",
+        "answer": "I built TaskFlow, and that product-building experience connects to the Forward Deployed Engineer role at Stacksync.",
+        "confidence": "medium",
+        "usedSources": ["P1"],
+        "missingInformation": None,
+    })
+    question = "Start a conversation with the team at Stacksync. Share something about you or why Stacksync interests you."
+    job = JobContext(company="Stacksync", role="Forward Deployed Engineer", description="Customer deployments and debugging.")
+    response = await AnswerEngine(gateway).answer(
+        FakeRest(),
+        GenerateAnswerRequest(question=question, job_context=job),
+    )
+    prompt = gateway.generate.await_args.kwargs["messages"][0]["content"]
+    assert response.intent == "conversational_intro"
+    assert all(term in response.answer for term in ("TaskFlow", "Forward Deployed Engineer", "Stacksync"))
+    assert all(term in prompt for term in ("Stacksync", "Forward Deployed Engineer", "Customer deployments and debugging."))
+    assert "TaskFlow" in prompt
+    assert "customer communication" not in response.answer
 
 
 @pytest.mark.asyncio
