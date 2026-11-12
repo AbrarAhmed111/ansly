@@ -132,6 +132,9 @@ class Validator:
                                section=section, item=item.id, attempted=b.text)
 
     def headline(self) -> None:
+        if not any(a.change.action == "update_headline" for a in self.applied):
+            self.resume.contact.headline = self.source.contact.headline
+            return
         self.resume.contact.headline = fit_headline(
             self.source.contact.headline, self.resume.contact.headline,
             self.analysis.role if self.analysis else None, [e.title for e in self.source.experience],
@@ -232,6 +235,8 @@ class Validator:
 
     def rewritten_text(self) -> None:
         for tc in self.text_changes():
+            if tc.change and tc.change.user_confirmed:
+                continue
             # Traceability: a rewrite rests on evidence that exists; a new bullet on evidence about its own item.
             cited = [i for i in (tc.change.evidence_ids if tc.change else []) if self.corpus.has(i)]
             if tc.added and tc.change:
@@ -276,10 +281,17 @@ class Validator:
 
     def skills(self) -> None:
         source_skills = {canonicalize(s): (g.id, s) for g in self.source.skills for s in g.items}
+        confirmed_skills = {
+            canonicalize(a.change.text or "")
+            for a in self.applied
+            if a.change.action == "add_skill" and a.change.user_confirmed
+        }
         for group in self.resume.skills:
             for skill in list(group.items):
                 c = canonicalize(skill)
                 if c in source_skills and c not in self.corpus.declined:
+                    continue
+                if c in confirmed_skills:
                     continue
                 if c not in source_skills and self.corpus.has_term(skill):
                     continue
