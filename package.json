@@ -2,7 +2,7 @@
   "name": "ansly",
   "version": "0.1.0",
   "private": true,
-  "description": "AI job application assistant — browser extension, web app, and FastAPI answer engine",
+  "description": "AI job search workspace for discovering jobs, organizing leads, tailoring resumes, and preparing truthful application answers",
   "packageManager": "pnpm@10.34.6",
   "scripts": {
     "dev": "turbo run dev",
