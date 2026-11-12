@@ -6,7 +6,7 @@
 import type { JobAnalysis, JobSource } from './job'
 import type { MatchAnalysis } from './matching'
 import type { ResumeFileType, ResumeParseStatus, StructuredResume } from './resume'
-import type { TailoringPlan, TailoringStatus, ValidationReport } from './tailoring'
+import type { TailoringPlan, TailoringReviewChange, TailoringStatus, ValidationReport } from './tailoring'
 
 export interface ProfileLinks {
   linkedin?: string
@@ -316,7 +316,9 @@ export interface ResumeTailoringRow {
   job_context_id: string
   match_analysis: MatchAnalysis | null
   tailoring_plan: TailoringPlan | null
+  source_content: StructuredResume | null
   tailored_content: StructuredResume | null
+  review_changes: TailoringReviewChange[]
   validation_report: ValidationReport | null
   /** `{user_id}/tailored/...` in the private `resumes` bucket. */
   output_file_path: string | null
