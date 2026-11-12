@@ -1,6 +1,6 @@
 # Ansly
 
-AI job application assistant for filling application forms faster without inventing experience.
+AI-powered job search workspace for discovering opportunities, organizing leads, tailoring resumes, and preparing truthful application answers.
 
 <p>
   <a href="https://www.abrarahmed.pro" target="_blank" rel="noreferrer">
@@ -10,9 +10,7 @@ AI job application assistant for filling application forms faster without invent
 
 **Built by DevAbby.**
 
-Ansly is a web app, FastAPI answer engine, Supabase database, and Chromium browser extension. You build a structured profile once, then the extension detects application questions, drafts grounded answers from your profile, lets you review/edit, and fills the field only when you approve.
-
-> Status: V1 is implemented, with V1.1 fill-all / ask-and-learn work in progress. See [documents/ansly-product-plan.md](documents/ansly-product-plan.md), [documents/ansly-phases.md](documents/ansly-phases.md), and [documents/product-audit.md](documents/product-audit.md).
+Ansly brings job discovery, lead organization, resume tailoring, and application preparation into one workspace. Build a structured profile once, use targeting profiles to search public web results for opportunities, tailor a resume to a role, and prepare application answers grounded in your experience. The web app is built with Next.js, the answer and lead-search API uses FastAPI, Supabase stores user data, and the WXT browser extension helps with supported application forms.
 
 ## What It Does
 
@@ -22,22 +20,28 @@ Ansly is a web app, FastAPI answer engine, Supabase database, and Chromium brows
 - Lets you review, edit, regenerate, save, and fill answers.
 - Reuses saved answers for similar questions.
 - Supports optional job context: company, role, and job description when enabled.
+- Helps organize job discovery with role, skill, location, and work-preference targeting.
+- Searches indexed public web results for profile-matched leads and saves results for review. It does not crawl or scrape source pages.
+- Imports targeting profiles from JSON, with validation and clear supported-field guidance.
+- Tailors a master resume to a job description and lets you review the suggested changes before downloading.
 - Supports personal use as an unpacked Chrome or Microsoft Edge extension, with no store publishing fee.
 
 ## How It Works
 
 ```text
-Build profile
-  -> open application form
-  -> enable Ansly on the site
-  -> click Ansly beside a question
-  -> generate or use saved answer
+Build profile and targeting preferences
+  -> discover and organize matching opportunities
+  -> review a job's requirements
+  -> tailor your resume if useful
+  -> prepare application answers
   -> review / edit
-  -> fill
+  -> fill supported form fields
   -> you submit manually
 ```
 
 Ansly never auto-submits applications. It only fills after user approval.
+
+Lead search requires a server-side `BRAVE_SEARCH_API_KEY` on the FastAPI service. Searches use the provider's indexed public results; Ansly does not fetch or scrape the linked pages. Results should be checked against their original source.
 
 ## Architecture
 
@@ -56,6 +60,8 @@ Web app
   - dashboard
   - profile editor
   - saved answers
+  - resume tailoring
+  - job discovery and lead pipeline
   - settings
   - extension connection
 
@@ -64,6 +70,7 @@ LLM API
   - question classification
   - structured profile retrieval
   - grounded answer generation
+  - public web search for lead collection
   - provider fallback gateway
   - usage/rate limits
 
@@ -73,6 +80,8 @@ Supabase
   - RLS
   - profile sections
   - saved answers
+  - targeting profiles, leads, and collection sessions
+  - resume tailoring records
   - usage events
 ```
 
@@ -122,7 +131,7 @@ Set these values:
 | File | Variables |
 | --- | --- |
 | `web/.env` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_BASE_URL` |
-| `llm/.env` | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, provider keys such as `GOOGLE_API_KEY1`, `GROQ_API_KEY1`, `OPENAI_API_KEY1` |
+| `llm/.env` | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, provider keys such as `GOOGLE_API_KEY1`, `GROQ_API_KEY1`, `OPENAI_API_KEY1`, optional `BRAVE_SEARCH_API_KEY` for Leads search |
 | `extension/.env` | `WXT_SUPABASE_URL`, `WXT_SUPABASE_PUBLISHABLE_KEY`, `WXT_API_URL`, `WXT_WEB_URL` |
 
 Only use the Supabase publishable key in app env files. Do not put the Supabase secret/service-role key in the web app, extension, or client bundle.
@@ -236,6 +245,7 @@ LLM API:
 
 - Deploy `llm/` to your Python host.
 - Set Supabase env values and provider keys.
+- Set `BRAVE_SEARCH_API_KEY` to enable public-web collection in Leads.
 - Confirm `GET /health` works.
 
 Extension:
