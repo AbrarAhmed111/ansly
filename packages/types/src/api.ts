@@ -8,6 +8,7 @@
 
 import type { MemoryScope, Profile, SavedAnswer, Skill, SkillLevel, UsageEventKind } from './database'
 import type { FieldKind } from './fields'
+import type { Lead } from './leads'
 import type { MemoryItem } from './memory'
 
 export type ServiceStatus = 'ok' | 'error' | 'not_configured'
@@ -197,6 +198,36 @@ export interface SaveMissingResponse {
     scope: MemoryScope
     group: string
   }[]
+}
+
+/** `GET /api/v1/leads` */
+export interface LeadListResponse {
+  leads: Lead[]
+}
+
+/** `POST /api/v1/leads/collect` */
+export interface CollectLeadsResponse {
+  session_id: string
+  status: 'completed' | 'partially_completed'
+  queries_run: number
+  total_candidates_reviewed: number
+  relevant_candidates: number
+  duplicates_skipped: number
+  new_leads_saved: number
+  leads: Lead[]
+}
+
+/** `POST /api/v1/leads` */
+export type CreateLeadRequest = Partial<Lead> & {
+  source_platform: Lead['source_platform']
+  source_name: string
+  author_name: string
+  company_name: string
+  title: string
+  opportunity_type: Lead['opportunity_type']
+  status?: Lead['status']
+  contactability: Lead['contactability']
+  description: string
 }
 
 export type RewriteAction =
