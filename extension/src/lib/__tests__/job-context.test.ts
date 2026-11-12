@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extractJobContext, isCoverLetter, parseTitle } from '../job-context'
-import { WORK_AT_A_STARTUP } from './job-fixtures'
+import { LINKEDIN_SDUI_MODAL, WORK_AT_A_STARTUP } from './job-fixtures'
 
 function page(head: string, body = '') {
   document.head.innerHTML = head
@@ -84,6 +84,13 @@ describe('extractJobContext', () => {
     expect(context.description).toContain('Lead customer calls and product demos.')
     expect(context.description).toContain('Python and Linux.')
     expect(context.description).not.toContain('Companies')
+  })
+
+  it('reads the description from a LinkedIn SDUI modal for application answers', () => {
+    page('', LINKEDIN_SDUI_MODAL.html)
+    const context = extractJobContext(document, { includeDescription: true })
+    expect(context.description).toContain('build and maintain scalable SaaS applications')
+    expect(context.description).toContain('Experience with C#, .NET Core, JavaScript, and TypeScript.')
   })
 
   it('prefers the visible job identity over stale JSON-LD from a previous SPA listing', () => {
