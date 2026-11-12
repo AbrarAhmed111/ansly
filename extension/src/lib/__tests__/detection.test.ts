@@ -149,6 +149,23 @@ describe('field detection across sites', () => {
     ])
   })
 
+  it('LinkedIn SDUI Easy Apply: identifies fields from accessible labels despite generated classes', () => {
+    load(`<div role="dialog" aria-modal="true"><div data-testid="dialog-content">
+      <p>Additional Questions</p>
+      <p>LinkedIn Profile*</p><div><input type="text" aria-label="LinkedIn Profile"></div>
+      <label for="gender"><div>Gender*</div></label>
+      <select id="gender"><option>Select an option</option><option>Male</option><option>Female</option></select>
+      <p>City*</p><div><input type="text" aria-label="City"></div>
+      <p>Current Monthly Salary*</p><div><input type="text" aria-label="Current Monthly Salary"></div>
+    </div></div>`)
+    expect(kinds()).toEqual([
+      'profile: LinkedIn Profile (linkedin)',
+      'ignored: Gender (eeo)',
+      'profile: City (city)',
+      'short_text: Current Monthly Salary',
+    ])
+  })
+
   it('Indeed: label and aria-labelledby questions', () => {
     load(INDEED)
     expect(kinds()).toEqual([
