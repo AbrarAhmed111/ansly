@@ -31,10 +31,17 @@ Return only a JSON object:
   "mustHave": [{"requirement": str, "type": "skill"|"experience"|"education"|"certification"|"domain"|"soft_skill"|"other"}],
   "niceToHave": [same shape],
   "responsibilities": [str],
+  "employerChallenges": [str],
+  "desiredOutcomes": [str],
+  "competencies": [str],
+  "keywords": [str],
   "minYearsExperience": number|null
 }
 
 Rules:
+- Infer employer challenges and desired outcomes only when they are clearly supported by the posting; phrase them briefly.
+- competencies includes technical and non-technical capabilities, distinct from named technologies.
+- keywords are exact ATS terms from the posting, not newly inferred skills.
 - One requirement per item. Split lists: "React, Vue or Angular" -> three skill items; "AWS (EKS, Lambda)" -> "AWS", "AWS EKS", "AWS Lambda".
 - type "skill" is only for a named technology, language, framework, tool or platform, written as its name ("PostgreSQL", not "experience with PostgreSQL").
 - "experience" is a kind of work done ("building SaaS platforms", "5+ years of professional software development").
@@ -75,6 +82,10 @@ def to_analysis(data: Dict[str, Any], job: JobPosting) -> JobAnalysis:
         must_have=must,
         nice_to_have=nice,
         responsibilities=[str(r)[:300] for r in (data.get("responsibilities") or []) if str(r).strip()][:10],
+        employer_challenges=[str(r).strip()[:300] for r in (data.get("employerChallenges") or []) if str(r).strip()][:8],
+        desired_outcomes=[str(r).strip()[:300] for r in (data.get("desiredOutcomes") or []) if str(r).strip()][:8],
+        competencies=[str(r).strip()[:200] for r in (data.get("competencies") or []) if str(r).strip()][:12],
+        keywords=[str(r).strip()[:100] for r in (data.get("keywords") or []) if str(r).strip()][:30],
         min_years_experience=float(years) if isinstance(years, (int, float)) and 0 < years < 50 else None,
     )
 
