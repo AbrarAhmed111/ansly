@@ -43,6 +43,10 @@ export interface JobAnalysis {
   mustHave: JobRequirement[]
   niceToHave: JobRequirement[]
   responsibilities: string[]
+  employerChallenges: string[]
+  desiredOutcomes: string[]
+  competencies: string[]
+  keywords: string[]
   /** e.g. 5 for "5+ years experience", when stated. */
   minYearsExperience: number | null
 }
