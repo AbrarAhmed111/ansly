@@ -398,30 +398,36 @@ export default function TailoringPage() {
             )}
           </div>
 
-          {detail?.jobAnalysis && (
-            <Card>
-              <CardHeader
-                title="What this employer is looking for"
-                description="Ansly analyzes hiring priorities and ATS terminology, not just keyword matches."
-              />
-              <div className="mt-4 grid gap-5 md:grid-cols-2">
-                {[
-                  ['Employer challenges', detail.jobAnalysis.employerChallenges],
-                  ['Core responsibilities', detail.jobAnalysis.responsibilities],
-                  ['Valued outcomes', detail.jobAnalysis.desiredOutcomes],
-                  ['Competencies', detail.jobAnalysis.competencies],
-                  ['ATS keywords', detail.jobAnalysis.keywords],
-                ].filter(([, values]) => values.length > 0).map(([title, values]) => (
-                  <div key={title}>
-                    <h3 className="text-body-sm font-semibold">{title}</h3>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-body-sm text-muted">
-                      {values.map((value) => <li key={value}>{value}</li>)}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
+          {detail?.jobAnalysis && (() => {
+            const sections: Array<[string, string[]]> = [
+              ['Employer challenges', Array.isArray(detail.jobAnalysis.employerChallenges) ? detail.jobAnalysis.employerChallenges : [detail.jobAnalysis.employerChallenges].filter(Boolean)],
+              ['Core responsibilities', Array.isArray(detail.jobAnalysis.responsibilities) ? detail.jobAnalysis.responsibilities : [detail.jobAnalysis.responsibilities].filter(Boolean)],
+              ['Valued outcomes', Array.isArray(detail.jobAnalysis.desiredOutcomes) ? detail.jobAnalysis.desiredOutcomes : [detail.jobAnalysis.desiredOutcomes].filter(Boolean)],
+              ['Competencies', Array.isArray(detail.jobAnalysis.competencies) ? detail.jobAnalysis.competencies : [detail.jobAnalysis.competencies].filter(Boolean)],
+              ['ATS keywords', Array.isArray(detail.jobAnalysis.keywords) ? detail.jobAnalysis.keywords : [detail.jobAnalysis.keywords].filter(Boolean)],
+            ]
+
+            return (
+              <Card>
+                <CardHeader
+                  title="What this employer is looking for"
+                  description="Ansly analyzes hiring priorities and ATS terminology, not just keyword matches."
+                />
+                <div className="mt-4 grid gap-5 md:grid-cols-2">
+                  {sections.filter(([, values]) => values.length > 0).map(([title, values]) => (
+                    <div key={title}>
+                      <h3 className="text-body-sm font-semibold">{title}</h3>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-body-sm text-muted">
+                        {values.map((value) => (
+                          <li key={value}>{value}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )
+          })()}
 
           <ResumeReview
             tailoringId={tailoringId}
