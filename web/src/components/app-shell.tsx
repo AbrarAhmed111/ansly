@@ -47,6 +47,7 @@ const GROUPS: { label?: string; items: NavItem[] }[] = [
       { href: '/playground', label: 'Try it', icon: Wand2 },
       { href: '/memory', label: 'Application Memory', icon: Brain },
       { href: '/saved-answers', label: 'Saved answers', icon: BookmarkCheck },
+      { href: '/leads', label: 'Leads', icon: Search },
       { href: '/extension', label: 'Extension', icon: Puzzle },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
