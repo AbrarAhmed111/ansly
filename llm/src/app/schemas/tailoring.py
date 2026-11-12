@@ -8,14 +8,21 @@ from typing import List, Literal, Optional
 from pydantic import Field
 
 from src.app.schemas.matching import MatchSummary, RequirementMatch
+from src.app.schemas.job import JobAnalysis
 from src.app.schemas.resume import CamelModel
 
 TailoringStatus = Literal["queued", "analyzing", "matching", "tailoring", "validating", "rendering", "ready", "failed"]
 TailoringAction = Literal[
     "reorder", "emphasize", "rewrite_bullet", "add_bullet", "select", "reduce", "align_terms", "update_summary",
-    "update_headline",
+    "update_headline", "add_skill",
 ]
 ResumeSection = Literal["headline", "summary", "experience", "projects", "skills", "education", "achievements", "certifications"]
+ReviewChangeStatus = Literal["pending", "accepted", "rejected", "reverted"]
+ReviewChangeCategory = Literal[
+    "summary", "title", "skill", "experience", "project", "achievement", "education", "keyword",
+    "responsibility", "outcome",
+]
+ReviewEvidenceStatus = Literal["demonstrated", "potential", "unconfirmed", "not_applicable"]
 ValidationCheck = Literal[
     "protected_fields", "metrics", "unsupported_technology", "traceability", "keyword_integrity",
     "hallucination_review", "formatting", "document", "unverified_skill",
@@ -33,6 +40,35 @@ class TailoringChange(CamelModel):
     bullet_id: Optional[str] = Field(default=None, max_length=100)
     text: Optional[str] = Field(default=None, max_length=3000)
     values: Optional[List[str]] = Field(default=None, max_length=100)
+    user_confirmed: bool = False
+
+
+class TailoringReviewChange(CamelModel):
+    id: str
+    section: ResumeSection
+    field: str
+    item: Optional[str] = None
+    original_value: Optional[str] = None
+    suggested_value: Optional[str] = None
+    reason: str
+    category: ReviewChangeCategory
+    evidence_status: ReviewEvidenceStatus = "not_applicable"
+    confirmation_required: bool = False
+    status: ReviewChangeStatus = "pending"
+    change: TailoringChange
+
+
+class UpdateTailoringChangeRequest(CamelModel):
+    action: Literal["accept", "edit", "reject", "revert"]
+    value: Optional[str] = Field(default=None, max_length=3000)
+    item: Optional[str] = Field(default=None, max_length=100)
+    section: Optional[Literal["experience", "projects"]] = None
+
+
+class ReviewItemOption(CamelModel):
+    id: str
+    section: Literal["experience", "projects"]
+    label: str
 
 
 class TailoringPlan(CamelModel):
@@ -89,6 +125,9 @@ class TailoringDetail(CamelModel):
     diffs: List[TextDiff]
     issues: List[ValidationIssue]
     page_count: Optional[int] = None
+    job_analysis: Optional[JobAnalysis] = None
+    review_changes: List[TailoringReviewChange] = Field(default_factory=list)
+    review_items: List[ReviewItemOption] = Field(default_factory=list)
 
 
 class TailoringResponse(CamelModel):
@@ -99,6 +138,7 @@ class TailoringResponse(CamelModel):
     company: Optional[str] = None
     summary: Optional[MatchSummary] = None
     changes: List[ChangeSummary] = Field(default_factory=list)
+    review_changes: List[TailoringReviewChange] = Field(default_factory=list)
     unsupported_requirements: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     pipeline_version: str
