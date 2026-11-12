@@ -66,7 +66,7 @@ export function SiteFooter() {
       <Container className="flex flex-col items-center justify-between gap-4 py-8 text-muted sm:flex-row">
         <div className="flex items-center gap-3">
           <Logo className="text-title" />
-          <span className="text-subtle">Truthful answers for job applications.</span>
+          <span className="text-subtle">Find roles, tailor your resume, and apply truthfully.</span>
         </div>
         <nav className="flex gap-5">
           <Link href="/privacy" className="hover:text-fg">
