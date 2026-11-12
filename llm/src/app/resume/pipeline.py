@@ -31,6 +31,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from src.app.core import llm_usage
 from src.app.core.token_budget import job_key
@@ -47,14 +48,21 @@ from src.app.resume.matching.evidence import EvidenceCorpus, build_corpus
 from src.app.resume.matching.match import match_requirements
 from src.app.resume.tailoring.apply import apply_plan
 from src.app.resume.tailoring.changes import summarize_changes, text_diffs
-from src.app.resume.tailoring.job_fit import add_job_skills
+from src.app.resume.tailoring.job_fit import fit_headline
 from src.app.resume.tailoring.plan import generate_plan
+from src.app.resume.tailoring.review import atomicize, build_review_changes
 from src.app.resume.validation.review import review_changes
 from src.app.resume.validation.validate import Validator, validate
 from src.app.schemas.job import JobAnalysis, JobPosting
 from src.app.schemas.matching import MatchAnalysis, RequirementMatch
 from src.app.schemas.resume import StructuredResume
-from src.app.schemas.tailoring import TailoringPlan, ValidationIssue, ValidationReport
+from src.app.schemas.tailoring import (
+    TailoringChange,
+    TailoringPlan,
+    TailoringReviewChange,
+    ValidationIssue,
+    ValidationReport,
+)
 
 logger = logging.getLogger("TailoringPipeline")
 
@@ -280,6 +288,20 @@ class TailoringPipeline:
         stored = MatchAnalysis.model_validate(row["match_analysis"])
         corpus = corpus_from(row["match_analysis"])
         plan = await generate_plan(self.gateway, analysis, stored.matches, master, corpus, ctx.usage)
+        plan = atomicize(plan, master)
+        headline = fit_headline(
+            master.contact.headline,
+            None,
+            analysis.role,
+            [experience.title for experience in master.experience],
+        )
+        if headline and headline != master.contact.headline:
+            plan.changes.append(TailoringChange(
+                section="headline",
+                action="update_headline",
+                text=headline,
+                reason="Align the resume title with the role while preserving the candidate's seniority.",
+            ))
         applied = apply_plan(master, plan, corpus)
         return {
             "tailoring_plan": plan.model_dump(mode="json", by_alias=True),
@@ -287,7 +309,7 @@ class TailoringPipeline:
         }
 
     async def _validating(self, ctx: StepContext, row: Dict[str, Any]) -> Dict[str, Any]:
-        """Deterministic checks only (fast); the model's truthfulness review runs while the document is stored."""
+        """Validate suggestions before they reach the review screen."""
         analysis, master = await asyncio.gather(self._analysis(ctx, row), self._master(ctx, row))
         stored = MatchAnalysis.model_validate(row["match_analysis"])
         corpus = corpus_from(row["match_analysis"])
@@ -295,75 +317,91 @@ class TailoringPipeline:
         # Applying the plan is deterministic: re-applying gives the same resume plus what each change cited.
         applied = apply_plan(master, plan, corpus)
         result = validate(master, applied.resume, applied.applied, corpus, analysis, applied.rejected)
-        group, added = add_job_skills(result.resume, analysis, stored.matches, corpus)
-        result.issues += [
-            ValidationIssue(check="unverified_skill", outcome="warning", section="skills", item=group, attempted=skill,
-                            message=f"{skill} was added because the job requires it, but your profile doesn't show it. "
-                                    "Remove it if you don't have it.")
-            for skill in added
-        ]
+        valid_plan = TailoringPlan(changes=[change.change for change in result.applied])
+        review_records = build_review_changes(master, valid_plan, analysis, stored.matches, corpus)
+        flags = await review_changes(
+            self.gateway, Validator(master, result.resume, result.applied, corpus).text_changes(), corpus, ctx.usage,
+        )
         report = ValidationReport(
-            issues=result.issues,
-            changes=summarize_changes(master, result.resume, result.applied),
-            diffs=text_diffs(master, result.resume, result.applied, corpus),
+            issues=[*result.issues, *flags],
         )
         return {
-            "tailored_content": result.resume.to_json(),
+            "tailoring_plan": valid_plan.model_dump(mode="json", by_alias=True),
+            "tailored_content": master.to_json(),
+            "review_changes": [change.model_dump(mode="json", by_alias=True) for change in review_records],
             "validation_report": report.model_dump(mode="json", by_alias=True),
         }
 
-    async def _rendering(self, ctx: StepContext, row: Dict[str, Any]) -> Dict[str, Any]:
-        """Validated resume -> tailored copy of the user's .docx, checked, stored next to the original."""
-        resumes = await ctx.rest.select("resumes", {"id": f"eq.{row.get('resume_id')}", "limit": "1"}) \
-            if row.get("resume_id") else []
-        if not resumes or not resumes[0].get("parsed_content"):
-            raise PipelineError("The resume this tailoring was built from was deleted.")
-        source = resumes[0]
-        if source.get("file_type") != "docx":
+    async def render_review(self, ctx: StepContext, row: Dict[str, Any], output_path: str) -> Dict[str, Any]:
+        """Render only accepted review changes, always starting from the immutable parsed baseline."""
+        baseline = row.get("source_content")
+        if baseline is None:
+            raise PipelineError("This tailoring has no immutable resume baseline to review.")
+        master = StructuredResume.model_validate(baseline)
+        if not row.get("resume_id"):
+            raise PipelineError("The original Word document for this tailoring is no longer available.")
+        resumes = await ctx.rest.select("resumes", {
+            "id": f"eq.{row['resume_id']}", "select": "file_path,file_type", "limit": "1",
+        })
+        if not resumes or resumes[0].get("file_type") != "docx":
             raise PipelineError(NEEDS_DOCX)
-        master = StructuredResume.model_validate(source["parsed_content"])
-        validated = StructuredResume.model_validate(row["tailored_content"])
-        original = await ctx.storage.download(source["file_path"])
+        original = await ctx.storage.download(resumes[0]["file_path"])
+        analysis = await self._analysis(ctx, row)
+        corpus = corpus_from(row["match_analysis"])
+        entries = [
+            TailoringReviewChange.model_validate(change)
+            for change in row.get("review_changes") or []
+        ]
+        plan = TailoringPlan(changes=[
+            entry.change.model_copy(update={"user_confirmed": entry.confirmation_required})
+            for entry in entries if entry.status == "accepted"
+        ])
+        applied = apply_plan(master, plan, corpus)
+        validated = validate(master, applied.resume, applied.applied, corpus, analysis, applied.rejected)
         try:
-            result = tailor_docx(original, master, validated)
+            result = tailor_docx(original, master, validated.resume)
         except DocxError as e:
             raise PipelineError(str(e)) from e
         final = result.resume
-        required = [final.summary or ""] + [b.text for i in final.experience + final.projects + final.education
-                                            for b in i.bullets]
+        required = [final.summary or ""] + [b.text for item in final.experience + final.projects + final.education
+                                            for b in item.bullets]
         if (final.contact.headline or "") != (master.contact.headline or ""):
             required.append(final.contact.headline or "")
         problems = check_docx(original, result.content, result.expected, required, result.removed)
         if problems:
-            logger.error(f"Tailoring {row['id']}: tailored document failed integrity checks: {problems}")
+            logger.error(f"Tailoring {row['id']}: reviewed document failed integrity checks: {problems}")
             raise PipelineError(DOCUMENT_INVALID)
-
-        path = f"{ctx.user_id}/tailored/{row['id']}.docx"
-        corpus = corpus_from(row["match_analysis"])
-        applied = apply_plan(master, TailoringPlan.model_validate(row["tailoring_plan"]), corpus).applied
-        # The truthfulness review reads what the document now says, while the file uploads.
-        changes = Validator(master, final, applied, corpus).text_changes()
-        flags, _ = await asyncio.gather(review_changes(self.gateway, changes, corpus, ctx.usage),
-                                        ctx.storage.upload(path, result.content, DOCX_MIME))
-
-        # The report describes the document as it is: changes it couldn't take are gone from the diffs.
         report = ValidationReport.model_validate(row.get("validation_report") or {})
-        report.issues += flags
-        written = {final.summary or ""} | {b.text for i in final.experience + final.projects for b in i.bullets}
-        skills = {s for g in final.skills for s in g.items}
-        report.issues = [i for i in report.issues if (i.outcome != "flagged" or i.attempted in written)
-                         and (i.check != "unverified_skill" or i.attempted in skills)]
+        report.issues = [
+            issue for issue in report.issues
+            if issue.check not in {"document", "formatting", "unverified_skill"}
+            and (issue.outcome != "flagged" or any(
+                entry.status == "accepted" and entry.change.text == issue.attempted for entry in entries
+            ))
+        ] + validated.issues
         report.issues += [
-            ValidationIssue(check="document", outcome="warning", section=s.section if s.section in SECTIONS else None,
-                            item=s.item, message=f"Left unchanged in your document: {s.label}. That part of the layout "
-                                                 "couldn't be edited without risking its formatting.")
-            for s in result.skipped
+            ValidationIssue(
+                check="document", outcome="warning", section=skip.section if skip.section in SECTIONS else None,
+                item=skip.item,
+                message=f"Left unchanged in your document: {skip.label}. That part of the layout "
+                        "couldn't be edited without risking its formatting.",
+            )
+            for skip in result.skipped
         ]
-        report.changes = summarize_changes(master, final, applied)
-        report.diffs = text_diffs(master, final, applied, corpus)
-        report.page_count = None  # Pages depend on how Word lays the document out; the preview shows them.
-        return {"output_file_path": path, "tailored_content": final.to_json(),
-                "validation_report": report.model_dump(mode="json", by_alias=True)}
+        report.changes = summarize_changes(master, final, validated.applied)
+        report.diffs = text_diffs(master, final, validated.applied, corpus)
+        report.page_count = None
+        await ctx.storage.upload(output_path, result.content, DOCX_MIME)
+        return {
+            "output_file_path": output_path,
+            "tailored_content": final.to_json(),
+            "validation_report": report.model_dump(mode="json", by_alias=True),
+        }
+
+    async def _rendering(self, ctx: StepContext, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Create the initial preview from the master; pending suggestions never enter the download."""
+        path = f"{ctx.user_id}/tailored/{row['id']}/{uuid4().hex}.docx"
+        return await self.render_review(ctx, row, path)
 
     # -- driver -----------------------------------------------------------------
 
