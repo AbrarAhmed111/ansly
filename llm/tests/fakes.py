@@ -66,7 +66,8 @@ SAMPLE_PROFILE: Dict[str, List[Dict[str, Any]]] = {
 TABLE_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "resumes": {"is_master": False, "dismissed_discrepancies": [], "parsed_content": None, "parse_error": None},
     "job_contexts": {"analysis": None},
-    "resume_tailorings": {"status": "queued", "tokens": 0, "llm_calls": 0, "match_analysis": None, "tailoring_plan": None, "tailored_content": None,
+    "resume_tailorings": {"status": "queued", "tokens": 0, "llm_calls": 0, "match_analysis": None, "tailoring_plan": None,
+                          "source_content": None, "tailored_content": None, "review_changes": [],
                           "validation_report": None, "output_file_path": None, "error": None},
 }
 
