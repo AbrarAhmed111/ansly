@@ -92,6 +92,19 @@ def apply_plan(source: StructuredResume, plan: TailoringPlan, corpus: EvidenceCo
             resume.summary = text
             continue
 
+        if action == "add_skill":
+            group = next((g for g in resume.skills if g.id == change.item), None)
+            skill = (change.text or "").strip()
+            if section != "skills" or group is None or not skill or not change.user_confirmed:
+                reject(change, "A new skill needs user confirmation and an existing skills group.")
+                continue
+            if any(canonicalize(skill) == canonicalize(s) for g in resume.skills for s in g.items):
+                reject(change, "That skill is already on the resume.")
+                continue
+            group.items.append(skill)
+            result.applied.append(AppliedChange(change, before="", after=skill, label=group.label or "Skills"))
+            continue
+
         attr = ITEM_SECTIONS.get(section)
         if attr is None:
             reject(change, f"Unknown section {section}.")
