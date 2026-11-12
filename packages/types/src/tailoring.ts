@@ -4,6 +4,7 @@
  */
 
 import type { MatchSummary, RequirementMatch } from './matching'
+import type { JobAnalysis } from './job'
 
 export type TailoringStatus =
   | 'queued'
@@ -30,6 +31,7 @@ export type TailoringAction =
   | 'update_summary'
   /** The title line under the name, set to the job's role. */
   | 'update_headline'
+  | 'add_skill'
 
 export type ResumeSection =
   | 'headline'
@@ -57,6 +59,49 @@ export interface TailoringChange {
   text?: string | null
   /** emphasize: skills to move forward. select: items to keep. */
   values?: string[] | null
+  userConfirmed?: boolean
+}
+
+export type ReviewChangeStatus = 'pending' | 'accepted' | 'rejected' | 'reverted'
+export type ReviewChangeCategory =
+  | 'summary'
+  | 'title'
+  | 'skill'
+  | 'experience'
+  | 'project'
+  | 'achievement'
+  | 'education'
+  | 'keyword'
+  | 'responsibility'
+  | 'outcome'
+export type ReviewEvidenceStatus = 'demonstrated' | 'potential' | 'unconfirmed' | 'not_applicable'
+
+export interface TailoringReviewChange {
+  id: string
+  section: ResumeSection
+  field: string
+  item: string | null
+  originalValue: string | null
+  suggestedValue: string | null
+  reason: string
+  category: ReviewChangeCategory
+  evidenceStatus: ReviewEvidenceStatus
+  confirmationRequired: boolean
+  status: ReviewChangeStatus
+  change: TailoringChange
+}
+
+export interface UpdateTailoringChangeRequest {
+  action: 'accept' | 'edit' | 'reject' | 'revert'
+  value?: string | null
+  item?: string | null
+  section?: 'experience' | 'projects' | null
+}
+
+export interface ReviewItemOption {
+  id: string
+  section: 'experience' | 'projects'
+  label: string
 }
 
 export interface TailoringPlan {
@@ -123,6 +168,9 @@ export interface TailoringDetail {
   diffs: TextDiff[]
   issues: ValidationIssue[]
   pageCount: number | null
+  jobAnalysis: JobAnalysis | null
+  reviewChanges: TailoringReviewChange[]
+  reviewItems: ReviewItemOption[]
 }
 
 /** `POST /api/v1/tailorings` */
@@ -147,6 +195,7 @@ export interface TailoringResponse {
   /** Set once status is 'ready'. */
   summary: MatchSummary | null
   changes: ChangeSummary[]
+  reviewChanges: TailoringReviewChange[]
   unsupportedRequirements: string[]
   warnings: string[]
   pipelineVersion: string
