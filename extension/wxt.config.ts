@@ -29,7 +29,7 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: ({ manifestVersion }) => ({
     name: 'Ansly',
-    description: 'AI job application assistant — truthful, personalized answers from your own profile.',
+    description: 'Prepare truthful job application answers grounded in your profile.',
     // activeTab + scripting: one-time "Scan this page" without a permanent permission.
     // contextMenus: right-click → "Answer with Ansly" on any field.
     permissions: ['storage', 'activeTab', 'scripting', 'contextMenus'],
