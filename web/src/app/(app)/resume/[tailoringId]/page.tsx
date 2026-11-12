@@ -28,6 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/dialog'
 import { ResumePreview } from '@/components/resume/resume-preview'
+import { ResumeReview } from '@/components/resume/resume-review'
 import { type PreviewStage, TailoredReadyCard } from '@/components/resume/tailored-ready'
 import {
   Alert,
@@ -397,6 +398,38 @@ export default function TailoringPage() {
             )}
           </div>
 
+          {detail?.jobAnalysis && (
+            <Card>
+              <CardHeader
+                title="What this employer is looking for"
+                description="Ansly analyzes hiring priorities and ATS terminology, not just keyword matches."
+              />
+              <div className="mt-4 grid gap-5 md:grid-cols-2">
+                {[
+                  ['Employer challenges', detail.jobAnalysis.employerChallenges],
+                  ['Core responsibilities', detail.jobAnalysis.responsibilities],
+                  ['Valued outcomes', detail.jobAnalysis.desiredOutcomes],
+                  ['Competencies', detail.jobAnalysis.competencies],
+                  ['ATS keywords', detail.jobAnalysis.keywords],
+                ].filter(([, values]) => values.length > 0).map(([title, values]) => (
+                  <div key={title}>
+                    <h3 className="text-body-sm font-semibold">{title}</h3>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-body-sm text-muted">
+                      {values.map((value) => <li key={value}>{value}</li>)}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <ResumeReview
+            tailoringId={tailoringId}
+            changes={data.reviewChanges}
+            items={detail?.reviewItems ?? []}
+            onSaved={() => void refresh()}
+          />
+
           {data.summary && (
             <div className="grid gap-4 sm:grid-cols-4">
               <Stat label="Requirements analyzed" value={data.summary.analyzed} icon={ListChecks} />
@@ -424,7 +457,7 @@ export default function TailoringPage() {
           )}
 
           <Card>
-            <CardHeader title="Changes" description="Everything Ansly changed in your document, by section. Every rewrite cites your own experience." />
+            <CardHeader title="Approved changes" description="Changes currently applied to the downloadable document. Review, edit, or revert suggestions above." />
             {sections.length === 0 && <p className="mt-4 text-muted">No changes were needed: your resume already fits this job.</p>}
             <div className="mt-4 divide-y divide-border">
               {sections.map((section) => {
@@ -479,7 +512,7 @@ export default function TailoringPage() {
             <Card>
               <CardHeader
                 title="Unsupported requirements"
-                description="Your profile and resume have no evidence for these. Required skills among them were added to your skills list for you to check; nothing else claims them. If you have this experience, add it to your profile and tailor again."
+                description="Your profile and resume have no evidence for these. Suggestions that could apply are pending your confirmation; nothing unconfirmed is added to the resume."
                 actions={
                   <Link href="/profile/skills?new=1" className={buttonStyles({ variant: 'secondary', size: 'sm' })}>
                     Add to profile
