@@ -25,6 +25,25 @@ export const LINKEDIN_VIEW = {
 <div class="jobs-description__content"><div id="job-details"><h2>About the job</h2>${REQUIREMENTS}</div></div>`,
 }
 
+export const LINKEDIN_SDUI_MODAL = {
+  url: 'https://www.linkedin.com/jobs/view/4485704382/',
+  html: `
+<div role="dialog" aria-modal="true">
+  <div data-testid="dialog-content">
+    <h2>Full Stack Developer-Pakistan</h2>
+    <a href="/company/dengage">Dengage</a>
+    <section>
+      <h3>About the job</h3>
+      <p>Dengage is looking for a Full Stack Developer to build and maintain scalable SaaS applications.</p>
+      <h4>Responsibilities</h4>
+      <ul><li>Design and maintain web applications and REST APIs.</li><li>Collaborate with engineers to deliver reliable features.</li></ul>
+      <h4>Requirements</h4>
+      <ul><li>Experience with C#, .NET Core, JavaScript, and TypeScript.</li><li>Knowledge of relational databases and cloud platforms.</li></ul>
+    </section>
+  </div>
+</div>`,
+}
+
 export const LINKEDIN_SEARCH = {
   url: 'https://www.linkedin.com/jobs/search/?currentJobId=4099999999&keywords=engineer',
   html: `
