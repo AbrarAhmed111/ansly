@@ -2,9 +2,13 @@ import type {
   AnalyzeJobRequest,
   AnalyzeJobResponse,
   AnswerResponse,
+  CollectLeadsResponse,
+  CreateLeadRequest,
   CreateResumeRequest,
   CreateSavedAnswerRequest,
   GenerateAnswerRequest,
+  Lead,
+  LeadListResponse,
   MasterResumeResponse,
   MemoryItem,
   MemoryResponse,
@@ -86,6 +90,13 @@ export const generateAnswer = (req: GenerateAnswerRequest) => call<AnswerRespons
 export const regenerateAnswer = (req: RegenerateAnswerRequest) => call<AnswerResponse>('/api/v1/answers/regenerate', req)
 
 export const saveAnswer = (req: CreateSavedAnswerRequest) => call<SavedAnswer>('/api/v1/saved-answers', req)
+
+export const listLeads = () => request<LeadListResponse>('GET', '/api/v1/leads')
+
+export const collectLeads = (targetingProfileId: string) =>
+  call<CollectLeadsResponse>('/api/v1/leads/collect', { targeting_profile_id: targetingProfileId })
+
+export const createLead = (req: CreateLeadRequest) => call<Lead>('/api/v1/leads', req)
 
 /** Saves answers to the questions a resume doesn't cover (onboarding) or that Ansly asked for. */
 export const saveMissing = (req: SaveMissingRequest) => call<SaveMissingResponse>('/api/v1/profile/missing', req)
