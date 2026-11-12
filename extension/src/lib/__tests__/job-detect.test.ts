@@ -5,6 +5,7 @@ import {
   CAREER_PAGE,
   GREENHOUSE_JSON_LD,
   INDEED,
+  LINKEDIN_SDUI_MODAL,
   LINKEDIN_SEARCH,
   LINKEDIN_VIEW,
   SHORT_POSTING,
@@ -23,6 +24,7 @@ function load(fixture: { html: string }) {
 describe('peekJob', () => {
   it.each([
     ['LinkedIn job view', LINKEDIN_VIEW, { title: 'Senior Full Stack Engineer', company: 'Company X', source: 'linkedin' }],
+    ['LinkedIn SDUI job modal', LINKEDIN_SDUI_MODAL, { title: 'Full Stack Developer-Pakistan', company: 'Dengage', source: 'linkedin' }],
     ['LinkedIn search split view', LINKEDIN_SEARCH, { title: 'Product Engineer', company: 'Acme', source: 'linkedin' }],
     ['Indeed split view', INDEED, { title: 'Backend Developer', company: 'Fabrikam', source: 'indeed' }],
     ['JSON-LD career page', GREENHOUSE_JSON_LD, { title: 'Data Engineer', company: 'Example Corp', source: 'json-ld' }],
@@ -51,6 +53,20 @@ describe('extractJob', () => {
     expect(result.job.url).toBe('https://www.linkedin.com/jobs/view/4099999999/')
     expect(result.job.description).toContain('5+ years of professional software development experience.')
     expect(result.job.description).not.toContain('Many other jobs')
+  })
+
+  it('extracts a LinkedIn SDUI modal description when its generated classes provide no selectors', () => {
+    const result = extractJob(load(LINKEDIN_SDUI_MODAL), LINKEDIN_SDUI_MODAL.url)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.job).toMatchObject({
+      title: 'Full Stack Developer-Pakistan',
+      company: 'Dengage',
+      url: 'https://www.linkedin.com/jobs/view/4485704382/',
+      source: 'linkedin',
+    })
+    expect(result.job.description).toContain('build and maintain scalable SaaS applications')
+    expect(result.job.description).toContain('Experience with C#, .NET Core, JavaScript, and TypeScript.')
   })
 
   it('canonicalizes LinkedIn and Indeed URLs and strips tracking params elsewhere', () => {
