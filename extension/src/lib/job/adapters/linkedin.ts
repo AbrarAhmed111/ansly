@@ -13,6 +13,8 @@ const TITLE = [
   '.jobs-unified-top-card__job-title',
   '.top-card-layout__title',
   'h1.t-24',
+  'main h1',
+  '[data-testid="dialog-content"] h1, [data-testid="dialog-content"] h2',
 ]
 const COMPANY = [
   '.job-details-jobs-unified-top-card__company-name a',
@@ -20,6 +22,7 @@ const COMPANY = [
   '.jobs-unified-top-card__company-name',
   '.topcard__org-name-link',
   '.top-card-layout__card .topcard__flavor a',
+  '[data-testid="dialog-content"] a[href*="/company/"]',
 ]
 const LOCATION = [
   '.job-details-jobs-unified-top-card__primary-description-container .tvm__text',
@@ -29,11 +32,12 @@ const LOCATION = [
 ]
 const DESCRIPTION = '#job-details, .jobs-description__content, .jobs-box__html-content, .show-more-less-html__markup, .description__text'
 
-const first = (doc: Document, selectors: string[]) => {
+const first = (doc: Document, selectors: string[], accept: (text: string) => boolean = () => true) => {
   for (const selector of selectors) {
-    const el = doc.querySelector<HTMLElement>(selector)
-    const text = el ? cleanText(visibleText(el)) : ''
-    if (text) return text
+    for (const el of doc.querySelectorAll<HTMLElement>(selector)) {
+      const text = cleanText(visibleText(el))
+      if (text && accept(text)) return text
+    }
   }
   return ''
 }
@@ -50,7 +54,7 @@ export function linkedInJobUrl(url: URL): string {
 
 export function fromLinkedIn(doc: Document, url: URL, withDescription: boolean): DetectedJob | null {
   if (!isLinkedInJob(url)) return null
-  const title = first(doc, TITLE)
+  const title = first(doc, TITLE, (text) => !/^(?:apply|application|easy apply)\b/i.test(text))
   if (!title) return null
   return {
     title,
