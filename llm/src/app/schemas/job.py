@@ -37,6 +37,10 @@ class JobAnalysis(CamelModel):
     must_have: List[JobRequirement] = Field(default_factory=list)
     nice_to_have: List[JobRequirement] = Field(default_factory=list)
     responsibilities: List[str] = Field(default_factory=list)
+    employer_challenges: List[str] = Field(default_factory=list)
+    desired_outcomes: List[str] = Field(default_factory=list)
+    competencies: List[str] = Field(default_factory=list)
+    keywords: List[str] = Field(default_factory=list)
     min_years_experience: Optional[float] = None
 
     @property
