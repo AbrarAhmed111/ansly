@@ -52,10 +52,10 @@ export function TailoredReadyCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="h-6 w-6 shrink-0 text-success" aria-hidden />
-            <h2 className="text-title">Your tailored resume is ready</h2>
+            <h2 className="text-title">Review and finalize your resume</h2>
           </div>
           <p className="mt-2 max-w-xl text-muted">
-            Your original formatting has been preserved: it’s your own Word document with only the tailored text changed.
+            Your original formatting is preserved. Only changes you accept appear in the downloadable document.
             {leftOut > 0 && ` ${plural(leftOut, 'change was', 'changes were')} left out to protect your layout.`}
           </p>
           <ol className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Progress">
