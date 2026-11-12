@@ -15,6 +15,7 @@ import asyncio
 import logging
 import re
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 
@@ -29,6 +30,7 @@ from src.app.resume.pipeline import (
     NEEDS_DOCX,
     PIPELINE_VERSION,
     TERMINAL,
+    PipelineError,
     StepContext,
     TailoringPipeline,
     age_seconds,
@@ -39,6 +41,7 @@ from src.app.schemas.matching import MatchAnalysis
 from src.app.schemas.tailoring import (
     StartTailoringRequest,
     StartTailoringResponse,
+    TailoringReviewChange,
     TailoringDetail,
     TailoringDownloadResponse,
     TailoringFile,
@@ -46,6 +49,9 @@ from src.app.schemas.tailoring import (
     TailoringListItem,
     TailoringListResponse,
     TailoringResponse,
+    ReviewItemOption,
+    UpdateTailoringChangeRequest,
+    ValidationIssue,
     ValidationReport,
 )
 
@@ -88,7 +94,10 @@ async def _get(rest: SupabaseRest, tailoring_id: str) -> Dict[str, Any]:
 async def _jobs(rest: SupabaseRest, ids: List[str]) -> Dict[str, Dict[str, Any]]:
     if not ids:
         return {}
-    rows = await rest.select("job_contexts", {"id": f"in.({','.join(sorted(set(ids)))})", "select": "id,title,company"})
+    rows = await rest.select(
+        "job_contexts",
+        {"id": f"in.({','.join(sorted(set(ids)))})", "select": "id,title,company,analysis"},
+    )
     return {r["id"]: r for r in rows}
 
 
@@ -105,6 +114,10 @@ def build_response(row: Dict[str, Any], job: Optional[Dict[str, Any]], detail: b
         company=(job or {}).get("company"),
         summary=summarize(matches) if ready and matches else None,
         changes=report.changes if ready else [],
+        review_changes=[
+            TailoringReviewChange.model_validate(change)
+            for change in (row.get("review_changes") or [])
+        ] if ready else [],
         unsupported_requirements=unsupported if ready else [],
         warnings=user_warnings(report.issues) if ready else [],
         pipeline_version=row.get("pipeline_version") or PIPELINE_VERSION,
@@ -113,7 +126,19 @@ def build_response(row: Dict[str, Any], job: Optional[Dict[str, Any]], detail: b
     )
     if detail and ready:
         response.detail = TailoringDetail(requirements=matches, diffs=report.diffs, issues=report.issues,
-                                          page_count=report.page_count)
+                                          page_count=report.page_count,
+                                          job_analysis=job and job.get("analysis"),
+                                          review_changes=response.review_changes,
+                                          review_items=[
+                                              ReviewItemOption(
+                                                  id=item["id"],
+                                                  section=section,
+                                                  label=(f"{item['title']} at {item['company']}" if section == "experience"
+                                                         else item["name"]),
+                                              )
+                                              for section in ("experience", "projects")
+                                              for item in (row.get("source_content") or {}).get(section, [])
+                                          ])
     return response
 
 
@@ -144,7 +169,7 @@ async def start_tailoring(
             raise HTTPException(status.HTTP_409_CONFLICT, NEEDS_DOCX)
         row = await rest.insert(TABLE, {
             "resume_id": resume["id"], "resume_version": resume["version"], "job_context_id": request.job_context_id,
-            "pipeline_version": PIPELINE_VERSION, "status": "queued",
+            "pipeline_version": PIPELINE_VERSION, "status": "queued", "source_content": resume["parsed_content"],
         })
         await _event(rest, "tailoring_started")
     except SupabaseError as e:
@@ -196,6 +221,176 @@ async def get_tailoring(
     response = build_response(row, jobs.get(row["job_context_id"]), detail)
     response.retry_after_ms = retry_after_ms(row)
     return response
+
+
+@router.patch("/{tailoring_id}/changes/{change_id}", response_model=TailoringResponse,
+              response_model_by_alias=True, summary="Accept, edit, reject or revert one review suggestion")
+async def update_tailoring_change(
+    tailoring_id: str,
+    change_id: str,
+    request: UpdateTailoringChangeRequest,
+    user: AuthUser = Depends(get_current_user),
+    rest: SupabaseRest = Depends(get_rest),
+    storage: SupabaseStorage = Depends(get_storage),
+    pipeline: TailoringPipeline = Depends(get_pipeline),
+) -> TailoringResponse:
+    row = await _get(rest, tailoring_id)
+    if row["status"] != "ready":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Wait until tailoring is ready before reviewing changes.")
+    entries = [TailoringReviewChange.model_validate(change) for change in row.get("review_changes") or []]
+    entry = next((candidate for candidate in entries if candidate.id == change_id), None)
+    if entry is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Review suggestion not found.")
+
+    before_accepted = {candidate.id for candidate in entries if candidate.status == "accepted"}
+    if request.action == "edit":
+        if request.value is None or not request.value.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Enter the content you want to add.")
+        if request.item is not None and entry.change.action == "add_bullet":
+            section = request.section
+            source = row.get("source_content") or {}
+            valid = section in {"experience", "projects"} and request.item in {
+                candidate["id"] for candidate in source.get(section, [])
+            }
+            if not valid:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a job or project from your resume.")
+            entry.change = entry.change.model_copy(update={"section": section})
+        if entry.confirmation_required and entry.change.action == "add_bullet":
+            if not request.item:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose the job or project for this experience.")
+            if not request.section:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a job or project from your resume.")
+        change = entry.change.model_copy(update={
+            "text": request.value.strip(),
+            "item": request.item or entry.change.item,
+            "section": request.section or entry.change.section,
+        })
+        entry.change = change
+        entry.item = change.item
+        entry.section = change.section
+        entry.suggested_value = request.value.strip()
+        entry.status = "pending"
+    elif request.action == "accept":
+        if request.value is not None and not request.value.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Content can't be blank.")
+        value = request.value.strip() if request.value and request.value.strip() else entry.change.text
+        item = request.item or entry.change.item
+        if entry.confirmation_required and entry.change.action == "add_bullet":
+            if not value:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Add details that accurately describe your experience.")
+            if not item:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose the job or project for this experience.")
+            section = request.section or entry.change.section
+            source = row.get("source_content") or {}
+            if section not in {"experience", "projects"} or item not in {
+                candidate["id"] for candidate in source.get(section, [])
+            }:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a job or project from your resume.")
+        else:
+            section = request.section or entry.change.section
+        updates: Dict[str, Any] = {"user_confirmed": entry.confirmation_required}
+        if request.value is not None:
+            updates["text"] = request.value.strip()
+        if request.item is not None:
+            updates["item"] = request.item
+        if request.section is not None:
+            updates["section"] = section
+        entry.change = entry.change.model_copy(update=updates)
+        entry.item = entry.change.item
+        entry.section = entry.change.section
+        entry.suggested_value = entry.change.text or entry.suggested_value
+        entry.status = "accepted"
+    elif request.action == "reject":
+        entry.status = "rejected"
+    else:
+        entry.status = "reverted"
+
+    after_accepted = {candidate.id for candidate in entries if candidate.status == "accepted"}
+    values: Dict[str, Any] = {
+        "review_changes": [candidate.model_dump(mode="json", by_alias=True) for candidate in entries],
+    }
+    new_path = None
+    if before_accepted != after_accepted:
+        new_path = f"{user.id}/tailored/{tailoring_id}/{uuid4().hex}.docx"
+        try:
+            values.update(await pipeline.render_review(
+                StepContext(rest=rest, storage=storage, user_id=user.id),
+                {**row, "review_changes": values["review_changes"]},
+                new_path,
+            ))
+        except PipelineError as e:
+            accepted = [candidate for candidate in entries if candidate.status == "accepted"]
+            if (not before_accepted and entry.status == "accepted" and accepted and
+                    all(candidate.section == "summary" for candidate in accepted)):
+                if row.get("output_file_path"):
+                    try:
+                        await storage.remove([row["output_file_path"]])
+                    except SupabaseError as cleanup_error:
+                        logger.warning(f"Could not remove the last tailored document {row['output_file_path']}: {cleanup_error}")
+                entry.status = "pending"
+                failed = {
+                    "status": "failed",
+                    "error": str(e),
+                    "output_file_path": None,
+                    "review_changes": [candidate.model_dump(mode="json", by_alias=True) for candidate in entries],
+                }
+                try:
+                    await rest.update(
+                        TABLE,
+                        {"id": f"eq.{tailoring_id}", "updated_at": f"eq.{row.get('updated_at')}"},
+                        failed,
+                    )
+                except SupabaseError as save_error:
+                    logger.error(f"Could not record the failed review update for user {user.id}: {save_error}")
+                raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+            report = ValidationReport.model_validate(row.get("validation_report") or {})
+            report.issues.append(ValidationIssue(
+                check="document",
+                outcome="warning",
+                section=entry.section,
+                item=entry.item,
+                message=(
+                    f"Left unchanged in your document: {entry.field or entry.section}. "
+                    "That part of the layout couldn't be edited without risking its formatting."
+                ),
+            ))
+            values["validation_report"] = report.model_dump(mode="json", by_alias=True)
+            values["review_changes"] = [candidate.model_dump(mode="json", by_alias=True) for candidate in entries]
+            new_path = None
+        except SupabaseError as e:
+            try:
+                await storage.remove([new_path])
+            except SupabaseError as cleanup_error:
+                logger.warning(f"Could not remove incomplete review file {new_path}: {cleanup_error}")
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not update the tailored document. Please try again.") from e
+    try:
+        updated = await rest.update(
+            TABLE,
+            {"id": f"eq.{tailoring_id}", "updated_at": f"eq.{row.get('updated_at')}"},
+            values,
+        )
+    except SupabaseError as e:
+        if new_path:
+            try:
+                await storage.remove([new_path])
+            except SupabaseError as cleanup_error:
+                logger.warning(f"Could not remove unreferenced review file {new_path}: {cleanup_error}")
+        logger.error(f"Could not save review change for user {user.id}: {e}")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not save your review change. Please try again.") from e
+    if not updated:
+        if new_path:
+            try:
+                await storage.remove([new_path])
+            except SupabaseError as cleanup_error:
+                logger.warning(f"Could not remove unreferenced review file {new_path}: {cleanup_error}")
+        raise HTTPException(status.HTTP_409_CONFLICT, "This review changed in another tab. Refresh and try again.")
+    if new_path and row.get("output_file_path"):
+        try:
+            await storage.remove([row["output_file_path"]])
+        except SupabaseError as e:
+            logger.warning(f"Could not remove previous tailored document {row['output_file_path']}: {e}")
+    jobs = await _jobs(rest, [row["job_context_id"]])
+    return build_response(updated[0], jobs.get(row["job_context_id"]), detail=True)
 
 
 def _safe_name(text: str) -> str:
