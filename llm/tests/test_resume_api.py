@@ -221,6 +221,24 @@ async def test_tailoring_runs_end_to_end_and_master_is_unchanged(env):
     master_before = dict(env.rest.tables["resumes"][0])
     async with client_for(env) as client:
         result = await tailor(client)
+        row = env.rest.tables["resume_tailorings"][0]
+        initial_path = row["output_file_path"]
+        initial = DocxPackage(env.storage.files[initial_path])
+        initial_lines = [visible_text(p) for p in paragraphs(initial.body)]
+        assert "Built web applications using React and Node.js." in initial_lines
+        assert "Built SaaS web applications using React, TypeScript and Node.js." not in initial_lines
+
+        summary_change = next(c for c in result["reviewChanges"] if c["change"]["section"] == "summary")
+        summary_result = await client.patch(
+            f"/api/v1/tailorings/{result['id']}/changes/{summary_change['id']}", json={"action": "accept"},
+        )
+        bullet_change = next(c for c in result["reviewChanges"] if c["change"]["action"] == "rewrite_bullet")
+        bullet_result = await client.patch(
+            f"/api/v1/tailorings/{result['id']}/changes/{bullet_change['id']}", json={"action": "accept"},
+        )
+        reverted = await client.patch(
+            f"/api/v1/tailorings/{result['id']}/changes/{summary_change['id']}", json={"action": "revert"},
+        )
         download = await client.get(f"/api/v1/tailorings/{result['id']}/download")
         files = await client.get(f"/api/v1/tailorings/{result['id']}/files")
         history = await client.get("/api/v1/tailorings")
@@ -228,20 +246,25 @@ async def test_tailoring_runs_end_to_end_and_master_is_unchanged(env):
     assert result["status"] == "ready", result
     assert result["summary"] == {"analyzed": 8, "supported": 3, "partial": 1, "unsupported": 4}
     assert "Kubernetes" in result["unsupportedRequirements"]
-    labels = [c["label"] for c in result["changes"]]
+    assert result["changes"] == []
+    assert result["detail"]["diffs"] == []
+    assert summary_result.status_code == bullet_result.status_code == reverted.status_code == 200
+    labels = [c["label"] for c in bullet_result.json()["changes"]]
     assert "1 experience bullet rewritten" in labels and "Summary updated" in labels
-    assert result["warnings"] == []
+    assert "Summary updated" not in [c["label"] for c in reverted.json()["changes"]]
     assert result["pipelineVersion"] == "1.2.1"
-    assert {d["itemLabel"] for d in result["detail"]["diffs"]} == {"Summary", "Software Engineer at Northwind Labs"}
+    assert {"summary", "experience"} <= {c["category"] for c in result["reviewChanges"]}
 
     row = env.rest.tables["resume_tailorings"][0]
-    for column in ("match_analysis", "tailoring_plan", "tailored_content", "validation_report"):
+    for column in ("match_analysis", "tailoring_plan", "source_content", "tailored_content", "review_changes", "validation_report"):
         assert row[column], column
-    assert row["output_file_path"] == f"{USER_ID}/tailored/{row['id']}.docx"
+    assert row["output_file_path"] != initial_path and initial_path not in env.storage.files
     assert env.content_types[row["output_file_path"]] == DOCX_MIME
     tailored = DocxPackage(env.storage.files[row["output_file_path"]])
     lines = [visible_text(p) for p in paragraphs(tailored.body)]
     assert "Built SaaS web applications using React, TypeScript and Node.js." in lines
+    assert master().summary in lines
+    assert "Full stack engineer building SaaS web applications with React, TypeScript and Node.js." not in lines
     # The original upload and its record are untouched; the master stays available for the next job.
     assert env.rest.tables["resumes"][0] == master_before
     assert env.storage.files[MASTER_PATH] == resume_docx(master())
@@ -282,7 +305,8 @@ def _waiting_row(job_context_id: str, step_started_at=None) -> dict:
     return {
         "id": "t1", "user_id": USER_ID, "resume_id": "r1", "resume_version": 1, "job_context_id": job_context_id,
         "status": "matching", "pipeline_version": "1.2.0", "match_analysis": None, "tailoring_plan": None,
-        "tailored_content": None, "validation_report": None, "output_file_path": None, "error": None,
+        "source_content": master().to_json(), "tailored_content": None, "review_changes": [],
+        "validation_report": None, "output_file_path": None, "error": None,
         "step_started_at": step_started_at, "created_at": old, "updated_at": old,
     }
 
@@ -334,7 +358,7 @@ async def test_without_background_work_polls_drive_the_run(env, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_title_follows_the_job_and_missing_required_skills_are_added_for_review():
+async def test_title_and_missing_required_skills_wait_for_user_confirmation():
     resume = master()
     resume.contact.headline = "Full Stack AI Engineer"
     tables = tables_with_master()
@@ -348,16 +372,28 @@ async def test_title_follows_the_job_and_missing_required_skills_are_added_for_r
         result = await tailor(client)
 
     assert result["status"] == "ready", result
-    labels = [c["label"] for c in result["changes"]]
-    assert "Title changed to Frontend Developer" in labels
-    assert "Added skills: GraphQL" in labels
-    assert any("GraphQL" in w and "Remove any" in w for w in result["warnings"])
-    assert {"Title", "Summary"} <= {d["itemLabel"] for d in result["detail"]["diffs"]}
+    assert result["changes"] == []
+    changes = result["reviewChanges"]
+    title = next(c for c in changes if c["change"]["section"] == "headline")
+    graphql = next(c for c in changes if c["suggestedValue"] == "GraphQL")
+    assert title["status"] == graphql["status"] == "pending"
+    assert graphql["confirmationRequired"] is True
+    assert graphql["evidenceStatus"] == "unconfirmed"
 
     row = env.rest.tables["resume_tailorings"][0]
     text = " ".join(visible_text(p) for p in paragraphs(DocxPackage(env.storage.files[row["output_file_path"]]).body))
-    assert "Frontend Developer" in text and "Full Stack AI Engineer" not in text
-    assert "GraphQL" in text
+    assert "Full Stack AI Engineer" in text and "Frontend Developer" not in text
+    assert "GraphQL" not in text
+
+    async with client_for(env) as client:
+        confirmed = await client.patch(
+            f"/api/v1/tailorings/{result['id']}/changes/{graphql['id']}", json={"action": "accept"},
+        )
+    assert confirmed.status_code == 200
+    assert "Added skills: GraphQL" in [c["label"] for c in confirmed.json()["changes"]]
+    row = env.rest.tables["resume_tailorings"][0]
+    text = " ".join(visible_text(p) for p in paragraphs(DocxPackage(env.storage.files[row["output_file_path"]]).body))
+    assert "GraphQL" in text and "Frontend Developer" not in text
     # Kubernetes is required too, but the user said they don't have it.
     assert "Kubernetes" not in text
 
@@ -399,11 +435,15 @@ async def test_changes_the_document_cant_take_are_left_out_and_reported():
     env = Env(files={MASTER_PATH: resume_docx(master(), summary_in_text_box=True)})
     async with client_for(env) as client:
         result = await tailor(client)
-    assert result["status"] == "ready"
+        suggestion = next(c for c in result["reviewChanges"] if c["change"]["section"] == "summary")
+        reviewed = await client.patch(
+            f"/api/v1/tailorings/{result['id']}/changes/{suggestion['id']}", json={"action": "accept"},
+        )
+    assert result["status"] == reviewed.json()["status"] == "ready"
     # The summary sits in a text box: left as it was, and the review shows what the document really says.
-    assert "Summary updated" not in [c["label"] for c in result["changes"]]
-    assert {d["itemLabel"] for d in result["detail"]["diffs"]} == {"Software Engineer at Northwind Labs"}
-    assert "1 change left out to protect your document's formatting" in result["warnings"]
+    assert "Summary updated" not in [c["label"] for c in reviewed.json()["changes"]]
+    assert not reviewed.json()["detail"]["diffs"]
+    assert "1 change left out to protect your document's formatting" in reviewed.json()["warnings"]
     row = env.rest.tables["resume_tailorings"][0]
     assert row["tailored_content"]["summary"] == master().summary
 
@@ -414,10 +454,19 @@ async def test_a_document_that_cant_be_edited_fails_clearly_and_offers_no_file()
     env = Env(plan=plan, files={MASTER_PATH: resume_docx(master(), summary_in_text_box=True)})
     async with client_for(env) as client:
         result = await tailor(client)
+        suggestion = next(c for c in result["reviewChanges"] if c["change"]["section"] == "summary")
+        accepted = await client.patch(
+            f"/api/v1/tailorings/{result['id']}/changes/{suggestion['id']}", json={"action": "accept"},
+        )
+        assert result["status"] == "ready"
+        assert accepted.status_code == 409
+        assert env.rest.tables["resume_tailorings"][0]["review_changes"][0]["status"] == "pending"
+        assert env.rest.tables["resume_tailorings"][0]["output_file_path"] in env.storage.files
         download = await client.get(f"/api/v1/tailorings/{result['id']}/download")
         files = await client.get(f"/api/v1/tailorings/{result['id']}/files")
-    assert result["status"] == "failed"
-    assert "couldn't safely edit this Word document" in result["error"]
+        refreshed = await client.get(f"/api/v1/tailorings/{result['id']}")
+    assert refreshed.json()["status"] == "failed"
+    assert "couldn't safely edit this Word document" in refreshed.json()["error"]
     assert download.status_code == 409 and files.status_code == 409
     assert env.rest.tables["resume_tailorings"][0]["output_file_path"] is None
 
