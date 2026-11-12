@@ -8,6 +8,7 @@ const IGNORED_TAGS = new Set([
 ])
 const BLOCK_TAGS = /^(ADDRESS|ARTICLE|BLOCKQUOTE|DD|DIV|DL|DT|H[1-6]|LI|OL|P|SECTION|TABLE|TR|UL)$/
 const DEDICATED_DESCRIPTION = /(description|job[-_ ]?details|job[-_ ]?content|posting|overview)/i
+const ABOUT_JOB_HEADING = /^about (?:the )?(?:job|role|position)$/i
 
 function isHidden(element: Element): boolean {
   if (
@@ -85,6 +86,15 @@ export function largestJobDescriptionBlock(doc: Document, selectors = JOB_DESCRI
       if (text.length > best.length) best = text
     }
     return best.length >= 200 ? best : ''
+  }
+  const aboutJob = [...doc.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6, [role="heading"], strong, b, p')]
+    .find((heading) => ABOUT_JOB_HEADING.test(visibleJobText(heading)))
+  if (aboutJob) {
+    let container = aboutJob.parentElement
+    for (let depth = 0; container && depth < 8 && container !== doc.body; depth++, container = container.parentElement) {
+      const text = visibleJobText(container)
+      if (text.length >= 200) return text
+    }
   }
   return bestText(specific) || bestText(candidates)
 }
