@@ -25,6 +25,7 @@ import type {
   TailoringFilesResponse,
   TailoringListResponse,
   TailoringResponse,
+  UpdateTailoringChangeRequest,
   UpdateResumeRequest,
 } from '@ansly/types'
 import { invalidate } from '@/lib/cache'
@@ -142,6 +143,17 @@ export const startTailoring = (req: StartTailoringRequest) =>
 
 export const getTailoring = (id: string, detail = false) =>
   request<TailoringResponse>('GET', `/api/v1/tailorings/${encodeURIComponent(id)}${detail ? '?detail=true' : ''}`)
+
+export const updateTailoringChange = (id: string, changeId: string, req: UpdateTailoringChangeRequest) =>
+  request<TailoringResponse>(
+    'PATCH',
+    `/api/v1/tailorings/${encodeURIComponent(id)}/changes/${encodeURIComponent(changeId)}`,
+    req,
+  ).then((response) => {
+    invalidate(`${KEYS.tailoring(id)}:detail`)
+    invalidate('tailorings:list')
+    return response
+  })
 
 export const listTailorings = () => request<TailoringListResponse>('GET', '/api/v1/tailorings')
 
