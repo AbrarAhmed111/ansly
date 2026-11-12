@@ -30,6 +30,7 @@ const READY: TailoringResponse = {
   summary: { analyzed: 18, supported: 14, partial: 2, unsupported: 2 },
   changes: [{ section: 'experience', action: 'rewrite_bullet', label: '3 experience bullets rewritten' },
     { section: 'projects', action: 'reorder', label: 'OnTask moved higher' }],
+  reviewChanges: [],
   unsupportedRequirements: ['Kubernetes', 'AWS EKS'], warnings: [], pipelineVersion: '1.2.0', error: null,
   createdAt: '2026-10-02T00:00:00Z', detail: null,
 }
