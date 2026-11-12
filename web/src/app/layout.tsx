@@ -21,8 +21,9 @@ const sans = Geist({ subsets: ['latin'], variable: '--font-sans' })
 const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
-  title: { default: 'Ansly — truthful answers for job applications', template: '%s · Ansly' },
-  description: 'AI job application assistant — truthful, personalized answers from your own profile.',
+  title: { default: 'Ansly — discover jobs, tailor your resume, apply with confidence', template: '%s · Ansly' },
+  description:
+    'Discover and organize job opportunities, tailor your resume to each role, and prepare truthful application answers grounded in your experience.',
 }
 
 export const viewport: Viewport = {
