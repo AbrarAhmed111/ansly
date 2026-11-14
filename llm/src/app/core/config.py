@@ -34,9 +34,6 @@ class Settings(BaseSettings):
     # Only needed if the project still signs user JWTs with the legacy HS256 secret.
     SUPABASE_JWT_SECRET: str = ""
 
-    # Brave Search API. Public search is opt-in; the provider key stays server-side.
-    BRAVE_SEARCH_API_KEY: str = ""
-
     # Answer generation
     LLM_TEMPERATURE: float = 0.4
     LLM_MAX_TOKENS: int = 2048
