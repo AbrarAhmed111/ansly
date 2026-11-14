@@ -10,11 +10,13 @@ import { extractJobContext, isCoverLetter } from '@/lib/job-context'
 import { explainNoJob, extractJob, jobKey, peekJob, type DetectedJob } from '@/lib/job/detect'
 import { DESCRIPTION_SELECTORS } from '@/lib/job/generic'
 import { JOB_DESCRIPTION_CONTENT_SELECTORS } from '@/lib/job/dom'
+import { isLinkedInPostSearchUrl } from '@/lib/leads/linkedin-posts'
 import { detectLimits } from '@/lib/limits'
 import { send, type TabMessage } from '@/lib/messages'
 import { firstTailorOffer, type Settings } from '@/lib/settings'
 import { Panel, type Row, type RowStatus } from './Panel'
 import { Popover, type PopoverTarget } from './Popover'
+import { LeadsCard, pagePosts, usePostSearch } from './LeadsCard'
 import { TailorCard } from './TailorCard'
 
 const JOB_CHECK_MS = 1500
@@ -229,6 +231,8 @@ export function App({ host, initialSettings, subscribe }: {
   const trackedJobs = useRef(new Set<string>())
   // Per job: open the offer card by itself (first visit, full description on the page) or start as the pill.
   const [autoOpen, setAutoOpen] = useState<Record<string, boolean>>({})
+  const postSearch = usePostSearch(enabled)
+  const [dismissedSearch, setDismissedSearch] = useState<string | null>(null)
 
   useEffect(() => {
     if (!jobPage || jobPage.key in autoOpen) return
@@ -333,6 +337,14 @@ export function App({ host, initialSettings, subscribe }: {
   // Keyboard shortcut / context menu (from the background).
   useEffect(() => {
     const listener = (message: unknown) => {
+      if ((message as TabMessage)?.type === 'collectLinkedInPosts') {
+        if (!enabled) return { ok: false, message: 'Turn on Ansly for this site before previewing posts.' }
+        if (window.top !== window || !isLinkedInPostSearchUrl(window.location.href)) {
+          return { ok: false, message: 'Open a LinkedIn post-search results page first.' }
+        }
+        pagePosts.scan(document, window.location.href)
+        return { ok: true, data: pagePosts.preview() }
+      }
       if (!enabled) return
       const type = (message as TabMessage)?.type
       if (type === 'shortcut') {
@@ -500,6 +512,10 @@ export function App({ host, initialSettings, subscribe }: {
             onJobContextId={(id) => (jobContextIdRef.current = { url: location.href, key: jobPage.key, id })}
           />
         </div>
+      )}
+
+      {postSearch.searchKey && dismissedSearch !== postSearch.searchKey && !panelOpen && (
+        <LeadsCard key={postSearch.searchKey} count={postSearch.count} onDismiss={() => setDismissedSearch(postSearch.searchKey)} />
       )}
 
       {target && (
