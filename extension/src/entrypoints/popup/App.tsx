@@ -1,5 +1,7 @@
 import type { AnswerLength, AnswerTone } from '@ansly/types'
 import { useEffect, useState } from 'react'
+import { collectInBatches, leadsPath, type CollectionProgress, type CollectionResult } from '@/lib/leads/collect'
+import { isLinkedInPostSearchUrl, type LinkedInPostPreview } from '@/lib/leads/linkedin-posts'
 import { send, type ConnectionState } from '@/lib/messages'
 import type { ProfileSummary } from '@/lib/profile-summary'
 import { getSettings, updateSettings, type Settings, type Theme } from '@/lib/settings'
@@ -63,6 +65,10 @@ export default function App() {
   const [status, setStatus] = useState<ExtensionStatus | null>(null)
   const [showStatus, setShowStatus] = useState(false)
   const [diagnosticsNote, setDiagnosticsNote] = useState<string | null>(null)
+  const [activeTabUrl, setActiveTabUrl] = useState('')
+  const [collection, setCollection] = useState<CollectionResult | null>(null)
+  const [collecting, setCollecting] = useState<CollectionProgress | null>(null)
+  const [collectionError, setCollectionError] = useState<string | null>(null)
 
   useEffect(() => {
     void send('getConnection', null).then((r) => {
@@ -74,6 +80,7 @@ export default function App() {
     void browser.commands.getAll().then((commands) => {
       setShortcut(commands.find((c) => c.name === 'generate-answer')?.shortcut || null)
     })
+    void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => setActiveTabUrl(tab?.url ?? ''))
   }, [])
 
   useEffect(() => {
@@ -81,6 +88,37 @@ export default function App() {
   }, [showStatus, status])
 
   const patch = async (p: Partial<Settings>) => setSettings(await updateSettings(p))
+
+  const collectLinkedInPosts = async () => {
+    setCollectionError(null)
+    setCollection(null)
+    try {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
+      if (tab?.id == null || !tab.url || !isLinkedInPostSearchUrl(tab.url)) {
+        throw new Error('Open a LinkedIn post-search results page first.')
+      }
+      if (!(await browser.permissions.contains({ origins: ['https://*.linkedin.com/*'] }))) {
+        throw new Error('Enable LinkedIn under Sites, then reload the search page.')
+      }
+      const response = await browser.tabs.sendMessage(
+        tab.id,
+        { ansly: true, type: 'collectLinkedInPosts' },
+        { frameId: 0 },
+      )
+      if (!response?.ok) throw new Error(response?.message ?? 'Could not read the loaded posts.')
+      const preview = response.data as LinkedInPostPreview
+      if (preview.candidates.length === 0) {
+        throw new Error('No posts are loaded yet. Scroll the results, then try again.')
+      }
+      setCollection(await collectInBatches(preview.candidates, setCollecting))
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : 'Could not collect the loaded posts.')
+    } finally {
+      setCollecting(null)
+    }
+  }
+
+  const onLinkedInPostSearch = isLinkedInPostSearchUrl(activeTabUrl)
 
   return (
     <main>
@@ -119,6 +157,45 @@ export default function App() {
           </>
         )}
       </section>
+
+      {onLinkedInPostSearch && (
+        <section className="card">
+          <p className="ready">LinkedIn post search detected</p>
+          <p className="muted">
+            The Ansly panel at the bottom right of the page counts posts as you scroll. Collect from there or here.
+          </p>
+          <button className="btn primary" disabled={Boolean(collecting)} onClick={() => void collectLinkedInPosts()}>
+            {collecting ? `Matching… ${collecting.done} of ${collecting.total}` : 'Collect Info'}
+          </button>
+          {collectionError && <p role="alert" className="muted">{collectionError}</p>}
+          {collection && (
+            <>
+              <p className="ready">
+                {collection.detected} posts detected · {collection.saved} new lead{collection.saved === 1 ? '' : 's'}
+              </p>
+              <dl>
+                <dt>With email</dt>
+                <dd>{collection.withEmail}</dd>
+                <dt>With apply link</dt>
+                <dd>{collection.withLink}</dd>
+                <dt>Already in your leads</dt>
+                <dd>{collection.duplicates}</dd>
+                <dt>Skipped</dt>
+                <dd>{collection.skipped}</dd>
+                {collection.failed > 0 && (
+                  <>
+                    <dt>Couldn’t process</dt>
+                    <dd>{collection.failed}</dd>
+                  </>
+                )}
+              </dl>
+              <button className="btn primary" onClick={() => void send('openWebApp', { path: leadsPath(collection) })}>
+                Open dashboard
+              </button>
+            </>
+          )}
+        </section>
+      )}
 
       <Sites />
 
