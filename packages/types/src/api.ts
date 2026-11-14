@@ -205,15 +205,35 @@ export interface LeadListResponse {
   leads: Lead[]
 }
 
+/** One post the extension read from a LinkedIn search page the user loaded. */
+export interface LinkedInPostCandidateRequest {
+  source_post_id: string | null
+  original_post_url: string | null
+  author_name: string | null
+  author_profile_url: string | null
+  post_text: string
+  published_at: string | null
+}
+
 /** `POST /api/v1/leads/collect` */
-export interface CollectLeadsResponse {
+export interface CollectLinkedInPostsRequest {
+  targeting_profile_id?: string | null
+  loaded_count: number
+  candidates: LinkedInPostCandidateRequest[]
+}
+
+/** `POST /api/v1/leads/collect` */
+export interface CollectLinkedInPostsResponse {
   session_id: string
   status: 'completed' | 'partially_completed'
-  queries_run: number
-  total_candidates_reviewed: number
-  relevant_candidates: number
-  duplicates_skipped: number
-  new_leads_saved: number
+  loaded_count: number
+  extracted_count: number
+  /** Posts without a stable post id or URL; skipped so duplicates can't slip in. */
+  unidentified_count: number
+  relevant_count: number
+  filtered_count: number
+  duplicate_count: number
+  saved_count: number
   leads: Lead[]
 }
 
