@@ -89,13 +89,13 @@ const WORKFLOWS: ProductWorkflow[] = [
     index: '04',
     icon: Target,
     title: 'Leads',
-    description: 'Search public web results for opportunities that match your targeting profile and organize promising leads.',
+    description: 'Collect LinkedIn posts you load with the extension and keep only opportunities that match your targeting profile.',
     layout: 'list',
     href: '/leads',
     link: 'Open Leads',
     steps: [
       { title: 'Define your target', body: 'Create a profile with roles, keywords, locations, and exclusions.' },
-      { title: 'Search public results', body: 'Ansly queries a configured web-search provider; it does not crawl or scrape source pages.' },
+      { title: 'Collect loaded posts', body: 'Click Collect Info on a LinkedIn post search. Ansly reads only the posts you already loaded; it never scrolls or browses for you.' },
       { title: 'Review matches', body: 'Inspect the result snippet, source link, and matched profile terms before relying on it.' },
       { title: 'Organize your leads', body: 'Save qualified results, filter the list, and track new versus contacted leads.' },
     ],
@@ -192,9 +192,9 @@ const FEATURES: { icon: LucideIcon; title: string; body: string; href: string; l
   {
     icon: Target,
     title: 'Leads',
-    body: 'Search public results against your targeting profile, review why results match, and organize promising opportunities in one pipeline.',
+    body: 'Collect LinkedIn posts from the extension, review why they match your targeting profile, and organize promising opportunities.',
     href: '/leads',
-    link: 'Build your pipeline',
+    link: 'Organize opportunities',
     label: 'Discover & organize',
   },
   {
