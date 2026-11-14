@@ -11,7 +11,7 @@ import { errorMessage } from '@/lib/format'
 import { safeNext } from '@/lib/safe-next'
 import { createClient } from '@/lib/supabase/client'
 
-type Mode = 'signin' | 'signup'
+type Mode = 'signin' | 'signup' | 'reset'
 
 const MODES = [
   { value: 'signin', label: 'Sign in' },
@@ -37,6 +37,12 @@ const COPY = {
     body: 'Build your profile once and answer applications faster, with every draft grounded in your real experience.',
     submit: 'Create account',
   },
+  reset: {
+    eyebrow: 'Account recovery',
+    title: 'Reset your password',
+    body: 'Enter the email you signed up with. We’ll send you a link to choose a new password.',
+    submit: 'Send reset link',
+  },
 } as const
 
 function FullLogo({ className }: { className?: string }) {
@@ -47,7 +53,8 @@ function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const next = safeNext(params.get('next'))
-  const [mode, setMode] = useState<Mode>(params.get('mode') === 'signup' ? 'signup' : 'signin')
+  const initialMode = params.get('mode')
+  const [mode, setMode] = useState<Mode>(initialMode === 'signup' || initialMode === 'reset' ? initialMode : 'signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
@@ -62,7 +69,15 @@ function LoginForm() {
     setNotice(null)
     const supabase = createClient()
     try {
-      if (mode === 'signin') {
+      if (mode === 'reset') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent('/reset-password')}`,
+        })
+        if (error) throw error
+        // Same message whether or not the address has an account, so the form can't be used to find accounts.
+        setNotice(`If ${email.trim()} has an Ansly account, a reset link is on its way. Open it in this browser.`)
+        setMode('signin')
+      } else if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         router.replace(next)
@@ -105,7 +120,9 @@ function LoginForm() {
         <p className="text-body-lg text-muted">{COPY[mode].body}</p>
       </div>
 
-      <SegmentedControl role="tablist" label="Account" options={MODES} value={mode} onChange={switchMode} className="mt-5 flex w-full" />
+      {mode !== 'reset' && (
+        <SegmentedControl role="tablist" label="Account" options={MODES} value={mode} onChange={switchMode} className="mt-5 flex w-full" />
+      )}
 
       <form onSubmit={onSubmit} className="mt-4 space-y-3">
         {mode === 'signup' && (
@@ -125,16 +142,29 @@ function LoginForm() {
             placeholder="you@example.com"
           />
         </Field>
-        <Field label="Password" htmlFor="password" help={mode === 'signup' ? 'At least 8 characters.' : undefined}>
-          <PasswordInput
-            id="password"
-            required
-            minLength={mode === 'signup' ? 8 : undefined}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-          />
-        </Field>
+        {mode !== 'reset' && (
+          <Field
+            label="Password"
+            htmlFor="password"
+            help={mode === 'signup' ? 'At least 8 characters.' : undefined}
+            hint={
+              mode === 'signin' && (
+                <button type="button" className="font-medium text-accent hover:underline" onClick={() => switchMode('reset')}>
+                  Forgot password?
+                </button>
+              )
+            }
+          >
+            <PasswordInput
+              id="password"
+              required
+              minLength={mode === 'signup' ? 8 : undefined}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            />
+          </Field>
+        )}
         <ErrorText>{error}</ErrorText>
         {notice && <Alert tone="accent">{notice}</Alert>}
         <Button type="submit" size="lg" loading={busy} className="w-full">
@@ -144,7 +174,7 @@ function LoginForm() {
       </form>
 
       <p className="mt-4 text-center text-muted">
-        {mode === 'signin' ? 'New to Ansly? ' : 'Already have an account? '}
+        {mode === 'reset' ? 'Remembered it? ' : mode === 'signin' ? 'New to Ansly? ' : 'Already have an account? '}
         <button type="button" className="font-medium text-accent hover:underline" onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}>
           {mode === 'signin' ? 'Create an account' : 'Sign in'}
         </button>
