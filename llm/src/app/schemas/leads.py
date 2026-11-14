@@ -38,6 +38,7 @@ class LeadProfileSnapshot(BaseModel):
 class LeadRecord(BaseModel):
     id: UUID
     user_id: UUID
+    source_post_id: Optional[str] = None
     targeting_profile_id: Optional[UUID] = None
     collection_session_id: Optional[UUID] = None
     source_platform: SourcePlatform

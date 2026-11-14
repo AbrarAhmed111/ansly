@@ -228,7 +228,7 @@ export interface CollectLinkedInPostsResponse {
   status: 'completed' | 'partially_completed'
   loaded_count: number
   extracted_count: number
-  /** Posts without a stable post id or URL; skipped so duplicates can't slip in. */
+  /** Candidates that could not be assigned a stable identity or source URL. */
   unidentified_count: number
   relevant_count: number
   filtered_count: number

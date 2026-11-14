@@ -23,7 +23,9 @@ export interface CollectionResult {
   withEmail: number
   withLink: number
   duplicates: number
-  /** Not relevant, excluded words, no email or apply link, or no post link. */
+  filtered: number
+  unidentified: number
+  /** Posts filtered by profile targeting or excluded keywords. */
   skipped: number
   /** Posts in batches that failed; they were not processed. */
   failed: number
@@ -50,6 +52,8 @@ export async function collectInBatches(
     withEmail: 0,
     withLink: 0,
     duplicates: 0,
+    filtered: 0,
+    unidentified: 0,
     skipped: 0,
     failed: 0,
     sessionIds: [],
@@ -101,10 +105,14 @@ export function retryAfter(message: string): number {
 function add(result: CollectionResult, data: CollectLinkedInPostsResponse) {
   result.saved += data.saved_count
   result.duplicates += data.duplicate_count
+  result.filtered += data.filtered_count
+  result.unidentified += data.unidentified_count
   result.skipped += data.filtered_count + data.unidentified_count
   result.failed += data.relevant_count - data.saved_count - data.duplicate_count
   result.withEmail += data.leads.filter((lead) => lead.contact_info?.email).length
-  result.withLink += data.leads.filter((lead) => !lead.contact_info?.email && lead.contact_info?.application_url).length
+  result.withLink += data.leads.filter((lead) =>
+    !lead.contact_info?.email && (lead.contact_info?.application_url || lead.contact_info?.contact_form_url),
+  ).length
   result.sessionIds.push(data.session_id)
 }
 

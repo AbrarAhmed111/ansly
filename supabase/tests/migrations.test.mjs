@@ -97,6 +97,27 @@ test('users only see and change their own profile', async () => {
   })
 })
 
+test('permalinkless LinkedIn leads use distinct stable post identities', async () => {
+  const insertLead = (tx, sourcePostId) =>
+    tx.query(
+      `insert into public.leads (
+        source_platform, source_name, author_name, author_profile_url, company_name,
+        title, opportunity_type, status, contactability, description, source_post_id
+      ) values (
+        'linkedin', 'LinkedIn', 'Alice', 'https://www.linkedin.com/in/alice/',
+        'Unverified employer', 'Hiring React engineer', 'job', 'new',
+        'email_available', 'Hiring React engineer', $1
+      )`,
+      [sourcePostId],
+    )
+
+  await asUser(ALICE, async (tx) => {
+    await insertLead(tx, 'ansly:sha256:post-1')
+    await insertLead(tx, 'ansly:sha256:post-2')
+  })
+  await assert.rejects(asUser(ALICE, (tx) => insertLead(tx, 'ansly:sha256:post-1')))
+})
+
 test('section rows default to the current user and are isolated', async () => {
   await asUser(ALICE, (tx) =>
     tx.query(`insert into public.experiences (company, title) values ('WebWhiz', 'Engineer')`),

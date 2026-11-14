@@ -215,8 +215,14 @@ function Result({ result }: { result: CollectionResult }) {
         <dd>{result.withLink}</dd>
         <dt>Already in your leads</dt>
         <dd>{result.duplicates}</dd>
-        <dt>Skipped</dt>
-        <dd>{result.skipped}</dd>
+        <dt>Filtered (profile/contact)</dt>
+        <dd>{result.filtered}</dd>
+        {result.unidentified > 0 && (
+          <>
+            <dt>Couldn’t identify post</dt>
+            <dd>{result.unidentified}</dd>
+          </>
+        )}
         {result.failed > 0 && (
           <>
             <dt>Couldn’t process</dt>

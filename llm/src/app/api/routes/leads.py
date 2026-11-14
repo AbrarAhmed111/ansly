@@ -12,7 +12,7 @@ from src.app.core.auth import AuthUser, get_current_user
 from src.app.core.config import get_settings
 from src.app.core.rate_limit import check_rate_limit
 from src.app.db.rest import SupabaseError, SupabaseRest
-from src.app.leads.posts import _terms, canonical_post_url, qualify_post
+from src.app.leads.posts import _terms, canonical_post_url, post_identity, qualify_post
 from src.app.schemas.leads import (
     CollectLinkedInPostsRequest,
     CollectLinkedInPostsResponse,
@@ -107,14 +107,16 @@ async def collect_linkedin_leads(
     unidentified = filtered = duplicates = relevant = persistence_errors = 0
     for candidate in request.candidates:
         url = canonical_post_url(candidate.source_post_id, candidate.original_post_url)
-        if not url:
+        data = candidate.model_dump()
+        identity = post_identity(data)
+        if not identity and not url:
             unidentified += 1
             continue
-        if url in seen:
+        key = url or identity
+        if key in seen:
             duplicates += 1
             continue
-        seen.add(url)
-        data = candidate.model_dump()
+        seen.add(key)
         data["canonical_url"] = url
         data["published_at"] = candidate.published_at.isoformat() if candidate.published_at else None
         lead = qualify_post(data, profile)
@@ -122,6 +124,7 @@ async def collect_linkedin_leads(
             filtered += 1
             continue
         relevant += 1
+        lead["source_post_id"] = identity
         lead["targeting_profile_id"] = str(profile["id"])
         lead["collection_session_id"] = session["id"]
         try:

@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from src.app.api.deps import get_rest
 from src.app.core.auth import AuthUser, get_current_user
 from src.app.db.rest import SupabaseError
-from src.app.leads.posts import canonical_post_url, qualify_post
+from src.app.leads.posts import canonical_post_url, post_identity, qualify_post
 from src.app.main import app
 from tests.fakes import USER_ID, FakeRest
 
@@ -69,6 +69,28 @@ def test_qualify_post_matches_contact_and_filters_bait():
     assert qualify_post({**data, "post_text": "Hiring unpaid React interns"}, PROFILE) is None
 
 
+def test_post_identity_uses_content_when_linkedin_omits_a_permalink():
+    candidate = {
+        "post_text": "Hiring a Full Stack Developer. jobs@example.test",
+        "author_profile_url": "https://www.linkedin.com/in/sam-rivera/",
+    }
+    identity = post_identity(candidate)
+    assert identity and identity.startswith("ansly:sha256:")
+    assert post_identity(candidate) == identity
+
+
+def test_contact_form_links_are_detected():
+    lead = qualify_post(
+        {
+            "post_text": "Hiring a React engineer. Apply here https://example.test/contact-form",
+            "canonical_url": "https://www.linkedin.com/feed/update/urn:li:activity:2/",
+        },
+        PROFILE,
+    )
+    assert lead["contactability"] == "contact_form_available"
+    assert lead["contact_info"]["contact_form_url"] == "https://example.test/contact-form"
+
+
 @pytest.mark.asyncio
 async def test_collect_linkedin_posts_saves_relevant_and_reports_counts():
     profile = {**PROFILE, "user_id": USER_ID, "is_active": True}
@@ -83,6 +105,10 @@ async def test_collect_linkedin_posts_saves_relevant_and_reports_counts():
             {"post_text": "Hiring React engineer, no id"},
             _post("Looking for a freelance React developer, DM me", "3"),
             _post("Hiring a React engineer, send CV to jobs@example.test", "4", author_name="Sam Rivera"),
+            {
+                "post_text": "Hiring a Full Stack Developer with React. jobs@example.test",
+                "author_profile_url": "https://www.linkedin.com/in/new-format-author/",
+            },
         ],
     }
     try:
@@ -97,13 +123,15 @@ async def test_collect_linkedin_posts_saves_relevant_and_reports_counts():
         "status", "loaded_count", "extracted_count", "unidentified_count",
         "relevant_count", "filtered_count", "duplicate_count", "saved_count",
     )} == {
-        "status": "completed", "loaded_count": 5, "extracted_count": 6, "unidentified_count": 1,
-        "relevant_count": 2, "filtered_count": 2, "duplicate_count": 1, "saved_count": 2,
+        "status": "completed", "loaded_count": 5, "extracted_count": 7, "unidentified_count": 0,
+        "relevant_count": 3, "filtered_count": 3, "duplicate_count": 1, "saved_count": 3,
     }
     saved = rest.tables["leads"]
     assert {lead["source_platform"] for lead in saved} == {"linkedin"}
     assert saved[0]["contact_info"]["application_url"] == "https://example.test/jobs/1"
     assert saved[1]["author_name"] == "Sam Rivera"
+    assert saved[2]["source_post_id"].startswith("ansly:sha256:")
+    assert saved[2]["original_post_url"] is None
     assert rest.tables["lead_collection_sessions"][0]["status"] == "completed"
 
 

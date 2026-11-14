@@ -5,6 +5,7 @@ const POST_CARD_SELECTORS = [
   '[data-id*="urn:li:activity:"]',
   '.feed-shared-update-v2',
   '.search-result__wrapper',
+  '[role="listitem"]',
 ].join(',')
 const POST_TEXT_SELECTORS = [
   '.update-components-text',
@@ -94,9 +95,57 @@ function firstText(card: HTMLElement, selectors: string[]): string | null {
   return null
 }
 
+function contactLinks(textElement: HTMLElement, pageUrl: URL): string[] {
+  const links = new Set<string>()
+  for (const anchor of textElement.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    try {
+      const url = new URL(anchor.getAttribute('href') ?? '', pageUrl.origin)
+      if (url.protocol === 'mailto:') {
+        const email = decodeURIComponent(url.pathname)
+        if (email) links.add(email)
+        continue
+      }
+
+      let destination = url
+      if (/(^|\.)linkedin\.com$/i.test(url.hostname)) {
+        if (url.pathname !== '/safety/go/') continue
+        const wrapped = url.searchParams.get('url')
+        if (!wrapped) continue
+        destination = new URL(wrapped)
+      }
+      if (destination.protocol === 'http:' || destination.protocol === 'https:') {
+        links.add(destination.href)
+      }
+    } catch {
+      continue
+    }
+  }
+  return [...links]
+}
+
+function postTextFromElement(textElement: HTMLElement, pageUrl: URL): string {
+  const visibleText = cleanText(textElement.innerText || textElement.textContent || '')
+  const links = contactLinks(textElement, pageUrl).filter((link) => !visibleText.includes(link))
+  if (!links.length) return visibleText.slice(0, MAX_POST_TEXT)
+
+  const suffix = cleanText(links.join(' ')).slice(0, MAX_POST_TEXT)
+  const textLimit = Math.max(0, MAX_POST_TEXT - suffix.length - 1)
+  return `${visibleText.slice(0, textLimit)} ${suffix}`.trim()
+}
+
+function authorName(card: HTMLElement): string | null {
+  const selected = firstText(card, AUTHOR_SELECTORS)
+  if (selected) return selected
+
+  const profileLink = [...card.querySelectorAll<HTMLAnchorElement>('a[href*="/in/"]')]
+    .find((anchor) => cleanText(anchor.textContent ?? ''))
+  const name = profileLink ? cleanText(profileLink.textContent ?? '') : ''
+  return name.replace(/\s*[•·]\s*(?:\d+(?:st|nd|rd|th)\+?|following).*$/i, '') || null
+}
+
 function candidateFromCard(card: HTMLElement, pageUrl: URL): LinkedInPostCandidate | null {
   const textElement = card.querySelector<HTMLElement>(POST_TEXT_SELECTORS)
-  const postText = textElement ? cleanText(textElement.innerText || textElement.textContent || '').slice(0, MAX_POST_TEXT) : ''
+  const postText = textElement ? postTextFromElement(textElement, pageUrl) : ''
   if (!postText) return null
 
   const authorLink = card.querySelector<HTMLAnchorElement>('a[href*="/in/"]')
@@ -106,7 +155,7 @@ function candidateFromCard(card: HTMLElement, pageUrl: URL): LinkedInPostCandida
   return {
     sourcePostId: sourcePostId(card),
     originalPostUrl: postUrl(card, pageUrl),
-    authorName: firstText(card, AUTHOR_SELECTORS),
+    authorName: authorName(card),
     authorProfileUrl,
     postText,
     publishedAt: timestamp,
@@ -133,7 +182,10 @@ ${candidate.postText}`
 }
 
 function postCards(doc: Document): HTMLElement[] {
-  return [...doc.querySelectorAll<HTMLElement>(POST_CARD_SELECTORS)].filter((card) => !card.closest('ansly-root'))
+  return [...doc.querySelectorAll<HTMLElement>(POST_CARD_SELECTORS)].filter((card) =>
+    !card.closest('ansly-root') &&
+    (!card.matches('[role="listitem"]') || card.querySelector(POST_TEXT_SELECTORS)),
+  )
 }
 
 export function extractLinkedInPostPreview(doc: Document, pageUrl: string | URL): LinkedInPostPreview | null {

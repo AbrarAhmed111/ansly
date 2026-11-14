@@ -4,6 +4,7 @@ Only the post fields the extension read from the user's own search page are used
 no contact detail is guessed, and a match is a relevance signal, not a verification of the author or offer.
 """
 
+import hashlib
 import re
 import unicodedata
 from typing import Any, Dict, List, Optional
@@ -110,6 +111,18 @@ def canonical_profile_url(url: Optional[str]) -> Optional[str]:
     return f"https://www.linkedin.com{parsed.path.rstrip('/')}/"
 
 
+def post_identity(candidate: Dict[str, Any]) -> str:
+    """Use LinkedIn's activity URN when present, otherwise hash the loaded post content."""
+    source_post_id = candidate.get("source_post_id")
+    if isinstance(source_post_id, str) and ACTIVITY_URN_RE.fullmatch(source_post_id):
+        return source_post_id
+
+    author = canonical_profile_url(candidate.get("author_profile_url")) or (candidate.get("author_name") or "").strip().casefold()
+    text = " ".join(unicodedata.normalize("NFKC", candidate["post_text"]).split()).casefold()
+    digest = hashlib.sha256(f"{author}\n{text}".encode("utf-8")).hexdigest()
+    return f"ansly:sha256:{digest}"
+
+
 def _title(text: str) -> str:
     first_line = next((line.strip() for line in text.splitlines() if line.strip()), text.strip())
     return first_line if len(first_line) <= TITLE_LENGTH else first_line[: TITLE_LENGTH - 1].rstrip() + "…"
@@ -127,11 +140,15 @@ def _matches(text: str, term: str) -> bool:
 
 
 def _contact(text: str) -> Optional[tuple[str, Dict[str, str]]]:
-    """An email, else an apply link, that appears verbatim in the post. None when the post gives neither."""
+    """Return an email, contact form, or apply link found in the loaded post text."""
     plain = unicodedata.normalize("NFKC", text)
     email = EMAIL_RE.search(plain)
     if email:
         return "email_available", {"email": email.group(0)}
+    for link in URL_RE.findall(plain):
+        normalized_link = link.rstrip(".,;:!?")
+        if re.search(r"/(?:contact|contact-us|contact-form|forms?)(?:[/#?]|$)", normalized_link, re.IGNORECASE):
+            return "contact_form_available", {"contact_form_url": normalized_link}
     link = URL_RE.search(plain)
     if link:
         return "application_link_available", {"application_url": link.group(0).rstrip(".,;:!?")}

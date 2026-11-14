@@ -183,8 +183,14 @@ export default function App() {
                 <dd>{collection.withLink}</dd>
                 <dt>Already in your leads</dt>
                 <dd>{collection.duplicates}</dd>
-                <dt>Skipped</dt>
-                <dd>{collection.skipped}</dd>
+                <dt>Filtered (profile/contact)</dt>
+                <dd>{collection.filtered}</dd>
+                {collection.unidentified > 0 && (
+                  <>
+                    <dt>Couldn’t identify post</dt>
+                    <dd>{collection.unidentified}</dd>
+                  </>
+                )}
                 {collection.failed > 0 && (
                   <>
                     <dt>Couldn’t process</dt>

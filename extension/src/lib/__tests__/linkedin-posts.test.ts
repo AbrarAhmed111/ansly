@@ -66,6 +66,32 @@ describe('extractLinkedInPostPreview', () => {
     })
   })
 
+  it('extracts posts from LinkedIn search result list items', () => {
+    const doc = load(`
+      <div role="listitem" componentkey="update-card-focus-randomized">
+        <a href="https://www.linkedin.com/in/sam-rivera/">Sam Rivera</a>
+        <span data-testid="expandable-text-box">
+          Hiring a full stack developer for our team.
+          <a href="https://www.linkedin.com/safety/go/?url=https%3A%2F%2Fjobs.example%2Fapply">Apply</a>
+          <a href="mailto:jobs@example.test">Email us</a>
+        </span>
+      </div>
+      <div role="listitem"><span>Not a post</span></div>
+    `)
+
+    const preview = extractLinkedInPostPreview(doc, SEARCH_URL)
+
+    expect(preview?.loadedCount).toBe(1)
+    expect(preview?.extractedCount).toBe(1)
+    expect(preview?.candidates[0]).toMatchObject({
+      authorName: 'Sam Rivera',
+      authorProfileUrl: 'https://www.linkedin.com/in/sam-rivera/',
+      postText: expect.stringContaining('Hiring a full stack developer for our team.'),
+    })
+    expect(preview?.candidates[0]?.postText).toContain('jobs@example.test')
+    expect(preview?.candidates[0]?.postText).toContain('https://jobs.example/apply')
+  })
+
   it('rejects unsupported pages without reading their content', () => {
     const doc = load('<article class="feed-shared-update-v2"><div class="update-components-text">text</div></article>')
     expect(extractLinkedInPostPreview(doc, 'https://www.linkedin.com/feed/')).toBeNull()

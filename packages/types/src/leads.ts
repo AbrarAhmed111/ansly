@@ -64,6 +64,7 @@ export interface Lead {
   collection_session_id?: string | null
   source_platform: SourcePlatform
   source_name: string
+  source_post_id?: string | null
   author_name: string
   author_profile_url?: string | null
   company_name: string
