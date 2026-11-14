@@ -314,28 +314,33 @@ export default function SettingsPage() {
         <div className="mt-5 space-y-4">
           <section>
             <h3 className="font-semibold">Personal details — profile</h3>
-            <p className="mt-1 text-body-sm text-muted">
-              {Object.entries(PROFILE_IMPORT_PROFILE_SCHEMA).map(([field, type]) => `${field} (${type})`).join(' · ')}
-            </p>
+            <ul className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-body-sm text-muted sm:grid-cols-2">
+              {Object.entries(PROFILE_IMPORT_PROFILE_SCHEMA).map(([field, type]) => (
+                <li key={field} className="flex min-w-0 flex-wrap gap-x-1">
+                  <code className="break-all text-fg">{field}</code>
+                  <span>({type})</span>
+                </li>
+              ))}
+            </ul>
           </section>
 
           <section>
             <h3 className="font-semibold">Profile sections — lists of objects</h3>
             <ul className="mt-1 space-y-1 text-body-sm text-muted">
               {SECTIONS.map((section) => (
-                <li key={section.table}>
-                  <code>{section.table}</code>: {section.fields.map((field) => field.name).join(', ')}
+                <li key={section.table} className="break-words [overflow-wrap:anywhere]">
+                  <code className="text-fg">{section.table}</code>: {section.fields.map((field) => field.name).join(', ')}
                 </li>
               ))}
-              <li>
-                <code>saved_answers</code>: {PROFILE_IMPORT_SAVED_ANSWER_FIELDS.join(', ')} (question and answer required)
+              <li className="break-words [overflow-wrap:anywhere]">
+                <code className="text-fg">saved_answers</code>: {PROFILE_IMPORT_SAVED_ANSWER_FIELDS.join(', ')} (question and answer required)
               </li>
             </ul>
           </section>
 
           <section>
             <h3 className="font-semibold">Example JSON</h3>
-            <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-surface-muted p-3 text-caption leading-relaxed">
+            <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-surface-muted p-3 text-caption leading-relaxed sm:max-h-56">
               {JSON.stringify(PROFILE_IMPORT_EXAMPLE, null, 2)}
             </pre>
           </section>

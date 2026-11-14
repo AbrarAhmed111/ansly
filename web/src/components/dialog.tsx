@@ -46,10 +46,13 @@ export function Dialog({
         onClose()
       }}
       onClick={(e) => e.target === ref.current && onClose()}
-      className={clsx('m-auto w-[calc(100%-2rem)] bg-transparent open:animate-dialog-in', wide ? 'max-w-2xl' : 'max-w-md')}
+      className={clsx(
+        'm-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain bg-transparent open:animate-dialog-in sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100%-2rem)]',
+        wide ? 'max-w-2xl' : 'max-w-md',
+      )}
     >
       {open && (
-        <div className={clsx('rounded-2xl border border-border bg-surface p-6 shadow-raised', className)}>{children}</div>
+        <div className={clsx('rounded-2xl border border-border bg-surface p-4 shadow-raised sm:p-6', className)}>{children}</div>
       )}
     </dialog>
   )
