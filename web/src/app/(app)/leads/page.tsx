@@ -1,521 +1,534 @@
 'use client'
 
 import type { Lead, TargetingProfile } from '@ansly/types'
-import { ArrowUpRight, BriefcaseBusiness, Building2, CheckCheck, Clock3, Copy, FileJson, Mail, Plus, Search, Sparkles, Target, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { Sheet } from '@/components/dialog'
+import { CheckCheck, Inbox, Link2, ListFilter, Mail, Plus, RotateCcw, Search, Sparkles, Target, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Sheet, useConfirm } from '@/components/dialog'
 import { LeadProfileJsonImport } from '@/components/lead-profile-json-import'
-import { Badge, Button, Card, ErrorText, Field, PageHeader, SearchInput, Stat } from '@/components/ui'
-import { collectLeads, listLeads } from '@/lib/api'
-import { createClient } from '@/lib/supabase/client'
+import { LeadCard } from '@/components/leads/lead-card'
+import { ProfileCard, type SaveState } from '@/components/leads/profile-card'
+import { ProfileEditor } from '@/components/leads/profile-editor'
+import {
+  Alert,
+  Button,
+  Card,
+  EmptyState,
+  PageHeader,
+  SearchInput,
+  SegmentedControl,
+  Select,
+  Skeleton,
+  Stat,
+} from '@/components/ui'
+import { listLeads } from '@/lib/api'
+import {
+  activateTargetingProfile,
+  createTargetingProfile,
+  deleteLeads,
+  deleteTargetingProfile,
+  leadTier,
+  listTargetingProfiles,
+  setLeadStatus,
+  updateTargetingProfile,
+  type TargetingProfileValues,
+} from '@/lib/leads'
 
-function parseCsv(value: string) {
-  return value
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-}
+type StatusFilter = 'all' | Lead['status']
+type ContactFilter = 'all' | 'email' | 'link'
+type SortOrder = 'best' | 'newest'
 
-function ProfileTagGroup({ label, values }: { label: string; values: string[] }) {
-  if (values.length === 0) return null
-  const visibleValues = values.slice(0, 4)
-  const remainingCount = values.length - visibleValues.length
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
+] as const
+const CONTACT_OPTIONS = [
+  { value: 'all', label: 'Any contact' },
+  { value: 'email', label: 'Email', icon: Mail },
+  { value: 'link', label: 'Apply link', icon: Link2 },
+] as const
 
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5" title={values.join(', ')}>
-      <span className="mr-0.5 text-caption font-medium text-subtle">{label}</span>
-      {visibleValues.map((value, index) => (
-        <Badge key={`${value}-${index}`} className="max-w-full">
-          <span className="max-w-[200px] truncate">{value}</span>
-        </Badge>
-      ))}
-      {remainingCount > 0 && <Badge>+{remainingCount} more</Badge>}
-    </div>
-  )
-}
-
-function getStatusTone(status: Lead['status']) {
-  switch (status) {
-    case 'new':
-      return 'accent'
-    case 'contacted':
-      return 'success'
-    default:
-      return 'neutral'
-  }
-}
-
-function getContactabilityTone(contactability: Lead['contactability']) {
-  switch (contactability) {
-    case 'email_available':
-      return 'accent'
-    case 'application_link_available':
-      return 'success'
-    case 'dm_only':
-      return 'warning'
-    default:
-      return 'neutral'
-  }
-}
+const TIER_RANK = { email: 0, link: 1, other: 2 } as const
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [profiles, setProfiles] = useState<TargetingProfile[]>([])
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | Lead['status']>('all')
-  const [profileSheetOpen, setProfileSheetOpen] = useState(false)
-  const [profileImportSheetOpen, setProfileImportSheetOpen] = useState(false)
-  const [creatingProfile, setCreatingProfile] = useState(false)
-  const [startingSearch, setStartingSearch] = useState(false)
-  const [collectionSummary, setCollectionSummary] = useState<string | null>(null)
-  const [profileForm, setProfileForm] = useState({
-    name: '',
-    description: '',
-    target_roles: 'Product Engineer, Full-stack Engineer',
-    keywords: 'typescript, react, product',
-    excluded_keywords: 'agency, contractor',
-    locations: 'remote, us',
-    remote_preferences: 'remote',
-    opportunity_types: 'job, contract',
-  })
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('new')
+  const [contactFilter, setContactFilter] = useState<ContactFilter>('all')
+  const [sort, setSort] = useState<SortOrder>('best')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
+  const [sessionIds, setSessionIds] = useState<Set<string>>(new Set())
+
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editingProfile, setEditingProfile] = useState<TargetingProfile | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [confirm, confirmElement] = useConfirm()
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0] ?? null,
     [activeProfileId, profiles],
   )
 
+  // The extension's "Open Leads" link passes the collection it just ran, so its leads can be highlighted.
+  useEffect(() => {
+    const ids = (new URLSearchParams(window.location.search).get('session') ?? '')
+      .split(',')
+      .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+    if (ids.length) setSessionIds(new Set(ids))
+  }, [])
+
   useEffect(() => {
     let active = true
-    async function load() {
-      try {
-        const [{ leads: rows }, { data: profileRows, error: profileError }] = await Promise.all([
-          listLeads(),
-          createClient().from('targeting_profiles').select('*').order('updated_at', { ascending: false }),
-        ])
+    setLoading(true)
+    Promise.all([listLeads(), listTargetingProfiles()])
+      .then(([{ leads: rows }, loadedProfiles]) => {
         if (!active) return
-        if (profileError) throw profileError
         setLeads(rows)
-        setProfiles((profileRows ?? []) as TargetingProfile[])
-        setActiveProfileId((profileRows && profileRows[0]?.id) ?? null)
+        setProfiles(loadedProfiles)
+        setActiveProfileId((loadedProfiles.find((profile) => profile.is_active) ?? loadedProfiles[0])?.id ?? null)
         setLoadError(null)
-      } catch (err) {
-        if (!active) return
-        setLoadError(err instanceof Error ? err.message : 'Unable to load leads.')
-      } finally {
+      })
+      .catch((reason: unknown) => {
+        if (active) setLoadError(reason instanceof Error ? reason.message : 'Unable to load leads.')
+      })
+      .finally(() => {
         if (active) setLoading(false)
-      }
-    }
-    void load()
+      })
     return () => {
       active = false
     }
-  }, [])
+  }, [reloadKey])
 
-  const handleCreateProfile = async () => {
-    if (!profileForm.name.trim()) return
-    setCreatingProfile(true)
+  // ---------------------------------------------------------------- profiles
+
+  const markSaved = (state: SaveState) => {
+    setSaveState(state)
+    clearTimeout(saveTimer.current)
+    if (state === 'saved') saveTimer.current = setTimeout(() => setSaveState('idle'), 2000)
+  }
+
+  const replaceProfile = (profile: TargetingProfile) =>
+    setProfiles((current) => current.map((item) => (item.id === profile.id ? profile : item)))
+
+  const activate = async (id: string) => {
+    const previous = activeProfileId
+    setActiveProfileId(id)
+    setProfiles((current) => current.map((profile) => ({ ...profile, is_active: profile.id === id })))
     try {
-      const { data, error } = await createClient()
-        .from('targeting_profiles')
-        .insert({
-          name: profileForm.name.trim(),
-          description: profileForm.description.trim() || null,
-          is_active: true,
-          target_roles: parseCsv(profileForm.target_roles),
-          keywords: parseCsv(profileForm.keywords),
-          excluded_keywords: parseCsv(profileForm.excluded_keywords),
-          locations: parseCsv(profileForm.locations),
-          remote_preferences: profileForm.remote_preferences,
-          opportunity_types: parseCsv(profileForm.opportunity_types),
-        })
-        .select('*')
-        .single()
-      if (error) throw error
-      setProfiles((current) => {
-        const next = [data as TargetingProfile, ...current.filter((p) => p.id !== data.id)]
+      await activateTargetingProfile(id)
+    } catch (reason) {
+      setActiveProfileId(previous)
+      toast.error(reason instanceof Error ? reason.message : 'Could not switch profile.')
+    }
+  }
+
+  /** Inline chip edits: applied at once, saved in the background, rolled back if the save fails. */
+  const patchActiveProfile = async (patch: Partial<TargetingProfileValues>) => {
+    if (!activeProfile) return
+    const before = activeProfile
+    replaceProfile({ ...activeProfile, ...patch })
+    markSaved('saving')
+    try {
+      replaceProfile(await updateTargetingProfile(before.id, patch))
+      markSaved('saved')
+    } catch (reason) {
+      replaceProfile(before)
+      markSaved('error')
+      toast.error(reason instanceof Error ? reason.message : 'Could not save the profile.')
+    }
+  }
+
+  const openEditor = (profile: TargetingProfile | null) => {
+    setEditingProfile(profile)
+    setEditorOpen(true)
+  }
+
+  const saveProfile = async (values: TargetingProfileValues) => {
+    if (editingProfile) {
+      replaceProfile(await updateTargetingProfile(editingProfile.id, values))
+      toast.success('Profile saved')
+    } else {
+      const created = await createTargetingProfile(values)
+      setProfiles((current) => [created, ...current])
+      await activate(created.id)
+      toast.success(`“${created.name}” is now your active profile`)
+    }
+    setEditorOpen(false)
+  }
+
+  const removeProfile = async (profile: TargetingProfile) => {
+    const ok = await confirm({
+      title: `Delete “${profile.name}”?`,
+      description: 'The profile is removed permanently. Leads already collected with it stay in your list.',
+      confirmLabel: 'Delete profile',
+    })
+    if (!ok) return
+    try {
+      await deleteTargetingProfile(profile.id)
+      const remaining = profiles.filter((item) => item.id !== profile.id)
+      setProfiles(remaining)
+      setEditorOpen(false)
+      if (profile.id === activeProfile?.id && remaining[0]) await activate(remaining[0].id)
+      toast.success('Profile deleted')
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Could not delete the profile.')
+    }
+  }
+
+  // ---------------------------------------------------------------- leads
+
+  const withBusy = async (ids: string[], work: () => Promise<void>) => {
+    setBusyIds((current) => new Set([...current, ...ids]))
+    try {
+      await work()
+    } finally {
+      setBusyIds((current) => {
+        const next = new Set(current)
+        ids.forEach((id) => next.delete(id))
         return next
       })
-      setActiveProfileId(data.id)
-      setProfileSheetOpen(false)
-      setProfileForm({
-        name: '',
-        description: '',
-        target_roles: 'Product Engineer, Full-stack Engineer',
-        keywords: 'typescript, react, product',
-        excluded_keywords: 'agency, contractor',
-        locations: 'remote, us',
-        remote_preferences: 'remote',
-        opportunity_types: 'job, contract',
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to save targeting profile.')
-    } finally {
-      setCreatingProfile(false)
     }
   }
 
-  const handleStartSearch = async () => {
-    if (!activeProfileId) return
-    setStartingSearch(true)
-    setError(null)
-    setCollectionSummary(null)
-    try {
-      const result = await collectLeads(activeProfileId)
-      setLeads((current) => [...result.leads, ...current])
-      setCollectionSummary(
-        `Reviewed ${result.total_candidates_reviewed} public results · saved ${result.new_leads_saved} new leads · skipped ${result.duplicates_skipped} duplicates.`,
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to start a new lead search.')
-    } finally {
-      setStartingSearch(false)
-    }
-  }
-
-  const filteredLeads = useMemo(() => {
-    return leads.filter((lead) => {
-      const matchesQuery =
-        !query ||
-        [lead.company_name, lead.title, lead.description, lead.author_name, ...lead.tags]
-          .join(' ')
-          .toLowerCase()
-          .includes(query.toLowerCase())
-      const matchesStatus = statusFilter === 'all' || lead.status === statusFilter
-      return matchesQuery && matchesStatus
+  const changeStatus = (ids: string[], status: Lead['status']) =>
+    withBusy(ids, async () => {
+      try {
+        await setLeadStatus(ids, status)
+        setLeads((current) => current.map((lead) => (ids.includes(lead.id) ? { ...lead, status } : lead)))
+        setSelected(new Set())
+        const noun = ids.length === 1 ? 'Lead' : `${ids.length} leads`
+        toast.success(status === 'contacted' ? `${noun} marked contacted` : `${noun} moved back to new`)
+      } catch (reason) {
+        toast.error(reason instanceof Error ? reason.message : 'Could not update the lead.')
+      }
     })
-  }, [leads, query, statusFilter])
+
+  const removeLeads = async (ids: string[]) => {
+    const ok = await confirm({
+      title: ids.length === 1 ? 'Delete this lead?' : `Delete ${ids.length} leads?`,
+      description: 'Deleted leads are removed permanently. Collecting the same post again will save it again.',
+      confirmLabel: 'Delete',
+    })
+    if (!ok) return
+    await withBusy(ids, async () => {
+      try {
+        await deleteLeads(ids)
+        setLeads((current) => current.filter((lead) => !ids.includes(lead.id)))
+        setSelected(new Set())
+        toast.success(ids.length === 1 ? 'Lead deleted' : `${ids.length} leads deleted`)
+      } catch (reason) {
+        toast.error(reason instanceof Error ? reason.message : 'Could not delete.')
+      }
+    })
+  }
+
+  const isFresh = useCallback(
+    (lead: Lead) => Boolean(lead.collection_session_id && sessionIds.has(lead.collection_session_id)),
+    [sessionIds],
+  )
+
+  const visibleLeads = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return leads
+      .filter((lead) => statusFilter === 'all' || lead.status === statusFilter)
+      .filter((lead) => contactFilter === 'all' || leadTier(lead) === contactFilter)
+      .filter(
+        (lead) =>
+          !needle ||
+          [lead.title, lead.description, lead.author_name, lead.contact_info?.email ?? '', ...lead.tags]
+            .join(' ')
+            .toLowerCase()
+            .includes(needle),
+      )
+      .sort((a, b) => {
+        if (sessionIds.size) {
+          const fresh = Number(isFresh(b)) - Number(isFresh(a))
+          if (fresh) return fresh
+        }
+        if (sort === 'best') {
+          const tier = TIER_RANK[leadTier(a)] - TIER_RANK[leadTier(b)]
+          if (tier) return tier
+        }
+        return (b.collected_at ?? '').localeCompare(a.collected_at ?? '')
+      })
+  }, [leads, query, statusFilter, contactFilter, sort, sessionIds, isFresh])
 
   const stats = useMemo(
     () => ({
       total: leads.length,
       new: leads.filter((lead) => lead.status === 'new').length,
-      contacted: leads.filter((lead) => lead.status === 'contacted').length,
-      email: leads.filter((lead) => Boolean(lead.contact_info?.email)).length,
+      email: leads.filter((lead) => leadTier(lead) === 'email').length,
+      link: leads.filter((lead) => leadTier(lead) === 'link').length,
     }),
     [leads],
   )
+  const sessionCount = leads.filter(isFresh).length
+  const filtersActive = Boolean(query) || statusFilter !== 'all' || contactFilter !== 'all'
+  const selectedIds = [...selected].filter((id) => visibleLeads.some((lead) => lead.id === id))
+  const allVisibleSelected = visibleLeads.length > 0 && selectedIds.length === visibleLeads.length
+
+  const resetFilters = useCallback(() => {
+    setQuery('')
+    setStatusFilter('all')
+    setContactFilter('all')
+  }, [])
+
+  const toggle = (id: string, on: boolean) =>
+    setSelected((current) => {
+      const next = new Set(current)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+
+  // ---------------------------------------------------------------- render
 
   return (
     <div className="space-y-6">
-      <ErrorText>{error}</ErrorText>
       <PageHeader
         eyebrow="Workspace"
         title="Leads"
-        description="Discover, qualify, and prepare outreach for opportunities that match your targeting profile."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" icon={Plus} onClick={() => setProfileSheetOpen(true)}>
-              New profile
-            </Button>
-            <Button variant="secondary" icon={FileJson} onClick={() => setProfileImportSheetOpen(true)}>
-              Import JSON
-            </Button>
-            <Button icon={Search} onClick={handleStartSearch} loading={startingSearch} disabled={!activeProfileId}>
-              New lead search
-            </Button>
-          </div>
-        }
+        description="Opportunities from LinkedIn posts you collected with the extension, matched to your targeting profile."
       />
 
-      {activeProfile && (
-        <Card className="p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-caption uppercase tracking-[0.12em] text-subtle">Active targeting profile</p>
-              <h2 className="mt-2 text-title">{activeProfile.name}</h2>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  onClick={() => setActiveProfileId(profile.id)}
-                  className={`rounded-full border px-3 py-1.5 text-body-sm transition ${
-                    profile.id === activeProfile.id
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-border bg-surface text-muted hover:border-border-strong'
-                  }`}
+      {sessionIds.size > 0 && !loading && (
+        <Alert tone="success" title={sessionCount ? `${sessionCount} new lead${sessionCount === 1 ? '' : 's'} from your last collection` : 'Collection finished'}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {sessionCount
+                ? 'They are marked “Just collected” and shown first.'
+                : 'No new leads this time. Posts without an email or apply link, excluded words, or duplicates are skipped.'}
+            </span>
+            <Button variant="ghost" size="sm" icon={X} onClick={() => setSessionIds(new Set())}>
+              Dismiss
+            </Button>
+          </div>
+        </Alert>
+      )}
+
+      {loading ? (
+        <Skeleton className="h-44 w-full rounded-xl" />
+      ) : activeProfile ? (
+        <ProfileCard
+          profiles={profiles}
+          profile={activeProfile}
+          saveState={saveState}
+          onActivate={(id) => void activate(id)}
+          onPatch={(patch) => void patchActiveProfile(patch)}
+          onEdit={() => openEditor(activeProfile)}
+          onCreate={() => openEditor(null)}
+          onImport={() => setImportOpen(true)}
+        />
+      ) : (
+        !loadError && (
+          <EmptyState
+            icon={Target}
+            title="Create your targeting profile"
+            description="Tell Ansly which roles and keywords you want, and which words to skip. The extension uses it to keep only relevant LinkedIn posts."
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button icon={Plus} onClick={() => openEditor(null)}>
+                  Create profile
+                </Button>
+                <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                  Import JSON
+                </Button>
+              </div>
+            }
+          />
+        )
+      )}
+
+      {!loading && !loadError && leads.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          <Stat label="All leads" value={stats.total} icon={Inbox} />
+          <Stat label="New" value={stats.new} icon={Sparkles} hint="Not contacted yet" />
+          <Stat label="With email" value={stats.email} icon={Mail} hint="Best: write directly" />
+          <Stat label="Apply link only" value={stats.link} icon={Link2} hint="Apply on their site" />
+        </div>
+      )}
+
+      {loadError ? (
+        <EmptyState
+          icon={RotateCcw}
+          title="Couldn’t load your leads"
+          description={loadError}
+          action={
+            <Button variant="secondary" icon={RotateCcw} onClick={() => setReloadKey((key) => key + 1)}>
+              Try again
+            </Button>
+          }
+        />
+      ) : loading ? (
+        <div className="space-y-4">
+          {[0, 1, 2].map((key) => (
+            <Skeleton key={key} className="h-48 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : leads.length === 0 ? (
+        activeProfile && <GettingStarted />
+      ) : (
+        <section className="space-y-4" aria-label="Leads">
+          <Card className="space-y-3 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="min-w-0 flex-1">
+                <SearchInput value={query} onChange={setQuery} icon={Search} placeholder="Search title, post text, author, email" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <SegmentedControl label="Status" size="sm" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+                <SegmentedControl label="Contact" size="sm" options={CONTACT_OPTIONS} value={contactFilter} onChange={setContactFilter} />
+                <Select
+                  aria-label="Sort"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as SortOrder)}
+                  className="h-8 w-auto text-body-sm"
                 >
-                  {profile.name}
+                  <option value="best">Email first</option>
+                  <option value="newest">Newest first</option>
+                </Select>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-body-sm text-muted">
+              <label className="inline-flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  disabled={!visibleLeads.length}
+                  onChange={(event) => setSelected(event.target.checked ? new Set(visibleLeads.map((lead) => lead.id)) : new Set())}
+                  className="h-4 w-4 cursor-pointer rounded border-border accent-[rgb(var(--accent))]"
+                />
+                Select all shown
+              </label>
+              <span className="tabular-nums">
+                {visibleLeads.length} of {leads.length} shown
+              </span>
+              {filtersActive && (
+                <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1 text-accent hover:underline">
+                  <ListFilter className="h-3.5 w-3.5" aria-hidden />
+                  Show all
                 </button>
+              )}
+            </div>
+          </Card>
+
+          {selectedIds.length > 0 && (
+            <div
+              role="toolbar"
+              aria-label="Selected leads"
+              className="sticky top-4 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-surface px-4 py-3 shadow-lg"
+            >
+              <span className="mr-auto text-body-sm font-medium">{selectedIds.length} selected</span>
+              <Button size="sm" icon={CheckCheck} onClick={() => void changeStatus(selectedIds, 'contacted')}>
+                Mark contacted
+              </Button>
+              <Button size="sm" variant="secondary" icon={RotateCcw} onClick={() => void changeStatus(selectedIds, 'new')}>
+                Mark new
+              </Button>
+              <Button size="sm" variant="danger-soft" icon={Trash2} onClick={() => void removeLeads(selectedIds)}>
+                Delete
+              </Button>
+              <Button size="sm" variant="ghost" icon={X} onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+            </div>
+          )}
+
+          {visibleLeads.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="No leads in this view"
+              description={statusFilter === 'new' ? 'Everything here has been contacted. Nice work.' : 'Try a different search or filter.'}
+              action={
+                <Button variant="secondary" onClick={resetFilters}>
+                  Show all leads
+                </Button>
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {visibleLeads.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  selected={selected.has(lead.id)}
+                  highlighted={isFresh(lead)}
+                  busy={busyIds.has(lead.id)}
+                  onSelect={(on) => toggle(lead.id, on)}
+                  onStatus={(status) => void changeStatus([lead.id], status)}
+                  onDelete={() => void removeLeads([lead.id])}
+                />
               ))}
             </div>
-          </div>
-          <div className="mt-4 grid min-w-0 gap-2">
-            <ProfileTagGroup label="Roles" values={activeProfile.target_roles} />
-            <ProfileTagGroup label="Keywords" values={activeProfile.keywords} />
-            <ProfileTagGroup label="Locations" values={activeProfile.locations} />
-          </div>
-        </Card>
+          )}
+        </section>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Total leads" value={stats.total} icon={BriefcaseBusiness} hint="Across all active profiles" />
-        <Stat label="New" value={stats.new} icon={Target} hint="Needs review or outreach" />
-        <Stat label="Contacted" value={stats.contacted} icon={CheckCheck} hint="Explicitly marked contacted" />
-        <Stat label="With email" value={stats.email} icon={Mail} hint="Public contact routes found" />
-      </div>
-
-      <Card>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex w-full max-w-xl items-center gap-3">
-            <div className="flex-1">
-              <SearchInput
-                value={query}
-                onChange={(value) => setQuery(value)}
-                icon={Search}
-                placeholder="Search leads, companies, or keywords"
-              />
-            </div>
-            <div className="w-44">
-              <Field label="Status">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as 'all' | Lead['status'])}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-                >
-                  <option value="all">All</option>
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                </select>
-              </Field>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-body-sm text-muted">
-            <Sparkles className="h-4 w-4 text-accent" />
-            {filteredLeads.length} visible leads
-          </div>
-        </div>
-      </Card>
-
-      {collectionSummary && (
-        <p role="status" className="rounded-lg border border-border bg-surface px-4 py-3 text-body-sm text-muted">
-          {collectionSummary}
-        </p>
-      )}
-
-      <div className="space-y-4">
-        {loading ? (
-          <Card className="p-6 text-muted">Loading leads...</Card>
-        ) : loadError ? (
-          <Card className="p-6 text-center">
-            <h2 className="text-h3">Unable to load leads</h2>
-            <p className="mt-2 text-muted">{loadError}</p>
-          </Card>
-        ) : filteredLeads.length === 0 ? (
-          <Card className="p-8 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-border bg-surface-muted">
-              <Search className="h-5 w-5 text-muted" />
-            </div>
-            <h2 className="mt-4 text-h3">No leads match this view</h2>
-            <p className="mt-2 text-muted">Try a different keyword or reset the filter to see more opportunities.</p>
-          </Card>
-        ) : (
-          filteredLeads.map((lead) => (
-            <Card key={lead.id} className="p-0 transition hover:border-border-strong">
-              <div className="p-5">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-title">{lead.title}</h2>
-                      <Badge tone={getStatusTone(lead.status)}>{lead.status === 'new' ? 'New' : 'Contacted'}</Badge>
-                      <Badge tone={getContactabilityTone(lead.contactability)}>{lead.contactability.replace(/_/g, ' ')}</Badge>
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-body-sm text-muted">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Building2 className="h-4 w-4" />
-                        {lead.company_name}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Clock3 className="h-4 w-4" />
-                        {(lead.publication_date || lead.collected_at || new Date().toISOString()).slice(0, 10)}
-                      </span>
-                      <span>{lead.source_name}</span>
-                    </div>
-                    <p className="mt-3 max-w-3xl leading-relaxed text-fg/85">{lead.description}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {(lead.tags ?? []).map((tag) => (
-                        <Badge key={tag}>{tag}</Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
-                    {lead.contact_info?.email && <Button variant="secondary" icon={Copy}>Copy email</Button>}
-                    <Button variant="secondary" icon={ArrowUpRight}>Open source</Button>
-                    <Button>Generate email</Button>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid gap-4 border-t border-border pt-4 md:grid-cols-[1.2fr_0.8fr]">
-                  <div>
-                    <p className="text-caption uppercase tracking-[0.12em] text-subtle">Qualification</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Badge>{lead.opportunity_type}</Badge>
-                      <Badge>{lead.author_name}</Badge>
-                      {lead.contact_info?.email && <Badge>email: {lead.contact_info.email}</Badge>}
-                      {lead.contact_info?.application_url && <Badge>application page</Badge>}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-caption uppercase tracking-[0.12em] text-subtle">Contact route</p>
-                    <div className="mt-2 space-y-1 text-body-sm text-muted">
-                      {lead.contact_info?.email ? (
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-accent" />
-                          <span>{lead.contact_info.email}</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <X className="h-4 w-4 text-subtle" />
-                          <span>No explicit email found</span>
-                        </div>
-                      )}
-                      {lead.contact_info?.application_url && (
-                        <div className="flex items-center gap-2">
-                          <ArrowUpRight className="h-4 w-4 text-accent" />
-                          <span>{lead.contact_info.application_url}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))
-        )}
-      </div>
+      <ProfileEditor
+        open={editorOpen}
+        profile={editingProfile}
+        onClose={() => setEditorOpen(false)}
+        onSave={saveProfile}
+        onDelete={removeProfile}
+      />
 
       <Sheet
-        open={profileSheetOpen}
-        onClose={() => setProfileSheetOpen(false)}
-        title="Create targeting profile"
-        description="Define the roles, keywords, and filters that should drive the next lead search."
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setProfileSheetOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateProfile} loading={creatingProfile} disabled={!profileForm.name.trim()}>
-              Save profile
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4 px-6 py-6">
-          <Field label="Profile name" htmlFor="profile-name" required>
-            <input
-              id="profile-name"
-              value={profileForm.name}
-              onChange={(e) => setProfileForm((current) => ({ ...current, name: e.target.value }))}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-              placeholder="e.g. Senior product roles"
-            />
-          </Field>
-
-          <Field label="Description" htmlFor="profile-description">
-            <textarea
-              id="profile-description"
-              value={profileForm.description}
-              onChange={(e) => setProfileForm((current) => ({ ...current, description: e.target.value }))}
-              rows={3}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-              placeholder="What this targeting profile is trying to capture"
-            />
-          </Field>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Target roles" htmlFor="profile-roles">
-              <input
-                id="profile-roles"
-                value={profileForm.target_roles}
-                onChange={(e) => setProfileForm((current) => ({ ...current, target_roles: e.target.value }))}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-                placeholder="Product Engineer, Full-stack Engineer"
-              />
-            </Field>
-            <Field label="Opportunity types" htmlFor="profile-types">
-              <input
-                id="profile-types"
-                value={profileForm.opportunity_types}
-                onChange={(e) => setProfileForm((current) => ({ ...current, opportunity_types: e.target.value }))}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-                placeholder="job, contract"
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Keywords" htmlFor="profile-keywords">
-              <input
-                id="profile-keywords"
-                value={profileForm.keywords}
-                onChange={(e) => setProfileForm((current) => ({ ...current, keywords: e.target.value }))}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-                placeholder="typescript, product, ai"
-              />
-            </Field>
-            <Field label="Excluded keywords" htmlFor="profile-excluded">
-              <input
-                id="profile-excluded"
-                value={profileForm.excluded_keywords}
-                onChange={(e) => setProfileForm((current) => ({ ...current, excluded_keywords: e.target.value }))}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-                placeholder="agency, contractor"
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Locations" htmlFor="profile-locations">
-              <input
-                id="profile-locations"
-                value={profileForm.locations}
-                onChange={(e) => setProfileForm((current) => ({ ...current, locations: e.target.value }))}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-                placeholder="remote, us"
-              />
-            </Field>
-            <Field label="Remote preference" htmlFor="profile-remote">
-              <select
-                id="profile-remote"
-                value={profileForm.remote_preferences}
-                onChange={(e) =>
-                  setProfileForm((current) => ({ ...current, remote_preferences: e.target.value as typeof current.remote_preferences }))
-                }
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body-sm text-fg focus:border-accent focus:outline-none"
-              >
-                <option value="any">Any</option>
-                <option value="remote">Remote</option>
-                <option value="hybrid">Hybrid</option>
-                <option value="onsite">Onsite</option>
-              </select>
-            </Field>
-          </div>
-        </div>
-      </Sheet>
-
-      <Sheet
-        open={profileImportSheetOpen}
-        onClose={() => setProfileImportSheetOpen(false)}
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
         title="Import targeting profiles"
-        description="Upload a .json file or paste JSON. Review the accepted fields and preview before saving."
+        description="Upload a .json file or paste JSON. A profile with the same name as one you have updates it."
       >
         <LeadProfileJsonImport
           existingProfiles={profiles}
-          onClose={() => setProfileImportSheetOpen(false)}
+          onClose={() => setImportOpen(false)}
           onImported={(imported) => {
-            setProfiles((current) => [...imported, ...current])
-            if (imported[0]) setActiveProfileId(imported[0].id)
-            setError(null)
+            setProfiles((current) => [...imported, ...current.filter((profile) => !imported.some((item) => item.id === profile.id))])
+            if (!activeProfile && imported[0]) void activate(imported[0].id)
+            toast.success(imported.length === 1 ? `Imported “${imported[0].name}”` : `Imported ${imported.length} profiles`)
           }}
         />
       </Sheet>
+
+      {confirmElement}
     </div>
+  )
+}
+
+function GettingStarted() {
+  const steps = [
+    { title: 'Search LinkedIn', body: 'Search for something like “hiring full stack developer” and choose the Posts filter.' },
+    { title: 'Scroll to load posts', body: 'The Ansly panel at the bottom right counts posts as you scroll. It reads only posts already on the page.' },
+    { title: 'Click Collect', body: 'Posts with an email or apply link that match your profile land here. Nothing is sent before you click.' },
+  ]
+  return (
+    <Card className="p-6">
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-accent" aria-hidden />
+        <h2 className="text-title">Collect your first leads</h2>
+      </div>
+      <ol className="mt-5 grid gap-4 md:grid-cols-3">
+        {steps.map((step, index) => (
+          <li key={step.title} className="rounded-xl border border-border bg-surface-muted/40 p-4">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-body-sm font-semibold text-accent">
+              {index + 1}
+            </span>
+            <h3 className="mt-3 text-body font-medium">{step.title}</h3>
+            <p className="mt-1 text-body-sm leading-relaxed text-muted">{step.body}</p>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-4 text-caption text-muted">
+        Matches are based on your profile’s words, not a check of the author or the offer. Posts that only say “comment” or “DM me” are skipped.
+      </p>
+    </Card>
   )
 }
