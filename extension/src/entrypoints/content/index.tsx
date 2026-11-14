@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from '@/components/content/App'
 import { CONTENT_CSS } from '@/components/content/styles'
 import { peekJob } from '@/lib/job/detect'
+import { isLinkedInPostSearchUrl } from '@/lib/leads/linkedin-posts'
 import { getSettings, settingsItem, type Settings } from '@/lib/settings'
 
 const WEB_ORIGIN = (import.meta.env.WXT_WEB_URL || 'http://localhost:3000').replace(/\/+$/, '')
@@ -25,7 +26,8 @@ export default defineContentScript({
     // Pages without text fields or a job posting never get UI.
     const hasFields = () => Boolean(document.querySelector('textarea, input, [contenteditable]'))
     const hasJob = () => Boolean(peekJob(document))
-    if (!hasFields() && !hasJob()) {
+    const hasPostSearch = () => isLinkedInPostSearchUrl(window.location.href)
+    if (!hasFields() && !hasJob() && !hasPostSearch()) {
       // ...unless they arrive later (single-page apps). The job check is throttled: it reads more of the page.
       await new Promise<void>((resolve) => {
         let lastJobCheck = 0
