@@ -154,6 +154,7 @@ const handlers: Handlers = {
     await browser.tabs.create({ url: result.data.url })
     return ok(null)
   },
+  collectLinkedInLeads: (payload) => apiRequest(deps, 'POST', '/api/v1/leads/collect', payload),
   async enableSite({ domain }) {
     if (!(await enabledSites()).includes(domain)) {
       return { ok: false, error: { code: 'bad_request', message: `Ansly doesn't have access to ${domain}.` } }
