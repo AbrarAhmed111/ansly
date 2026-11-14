@@ -1,8 +1,6 @@
 -- Ansly Leads: user-owned targeting profiles, leads, drafts, and status history.
 -- This is a focused v1 schema aligned with the product spec and existing RLS patterns.
 
-create extension if not exists pgcrypto;
-
 -- ---------------------------------------------------------------------------
 -- Targeting profiles: saved interest definitions used during lead collection.
 -- ---------------------------------------------------------------------------
