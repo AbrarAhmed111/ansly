@@ -4,6 +4,8 @@
  */
 
 import type {
+  CollectLinkedInPostsRequest,
+  CollectLinkedInPostsResponse,
   AnalyzeJobRequest,
   AnalyzeJobResponse,
   MasterResumeResponse,
@@ -33,6 +35,7 @@ import type {
   TrackEventRequest,
 } from '@ansly/types'
 import type { ProfileSummary } from './profile-summary'
+import type { LinkedInPostPreview } from './leads/linkedin-posts'
 
 export type ErrorCode =
   | 'not_connected'
@@ -95,6 +98,8 @@ export interface RequestMap {
   getTailoring: { payload: { id: string }; response: TailoringResponse }
   /** Downloads the tailored Word document (short-lived signed URL). The preview is in the web app. */
   downloadTailoring: { payload: { id: string }; response: null }
+  /** Qualifies and saves LinkedIn posts the user loaded; the server returns the actual counts. */
+  collectLinkedInLeads: { payload: CollectLinkedInPostsRequest; response: CollectLinkedInPostsResponse }
 }
 
 export type RequestType = keyof RequestMap
@@ -110,6 +115,8 @@ export type TabMessage =
   | { ansly: true; type: 'shortcut' }
   /** Right-click → "Answer with Ansly" on any editable field, detected or not. */
   | { ansly: true; type: 'contextAnswer' }
+  /** Explicit popup action; reads only posts already loaded in a LinkedIn content-search page. */
+  | { ansly: true; type: 'collectLinkedInPosts' }
 
 export function isRequest(message: unknown): message is Request {
   return typeof message === 'object' && message !== null && (message as Request).ansly === true && 'type' in message
