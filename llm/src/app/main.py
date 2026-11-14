@@ -4,9 +4,13 @@ Initializes FastAPI, configures CORS, and mounts API routes.
 """
 
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from src.app.api.router import api_router
 from src.app.api.routes.health import router as health_router
@@ -31,6 +35,29 @@ app = FastAPI(
     description="Ansly answer engine: grounded answers to job application questions from the user's profile.",
     lifespan=lifespan,
 )
+
+
+def _safe_error_text(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.encode("utf-8", errors="replace").decode("utf-8")
+    if isinstance(value, list):
+        return [_safe_error_text(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            _safe_error_text(key): _safe_error_text(item)
+            for key, item in value.items()
+            if key != "input"
+        }
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """Keep malformed Unicode in validation input from breaking the 422 response itself."""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _safe_error_text(jsonable_encoder(exc.errors()))},
+    )
 
 
 @app.middleware("http")

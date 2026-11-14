@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 from uuid import uuid4
@@ -184,6 +185,29 @@ async def test_collect_linkedin_posts_requires_profile_and_bounds_input():
     assert at_cap.status_code == 200
     assert too_many.status_code == 422
     assert unknown.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_invalid_unicode_in_post_text_returns_422_without_crashing():
+    profile = {**PROFILE, "user_id": USER_ID, "is_active": True}
+    rest = FakeRest({"targeting_profiles": [profile], "lead_collection_sessions": [], "leads": []})
+    _auth(rest)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/api/v1/leads/collect",
+                content=json.dumps({
+                    "loaded_count": 1,
+                    "candidates": [_post(f"Hiring React engineer. jobs@example.test {'a' * 4990}\ud835")],
+                }),
+                headers={"content-type": "application/json"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "string_unicode"
+    assert "input" not in response.json()["detail"][0]
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "linkedin_posts"

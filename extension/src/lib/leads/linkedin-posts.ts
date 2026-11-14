@@ -25,6 +25,18 @@ const AUTHOR_SELECTORS = [
 export const MAX_POSTS = 5000
 const MAX_POST_TEXT = 5_000
 
+function truncateText(value: string, maxCodePoints: number): string {
+  let result = ''
+  let count = 0
+  for (const character of value) {
+    if (count >= maxCodePoints) break
+    const code = character.charCodeAt(0)
+    result += character.length === 1 && code >= 0xD800 && code <= 0xDFFF ? '\uFFFD' : character
+    count++
+  }
+  return result
+}
+
 export interface LinkedInPostCandidate {
   sourcePostId: string | null
   originalPostUrl: string | null
@@ -124,13 +136,13 @@ function contactLinks(textElement: HTMLElement, pageUrl: URL): string[] {
 }
 
 function postTextFromElement(textElement: HTMLElement, pageUrl: URL): string {
-  const visibleText = cleanText(textElement.innerText || textElement.textContent || '')
+  const visibleText = (textElement.innerText || textElement.textContent || '').replace(/\s+/g, ' ').trim()
   const links = contactLinks(textElement, pageUrl).filter((link) => !visibleText.includes(link))
-  if (!links.length) return visibleText.slice(0, MAX_POST_TEXT)
+  if (!links.length) return truncateText(visibleText, MAX_POST_TEXT)
 
-  const suffix = cleanText(links.join(' ')).slice(0, MAX_POST_TEXT)
-  const textLimit = Math.max(0, MAX_POST_TEXT - suffix.length - 1)
-  return `${visibleText.slice(0, textLimit)} ${suffix}`.trim()
+  const suffix = truncateText(links.join(' ').replace(/\s+/g, ' ').trim(), MAX_POST_TEXT)
+  const textLimit = Math.max(0, MAX_POST_TEXT - Array.from(suffix).length - 1)
+  return truncateText(`${truncateText(visibleText, textLimit)} ${suffix}`.trim(), MAX_POST_TEXT)
 }
 
 function authorName(card: HTMLElement): string | null {

@@ -92,6 +92,16 @@ describe('extractLinkedInPostPreview', () => {
     expect(preview?.candidates[0]?.postText).toContain('https://jobs.example/apply')
   })
 
+  it('truncates post text without splitting or retaining unpaired Unicode surrogates', () => {
+    const text = `${'a'.repeat(4_999)}𝘛 and more text`
+    const doc = load(`<article class="feed-shared-update-v2"><div class="update-components-text">${text}</div></article>`)
+    const postText = extractLinkedInPostPreview(doc, SEARCH_URL)?.candidates[0]?.postText
+
+    expect(postText).toBe(`${'a'.repeat(4_999)}𝘛`)
+    expect(Array.from(postText ?? '')).toHaveLength(5_000)
+    expect(postText).not.toMatch(/[\uD800-\uDFFF]/u)
+  })
+
   it('rejects unsupported pages without reading their content', () => {
     const doc = load('<article class="feed-shared-update-v2"><div class="update-components-text">text</div></article>')
     expect(extractLinkedInPostPreview(doc, 'https://www.linkedin.com/feed/')).toBeNull()
