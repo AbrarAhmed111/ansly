@@ -32,6 +32,7 @@ All `/api/v1` routes need `Authorization: Bearer <Supabase access token>`.
 | `POST` | `/api/v1/saved-answers` | Save a preferred answer |
 | `POST` | `/api/v1/saved-answers/{id}/use` | Count a reuse |
 | `POST` | `/api/v1/events` | Usage event (`fill`, `use_saved_answer`) — no text |
+| `POST` | `/api/v1/leads/collect` | Qualify and save LinkedIn posts the extension read from a search page the user loaded (max 100 per request; the extension batches) |
 
 Answer response:
 
