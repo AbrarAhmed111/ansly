@@ -7,6 +7,7 @@ import type { ProfileSummary } from '@/lib/profile-summary'
 import { getSettings, updateSettings, type Settings, type Theme } from '@/lib/settings'
 import { LENGTHS, TONES } from '@/lib/style'
 import { getStatus, type ExtensionStatus, type StatusCheck } from '@/lib/status'
+import { buildLabel, diskBuild, isUnpacked, reloadExtension, RUNNING_BUILD } from '@/lib/update'
 import { Sites } from './Sites'
 
 const LABELS: Record<StatusCheck['status'], string> = {
@@ -129,6 +130,8 @@ export default function App() {
         </div>
         {connection && <span className="version">v{connection.version}</span>}
       </header>
+
+      <UpdateCard />
 
       <section className="card">
         {!connection ? (
@@ -312,5 +315,42 @@ export default function App() {
         </ul>
       )}
     </main>
+  )
+}
+
+/**
+ * Unpacked installs only: after a new build lands in the extension folder, one click reloads it.
+ * The extension ID stays the same, so settings, the Ansly sign-in and enabled sites are kept.
+ */
+function UpdateCard() {
+  const [state, setState] = useState<{ unpacked: boolean; disk: string | null } | null>(null)
+
+  useEffect(() => {
+    void Promise.all([isUnpacked(), diskBuild()]).then(([unpacked, disk]) => setState({ unpacked, disk }))
+  }, [])
+
+  if (!state?.unpacked) return null
+  const newer = state.disk !== null && RUNNING_BUILD !== 'dev' && state.disk !== RUNNING_BUILD
+
+  if (!newer) {
+    return (
+      <p className="muted build-line">
+        Build {RUNNING_BUILD === 'dev' ? 'dev' : buildLabel(RUNNING_BUILD)}
+        <button className="link" onClick={reloadExtension} title="Reload the extension from its folder">
+          Reload
+        </button>
+      </p>
+    )
+  }
+  return (
+    <section className="card update-card" role="status">
+      <p className="ready">New build ready</p>
+      <p className="muted">
+        Built {buildLabel(state.disk!)}. Reloading keeps your settings and sign-in. Refresh open pages afterwards.
+      </p>
+      <button className="btn primary" onClick={reloadExtension}>
+        Reload to update
+      </button>
+    </section>
   )
 }
