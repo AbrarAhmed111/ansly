@@ -1,9 +1,10 @@
 """Lead API schemas."""
 
+from datetime import datetime
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 LeadStatus = Literal["new", "contacted"]
 Contactability = Literal[
@@ -65,21 +66,6 @@ class LeadListResponse(BaseModel):
     leads: List[LeadRecord] = Field(default_factory=list)
 
 
-class CollectLeadsRequest(BaseModel):
-    targeting_profile_id: UUID
-
-
-class CollectLeadsResponse(BaseModel):
-    session_id: UUID
-    status: Literal["completed", "partially_completed"]
-    queries_run: int
-    total_candidates_reviewed: int
-    relevant_candidates: int
-    duplicates_skipped: int
-    new_leads_saved: int
-    leads: List[LeadRecord] = Field(default_factory=list)
-
-
 class CreateLeadRequest(BaseModel):
     source_platform: SourcePlatform
     source_name: str = Field(min_length=1, max_length=200)
@@ -99,3 +85,40 @@ class CreateLeadRequest(BaseModel):
     contact_info: Optional[LeadContactInfo] = None
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     qualification_reason: Optional[str] = Field(default=None, max_length=5000)
+
+
+MAX_POST_CANDIDATES = 100
+
+
+class LinkedInPostCandidate(BaseModel):
+    """One post the extension read from a LinkedIn search page the user loaded."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_post_id: Optional[str] = Field(default=None, max_length=64)
+    original_post_url: Optional[str] = Field(default=None, max_length=2000)
+    author_name: Optional[str] = Field(default=None, max_length=200)
+    author_profile_url: Optional[str] = Field(default=None, max_length=2000)
+    post_text: str = Field(min_length=1, max_length=5000)
+    published_at: Optional[datetime] = None
+
+
+class CollectLinkedInPostsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    targeting_profile_id: Optional[UUID] = None
+    loaded_count: int = Field(ge=0, le=MAX_POST_CANDIDATES)
+    candidates: List[LinkedInPostCandidate] = Field(max_length=MAX_POST_CANDIDATES)
+
+
+class CollectLinkedInPostsResponse(BaseModel):
+    session_id: UUID
+    status: Literal["completed", "partially_completed"]
+    loaded_count: int
+    extracted_count: int
+    unidentified_count: int
+    relevant_count: int
+    filtered_count: int
+    duplicate_count: int
+    saved_count: int
+    leads: List[LeadRecord] = Field(default_factory=list)
