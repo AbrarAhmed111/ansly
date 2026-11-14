@@ -2,7 +2,6 @@ import type {
   AnalyzeJobRequest,
   AnalyzeJobResponse,
   AnswerResponse,
-  CollectLeadsResponse,
   CreateLeadRequest,
   CreateResumeRequest,
   CreateSavedAnswerRequest,
@@ -93,8 +92,6 @@ export const saveAnswer = (req: CreateSavedAnswerRequest) => call<SavedAnswer>('
 
 export const listLeads = () => request<LeadListResponse>('GET', '/api/v1/leads')
 
-export const collectLeads = (targetingProfileId: string) =>
-  call<CollectLeadsResponse>('/api/v1/leads/collect', { targeting_profile_id: targetingProfileId })
 
 export const createLead = (req: CreateLeadRequest) => call<Lead>('/api/v1/leads', req)
 
