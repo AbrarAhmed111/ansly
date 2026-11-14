@@ -253,6 +253,15 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 1
 .tailor-stats { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; margin: 0; font-size: 13px; }
 .tailor-stats dt { color: rgb(var(--a-muted)); }
 .tailor-stats dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Leads: live post count on LinkedIn post search, then batched collection. */
+.leads-count { display: flex; align-items: center; gap: 12px; }
+.leads-count-number { font-size: 34px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: rgb(var(--a-accent)); min-width: 1.6ch; }
+.leads-count-label { display: flex; flex-direction: column; font-weight: 600; }
+.leads-count-label .muted { font-weight: 400; }
+.leads-result { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.leads-result > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: rgb(var(--a-surface-muted)); border: 1px solid rgb(var(--a-border)); }
+.leads-result-number { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.leads-result-number.accent { color: rgb(var(--a-success)); }
 .tailor-changes ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
 
 /* Filled fields get a subtle outline: red when the fill didn't stick. */
