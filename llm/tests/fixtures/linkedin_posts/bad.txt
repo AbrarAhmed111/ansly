@@ -1,0 +1,144 @@
+Nitya Cloudtech is Hiring!!
+
+Position: Full Stack AI Developer
+
+We are looking for a passionate Full Stack AI Developer who is interested in building modern, AI-powered web applications and SaaS products.
+
+Key Skills Required:
+
+* Frontend: React.js, Next.js, JavaScript, Tailwind CSS
+* Backend: Python, FastAPI, REST APIs
+* AI/LLM: OpenAI API, Generative AI, Prompt Engineering, LLM Integration
+* Database: PostgreSQL, SQL
+* AI concepts: RAG, Embeddings, Vector Databases
+* Cloud & Deployment: Azure, Docker, Git, CI/CD
+
+Responsibilities:
+
+* Develop end-to-end AI-powered web applications.
+* Integrate LLMs and AI APIs into applications.
+* Build scalable backend services and responsive frontend interfaces.
+* Work on database design, API development and cloud deployment.
+* Develop innovative AI-based SaaS solutions.
+
+Experience: 0–2 Years (Freshers with strong practical skills are welcome)
+
+What We Are Looking For:
+
+* Strong problem-solving skills.
+* Hands-on project experience in Full Stack or AI development.
+* Passion for building real-world AI products.
+* Ability to learn and work independently.
+
+📩 Interested candidates: Share your resume and GitHub/portfolio via DM.
+
+---
+
+🚀 We're Hiring | Flutter Full Stack Developer & Technical Lead
+WhiterApps is looking for a hands-on Flutter + Node.js Developer with DevOps knowledge (a plus) who can independently handle development, take technical ownership, and lead our development team.
+What we're looking for:
+• Strong Flutter and Node.js development skills.
+• Knowledge of APIs, databases, and application architecture.
+• DevOps and deployment experience is a plus.
+• Ability to lead, mentor, and manage developers.
+
+Work Commitment: 4–5 hours/day | 28–30 hours/week | Remote
+
+Compensation Model:
+This is a startup opportunity based on project profit sharing and equity participation, depending on individual contribution and mutual agreement. We are currently unable to offer a fixed monthly salary or guaranteed regular payments.
+
+Important: Individual hands-on developers only. No agencies, consultancies, freelancers, or non-technical project managers. Such applications will not be considered.
+If you're interested in building products, leading a team, and growing with a startup, let's connect!
+
+📩 DM your CV, GitHub profile, and relevant project portfolio.
+
+#Hiring #FlutterDeveloper #NodeJS #TechnicalLead #DevOps #StartupJobs #RemoteJobs
+
+---
+
+💻 WE'RE HIRING | FULL STACK DEVELOPERS 🚀 United States | Canada Junior Full Stack Developer | Entry-Level Opportunities
+
+Are you passionate about web development, modern technologies, and building innovative applications from frontend to backend?
+
+Start your professional journey in the world of Full Stack Development!
+
+📌 POSITION DETAILS
+
+▪️ Position: Junior Full Stack Developer
+▪️ Experience: 0–3 Years
+▪️ Graduation Batches: 2024, 2025 & 2026
+▪️ Target Locations: United States | Canada
+▪️ Work Model: Remote | On-site
+
+💼 KEY RESPONSIBILITIES
+
+▪️ Develop responsive and user-friendly web applications.
+▪️ Build interactive frontend interfaces.
+▪️ Develop backend services and REST APIs.
+▪️ Integrate frontend and backend applications.
+▪️ Work with SQL and NoSQL databases.
+▪️ Optimize application performance.
+▪️ Troubleshoot and resolve technical issues.
+▪️ Collaborate with developers and UI/UX teams.
+
+🛠️ TECHNICAL SKILLS
+
+▪️ HTML5 & CSS3
+▪️ JavaScript / TypeScript
+▪️ React.js
+▪️ Node.js / Express.js
+▪️ RESTful APIs
+▪️ SQL / MySQL
+▪️ MongoDB
+▪️ Git / GitHub
+▪️ Bootstrap / Tailwind CSS
+▪️ AWS / Azure Basics
+
+🎯 CAREER OPPORTUNITIES
+
+▪️ Build expertise in full stack development.
+▪️ Work with modern web development technologies.
+▪️ Develop end-to-end software applications.
+▪️ Strengthen frontend and backend programming skills.
+▪️ Explore opportunities across US and Canadian technology markets.
+
+📩 INTERESTED CANDIDATES?
+
+▪️ Comment "FULL STACK DEVELOPER" below.
+▪️ Share your updated resume via DM.
+▪️ Mention your current location and work authorization status.
+
+📌 Save and share this opportunity with your professional network!
+
+---
+
+🚀 Citi 𝗶𝘀 𝗛𝗶𝗿𝗶𝗻𝗴: 𝗙𝘂𝗹𝗹 𝗦𝘁𝗮𝗰𝗸 𝗝𝗮𝘃𝗮 & 𝗔𝗻𝗴𝘂𝗹𝗮𝗿 𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗲𝗿 | 𝗙𝗿𝗲𝘀𝗵𝗲𝗿𝘀
+
+Looking to build your career in Full Stack Development? Citi is hiring 𝗙𝘂𝗹𝗹 𝗦𝘁𝗮𝗰𝗸 𝗝𝗮𝘃𝗮 & 𝗔𝗻𝗴𝘂𝗹𝗮𝗿 𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗲𝗿𝘀 for its Technology team in Chennai!
+
+A great opportunity for candidates with knowledge of Java, Spring Boot, Microservices, Angular, and API Development.
+
+📌𝗝𝗼𝗯 𝗗𝗲𝘁𝗮𝗶𝗹𝘀:
+  • 𝗖𝗼𝗺𝗽𝗮𝗻𝘆: Citi
+• 𝗥𝗼𝗹𝗲: Full Stack Java & Angular Developer
+  • 𝗘𝘅𝗽𝗲𝗿𝗶𝗲𝗻𝗰𝗲: 0–2 Years
+  • 𝗟𝗼𝗰𝗮𝘁𝗶𝗼𝗻: Chennai, Tamil Nadu
+  • 𝗪𝗼𝗿𝗸 𝗠𝗼𝗱𝗲: Hybrid
+  • 𝗝𝗼𝗯 𝗧𝘆𝗽𝗲: Full-Time
+  • 𝗝𝗼𝗯 𝗜𝗗: 261004756
+
+🎓 𝗘𝗱𝘂𝗰𝗮𝘁𝗶𝗼𝗻: Bachelor's Degree or equivalent experience.
+
+💻 𝗞𝗲𝘆 𝗦𝗸𝗶𝗹𝗹𝘀 𝗥𝗲𝗾𝘂𝗶𝗿𝗲𝗱:
+  •  Java / J2EE
+  •  Spring Boot & Microservices
+  •  REST API Development
+  •  Angular, JavaScript
+  •  HTML5, CSS3 & Responsive Web Design
+  •  Git, Jira & CI/CD
+  •  AWS / GCP / OpenShift
+  •  JUnit, Selenium & Cucumber
+
+💬 Comment "𝗜𝗻𝘁𝗲𝗿𝗲𝘀𝘁𝗲𝗱" and I'll share the application link!
+
+📢 Know someone looking for a Java Developer opportunity? Share this post with them!
