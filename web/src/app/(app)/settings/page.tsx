@@ -1,14 +1,26 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { Download, FileJson, FileText, LogOut, Palette, Upload, UserRound, X } from 'lucide-react'
+import { CircleHelp, Download, FileJson, FileText, LogOut, Palette, Upload, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import toast from 'react-hot-toast'
+import { Dialog } from '@/components/dialog'
 import { EnabledSites } from '@/components/enabled-sites'
 import { ThemeToggle } from '@/components/theme'
 import { Alert, Avatar, Badge, Button, Card, CardHeader, Checkbox, ErrorText, IconButton, Overline, PageHeader, SegmentedControl } from '@/components/ui'
 import { errorMessage, humanize, plural } from '@/lib/format'
-import { MAX_PROFILE_IMPORT_BYTES, exportProfile, exportResumes, parseImportJson, runImport, type ImportPlan } from '@/lib/profile-import'
+import {
+  MAX_PROFILE_IMPORT_BYTES,
+  exportProfile,
+  exportResumes,
+  parseImportJson,
+  PROFILE_IMPORT_EXAMPLE,
+  PROFILE_IMPORT_PROFILE_SCHEMA,
+  PROFILE_IMPORT_SAVED_ANSWER_FIELDS,
+  runImport,
+  type ImportPlan,
+} from '@/lib/profile-import'
+import { SECTIONS } from '@/lib/sections'
 import { createClient } from '@/lib/supabase/client'
 
 export default function SettingsPage() {
@@ -22,6 +34,7 @@ export default function SettingsPage() {
   const [includeResumeContents, setIncludeResumeContents] = useState(false)
   const [pageLimit, setPageLimit] = useState<'1' | '2' | '3' | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [importHelpOpen, setImportHelpOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -197,6 +210,11 @@ export default function SettingsPage() {
                 overwritten by the file&apos;s values.
               </>
             }
+            actions={
+              <Button variant="secondary" icon={CircleHelp} onClick={() => setImportHelpOpen(true)}>
+                Supported fields
+              </Button>
+            }
           />
 
           <input
@@ -283,6 +301,55 @@ export default function SettingsPage() {
           )}
         </Card>
       </div>
+
+      <Dialog open={importHelpOpen} onClose={() => setImportHelpOpen(false)} labelledBy="profile-import-help-title" wide>
+        <h2 id="profile-import-help-title" className="text-h3">
+          What can I import?
+        </h2>
+        <p className="mt-2 leading-relaxed text-muted">
+          Use a JSON object with these top-level keys. Each section is a list of objects; unknown fields are ignored.
+          Import adds section items, while values in <code>profile</code> replace your existing personal details.
+        </p>
+
+        <div className="mt-5 space-y-4">
+          <section>
+            <h3 className="font-semibold">Personal details — profile</h3>
+            <p className="mt-1 text-body-sm text-muted">
+              {Object.entries(PROFILE_IMPORT_PROFILE_SCHEMA).map(([field, type]) => `${field} (${type})`).join(' · ')}
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold">Profile sections — lists of objects</h3>
+            <ul className="mt-1 space-y-1 text-body-sm text-muted">
+              {SECTIONS.map((section) => (
+                <li key={section.table}>
+                  <code>{section.table}</code>: {section.fields.map((field) => field.name).join(', ')}
+                </li>
+              ))}
+              <li>
+                <code>saved_answers</code>: {PROFILE_IMPORT_SAVED_ANSWER_FIELDS.join(', ')} (question and answer required)
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="font-semibold">Example JSON</h3>
+            <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-surface-muted p-3 text-caption leading-relaxed">
+              {JSON.stringify(PROFILE_IMPORT_EXAMPLE, null, 2)}
+            </pre>
+          </section>
+
+          <p className="text-body-sm text-muted">
+            Set <code>version</code> to <code>1</code>. Resume metadata, resume text, and tailoring history are export-only
+            and are not imported.
+          </p>
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <Button onClick={() => setImportHelpOpen(false)}>Close</Button>
+        </div>
+      </Dialog>
     </div>
   )
 }

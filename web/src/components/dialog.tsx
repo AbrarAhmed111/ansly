@@ -27,12 +27,14 @@ export function Dialog({
   children,
   className,
   labelledBy,
+  wide = false,
 }: {
   open: boolean
   onClose: () => void
   children: ReactNode
   className?: string
   labelledBy?: string
+  wide?: boolean
 }) {
   const ref = useModal(open)
   return (
@@ -44,7 +46,7 @@ export function Dialog({
         onClose()
       }}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-auto w-[calc(100%-2rem)] max-w-md bg-transparent open:animate-dialog-in"
+      className={clsx('m-auto w-[calc(100%-2rem)] bg-transparent open:animate-dialog-in', wide ? 'max-w-2xl' : 'max-w-md')}
     >
       {open && (
         <div className={clsx('rounded-2xl border border-border bg-surface p-6 shadow-raised', className)}>{children}</div>

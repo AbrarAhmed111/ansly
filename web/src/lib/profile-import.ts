@@ -23,7 +23,7 @@ const PROFILE_FIELDS = [
   'requires_sponsorship', 'notice_period', 'salary_expectation', 'willing_to_relocate', 'preferred_work_mode',
   'resume_page_limit',
 ]
-const SAVED_ANSWER_FIELDS = ['question', 'answer', 'category', 'company', 'role']
+export const PROFILE_IMPORT_SAVED_ANSWER_FIELDS = ['question', 'answer', 'category', 'company', 'role']
 const PROFILE_FIELD_TYPES: Record<string, string> = {
   full_name: 'string', headline: 'string', email: 'string', phone: 'string', location: 'string', summary: 'string',
   additional_context: 'string', links: 'object with string values', work_authorization: 'string',
@@ -234,19 +234,19 @@ export function planImport(input: unknown): ImportPlan {
         errors.push(`Saved answers #${i + 1} is not an object.`)
         return
       }
-      warnUnknownFields(raw, SAVED_ANSWER_FIELDS, ROW_PROTECTED_FIELDS, `Saved answers #${i + 1}`, warnings)
-      const row = pick(raw, SAVED_ANSWER_FIELDS)
+      warnUnknownFields(raw, PROFILE_IMPORT_SAVED_ANSWER_FIELDS, ROW_PROTECTED_FIELDS, `Saved answers #${i + 1}`, warnings)
+      const row = pick(raw, PROFILE_IMPORT_SAVED_ANSWER_FIELDS)
       if (typeof row.question !== 'string' || !row.question.trim() || typeof row.answer !== 'string' || !row.answer.trim()) {
         errors.push(`Saved answers #${i + 1} must include a question and answer as strings.`)
         return
       }
-      const invalid = SAVED_ANSWER_FIELDS.filter((field) => field !== 'question' && field !== 'answer'
+      const invalid = PROFILE_IMPORT_SAVED_ANSWER_FIELDS.filter((field) => field !== 'question' && field !== 'answer'
         && row[field] != null && typeof row[field] !== 'string')
       if (invalid.length) {
         errors.push(`Saved answers #${i + 1} fields must be strings: ${invalid.join(', ')}.`)
         return
       }
-      savedAnswers.push(Object.fromEntries(SAVED_ANSWER_FIELDS.map((field) => [field, row[field] ?? null])))
+      savedAnswers.push(Object.fromEntries(PROFILE_IMPORT_SAVED_ANSWER_FIELDS.map((field) => [field, row[field] ?? null])))
     })
     rows.push({
       table: 'saved_answers',
