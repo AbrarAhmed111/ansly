@@ -41,9 +41,6 @@ export function LeadProfileJsonImport({
     }
     try {
       const nextPlan = parseLeadProfileImport(value)
-      const existingNames = new Set(existingProfiles.map((profile) => profile.name.trim().toLocaleLowerCase()))
-      const duplicate = nextPlan.profiles.find((profile) => existingNames.has(profile.name.toLocaleLowerCase()))
-      if (duplicate) throw new Error(`A targeting profile named "${duplicate.name}" already exists.`)
       setPlan(nextPlan)
     } catch (reason) {
       setPlan(null)
@@ -68,21 +65,40 @@ export function LeadProfileJsonImport({
     }
   }
 
+  const existingByName = new Map(existingProfiles.map((profile) => [profile.name.trim().toLocaleLowerCase(), profile]))
+  const matchFor = (name: string) => existingByName.get(name.trim().toLocaleLowerCase())
+
   async function importProfiles() {
     if (!plan) return
     setBusy(true)
     setError(null)
     try {
-      const payload = plan.profiles.map((profile, index) => ({
-        ...profile,
-        is_active: existingProfiles.length === 0 && index === 0,
-      }))
-      const { data, error: insertError } = await createClient()
-        .from('targeting_profiles')
-        .insert(payload)
-        .select('*')
-      if (insertError) throw insertError
-      onImported((data ?? []) as TargetingProfile[])
+      const client = createClient()
+      const saved: TargetingProfile[] = []
+      const created = plan.profiles.filter((profile) => !matchFor(profile.name))
+      // A profile with the same name as an existing one replaces that profile's fields.
+      for (const profile of plan.profiles) {
+        const existing = matchFor(profile.name)
+        if (!existing) continue
+        const { data, error: updateError } = await client
+          .from('targeting_profiles')
+          .update(profile)
+          .eq('id', existing.id)
+          .select('*')
+          .single()
+        if (updateError) throw updateError
+        saved.push(data as TargetingProfile)
+      }
+      if (created.length) {
+        const payload = created.map((profile, index) => ({
+          ...profile,
+          is_active: existingProfiles.length === 0 && index === 0,
+        }))
+        const { data, error: insertError } = await client.from('targeting_profiles').insert(payload).select('*')
+        if (insertError) throw insertError
+        saved.push(...((data ?? []) as TargetingProfile[]))
+      }
+      onImported(saved)
       onClose()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to save these profiles.')
@@ -94,7 +110,7 @@ export function LeadProfileJsonImport({
   return (
     <div className="space-y-4 px-6 py-6">
       <Alert tone="accent" title="Accepted JSON fields">
-        <p>Use a single profile object, an array of profile objects, or an object with a <code>profiles</code> array. Each profile must include <code>name</code>.</p>
+        <p>Use a single profile object, an array of profile objects, or an object with a <code>profiles</code> array. Each profile must include <code>name</code>. A profile with the same name as one you already have updates it.</p>
         <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
           {LEAD_PROFILE_IMPORT_FIELDS.map(({ name, type }) => (
             <li key={name}><code>{name}</code>: {type}</li>
@@ -166,7 +182,14 @@ export function LeadProfileJsonImport({
         <div className="space-y-3" aria-live="polite">
           <p className="text-body-sm font-medium">Ready to import {plan.profiles.length} targeting profile{plan.profiles.length === 1 ? '' : 's'}:</p>
           <ul className="list-disc space-y-1 pl-5 text-body-sm text-muted">
-            {plan.profiles.map((profile) => <li key={profile.name}>{profile.name}</li>)}
+            {plan.profiles.map((profile) => (
+              <li key={profile.name}>
+                {profile.name}
+                <span className="ml-2 text-caption text-subtle">
+                  {matchFor(profile.name) ? 'updates your existing profile' : 'new profile'}
+                </span>
+              </li>
+            ))}
           </ul>
           {plan.warnings.length > 0 && (
             <Alert tone="warning" title="Some fields will be ignored">
