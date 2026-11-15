@@ -29,7 +29,8 @@ interface SummaryRow {
   profile_facts: number
   saved_answers: number
   usage_7d: Record<string, number>
-  token_buckets: [string, number][]
+  /** [15-minute bucket, tokens, usage kind]; the kind is missing before the per-feature migration. */
+  token_buckets: [string, number, string?][]
   master_resume: boolean
   ready_tailorings: number
 }
@@ -65,7 +66,7 @@ function fromSummary(s: SummaryRow): DashboardData {
     },
     savedCount: s.saved_answers,
     usage: weekly(s.usage_7d),
-    tokens: s.token_buckets.map(([created_at, tokens]) => ({ created_at, tokens: Number(tokens) })),
+    tokens: s.token_buckets.map(([created_at, tokens, kind]) => ({ created_at, tokens: Number(tokens), kind: kind ?? null })),
     hasMaster: s.master_resume,
     readyCount: s.ready_tailorings,
   }
@@ -79,7 +80,7 @@ async function loadLegacy(supabase: SupabaseClient): Promise<DashboardData> {
     loadFullProfile(supabase),
     supabase.from('saved_answers').select('id', { count: 'exact', head: true }),
     supabase.from('usage_events').select('kind').gte('created_at', week),
-    supabase.from('usage_events').select('created_at, tokens').gt('tokens', 0).gte('created_at', tokenSince).limit(5000),
+    supabase.from('usage_events').select('created_at, tokens, kind').gt('tokens', 0).gte('created_at', tokenSince).limit(5000),
     // Before the v1.2 migration these tables don't exist: counts stay null and the cards still render.
     supabase.from('resumes').select('id', { count: 'exact', head: true }).eq('is_master', true),
     supabase.from('resume_tailorings').select('id', { count: 'exact', head: true }).eq('status', 'ready'),
@@ -106,6 +107,20 @@ async function loadLegacy(supabase: SupabaseClient): Promise<DashboardData> {
 /** Everything the dashboard shows: one RPC (instead of ~12 queries), with the old reads as a fallback. */
 export async function loadDashboard(supabase: SupabaseClient): Promise<DashboardData> {
   const { data, error } = await supabase.rpc('dashboard_summary', { token_window_days: TOKEN_WINDOW_DAYS + 1 })
-  if (!error && data) return fromSummary(data as SummaryRow)
+  if (!error && data) {
+    const summary = fromSummary(data as SummaryRow)
+    // Before the per-feature migration the buckets don't say which feature used the tokens: read the events.
+    if (summary.tokens.some((t) => !t.kind)) {
+      const since = new Date(Date.now() - (TOKEN_WINDOW_DAYS + 1) * 24 * 3600 * 1000).toISOString()
+      const events = await supabase
+        .from('usage_events')
+        .select('created_at, tokens, kind')
+        .gt('tokens', 0)
+        .gte('created_at', since)
+        .limit(5000)
+      if (!events.error) summary.tokens = (events.data ?? []) as TokenEvent[]
+    }
+    return summary
+  }
   return loadLegacy(supabase)
 }
