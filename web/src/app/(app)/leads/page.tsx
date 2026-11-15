@@ -1,7 +1,9 @@
 'use client'
 
-import type { Lead, TargetingProfile } from '@ansly/types'
-import { CheckCheck, Inbox, Link2, ListFilter, Mail, Plus, RotateCcw, Search, Sparkles, Target, Trash2, X } from 'lucide-react'
+import type { EmailDraft, Lead, TargetingProfile } from '@ansly/types'
+import { CheckCheck, Inbox, Link2, ListFilter, Mail, PenLine, Plus, RotateCcw, Search, Send, Sparkles, Target, Trash2, X } from 'lucide-react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Sheet, useConfirm } from '@/components/dialog'
@@ -20,8 +22,11 @@ import {
   Select,
   Skeleton,
   Stat,
+  buttonStyles,
 } from '@/components/ui'
-import { listLeads } from '@/lib/api'
+import { connectGmail, GmailStatus } from '@/components/email-connection'
+import { getEmailConnection, listEmailDrafts, listLeads, previewEmailGeneration } from '@/lib/api'
+import { ERROR_LABEL, generateDrafts, writeAndSend } from '@/lib/lead-emails'
 import {
   activateTargetingProfile,
   createTargetingProfile,
@@ -66,6 +71,9 @@ export default function LeadsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [sessionIds, setSessionIds] = useState<Set<string>>(new Set())
+  const [drafts, setDrafts] = useState<Record<string, EmailDraft>>({})
+  const [writingIds, setWritingIds] = useState<Set<string>>(new Set())
+  const router = useRouter()
 
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingProfile, setEditingProfile] = useState<TargetingProfile | null>(null)
@@ -90,10 +98,11 @@ export default function LeadsPage() {
   useEffect(() => {
     let active = true
     setLoading(true)
-    Promise.all([listLeads(), listTargetingProfiles()])
-      .then(([{ leads: rows }, loadedProfiles]) => {
+    Promise.all([listLeads(), listTargetingProfiles(), listEmailDrafts().catch(() => ({ drafts: [] as EmailDraft[] }))])
+      .then(([{ leads: rows }, loadedProfiles, { drafts: draftRows }]) => {
         if (!active) return
         setLeads(rows)
+        setDrafts(Object.fromEntries(draftRows.map((d) => [d.lead_id, d])))
         setProfiles(loadedProfiles)
         setActiveProfileId((loadedProfiles.find((profile) => profile.is_active) ?? loadedProfiles[0])?.id ?? null)
         setLoadError(null)
@@ -291,6 +300,121 @@ export default function LeadsPage() {
       return next
     })
 
+  /** One personalized draft per lead with an email; existing drafts are opened, never rewritten. */
+  const writeEmails = async (ids: string[]) => {
+    try {
+      const preview = await previewEmailGeneration({ lead_ids: ids })
+      const withDrafts = ids.filter((id) => drafts[id])
+      if (!preview.eligible) {
+        if (withDrafts.length) return router.push(`/leads/review?leads=${withDrafts.join(',')}`)
+        return toast.error('None of these leads has an email address in the post.')
+      }
+      if (preview.eligible > 1) {
+        const ok = await confirm({
+          title: `Write ${preview.eligible} emails?`,
+          description: [
+            'Each lead gets its own email and, when Ansly is sure, a matching role resume. Nothing is sent.',
+            preview.no_email ? `${preview.no_email} without an email address are skipped.` : '',
+            preview.existing_drafts ? `${preview.existing_drafts} already have a draft (kept as is).` : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+          confirmLabel: 'Write emails',
+          tone: 'neutral',
+        })
+        if (!ok) return
+      }
+      setWritingIds(new Set(preview.eligible_lead_ids))
+      const progress = toast.loading(`Writing emails… 0 of ${preview.eligible}`)
+      const summary = await generateDrafts(preview.preview_token!, preview.eligible_lead_ids, (done, total) =>
+        toast.loading(`Writing emails… ${done} of ${total}`, { id: progress }),
+      )
+      toast.dismiss(progress)
+      const problems = summary.failed.length + summary.insufficient
+      if (problems) {
+        toast.error(
+          `${summary.created} written. ${summary.insufficient ? `${summary.insufficient} skipped (your profile doesn’t show matching experience). ` : ''}${summary.failed.length ? `${summary.failed.length} failed; try them again.` : ''}`,
+        )
+      }
+      const reviewIds = Array.from(new Set([...summary.draftLeadIds, ...withDrafts]))
+      if (reviewIds.length) router.push(`/leads/review?leads=${reviewIds.join(',')}`)
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Could not write the emails.')
+    } finally {
+      setWritingIds(new Set())
+    }
+  }
+
+  /**
+   * The fast path: one confirmation, then each email is written and, when Ansly is confident about the resume,
+   * sent at once. Emails without a confident resume wait in Review; nothing is sent for them.
+   */
+  const writeAndSendEmails = async (ids: string[]) => {
+    try {
+      const connection = await getEmailConnection()
+      if (!connection.connected || connection.status !== 'connected') {
+        const ok = await confirm({
+          title: connection.connected ? 'Reconnect Gmail to send' : 'Connect Gmail to send',
+          description: 'Write & send sends from your Gmail account. Connect it first; it takes a few seconds.',
+          confirmLabel: connection.connected ? 'Reconnect Gmail' : 'Connect Gmail',
+          tone: 'neutral',
+        })
+        if (ok) void connectGmail('/leads')
+        return
+      }
+      const preview = await previewEmailGeneration({ lead_ids: ids })
+      const eligible = preview.eligible_lead_ids.filter((id) => leads.find((l) => l.id === id)?.status !== 'contacted')
+      if (!eligible.length) {
+        return toast.error(
+          preview.existing_drafts
+            ? 'These leads already have emails. Open Review emails to send them.'
+            : 'None of these leads has an email address in the post.',
+        )
+      }
+      const ok = await confirm({
+        title: `Write and send ${eligible.length} email${eligible.length === 1 ? '' : 's'}?`,
+        description: [
+          `Each lead gets its own email from ${connection.email_address}.`,
+          'When Ansly is confident which resume fits, it attaches it and sends right away.',
+          'Emails without a confident resume are not sent; they wait in Review emails.',
+          preview.existing_drafts ? `${preview.existing_drafts} with an existing draft are left as they are.` : '',
+        ]
+          .filter(Boolean)
+          .join(' '),
+        confirmLabel: `Write & send ${eligible.length}`,
+        tone: 'neutral',
+      })
+      if (!ok) return
+      setWritingIds(new Set(eligible))
+      const progress = toast.loading(`Writing & sending… 0 of ${eligible.length}`)
+      const summary = await writeAndSend(preview.preview_token!, eligible, (done, total, sent) =>
+        toast.loading(`Writing & sending… ${done} of ${total} · ${sent} sent`, { id: progress }),
+      )
+      toast.dismiss(progress)
+      setDrafts((current) => ({ ...current, ...Object.fromEntries(summary.drafts.map((d) => [d.lead_id, d])) }))
+      const sentIds = new Set(summary.sent)
+      setLeads((current) => current.map((lead) => (sentIds.has(lead.id) ? { ...lead, status: 'contacted' } : lead)))
+
+      const parts = [
+        `${summary.sent.length} sent`,
+        summary.needsReview.length ? `${summary.needsReview.length} need a resume (in Review)` : '',
+        summary.failed.length ? `${summary.failed.length} failed` : '',
+        summary.insufficient ? `${summary.insufficient} skipped (no matching experience)` : '',
+        summary.notAttempted ? `${summary.notAttempted} not started` : '',
+      ].filter(Boolean)
+      const stoppedNote = summary.stopped && summary.stopped !== 'error' ? ` Stopped: ${ERROR_LABEL[summary.stopped] ?? summary.stopped}.` : ''
+      if (summary.failed.length || summary.stopped) toast.error(parts.join(' · ') + stoppedNote, { duration: 8000 })
+      else toast.success(parts.join(' · '), { duration: 6000 })
+      if (summary.needsReview.length) router.push(`/leads/review?leads=${summary.needsReview.join(',')}`)
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Could not write and send.')
+    } finally {
+      setWritingIds(new Set())
+    }
+  }
+
+  const draftCount = Object.keys(drafts).length
+
   // ---------------------------------------------------------------- render
 
   return (
@@ -299,6 +423,17 @@ export default function LeadsPage() {
         eyebrow="Workspace"
         title="Leads"
         description="Opportunities from LinkedIn posts you collected with the extension, matched to your targeting profile."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <GmailStatus returnTo="/leads" />
+            {draftCount > 0 && (
+              <Link href="/leads/review" className={buttonStyles({ variant: 'secondary' })}>
+                <Mail className="h-4 w-4" />
+                Review emails ({draftCount})
+              </Link>
+            )}
+          </div>
+        }
       />
 
       {sessionIds.size > 0 && !loading && (
@@ -428,7 +563,13 @@ export default function LeadsPage() {
               className="sticky top-4 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-surface px-4 py-3 shadow-lg"
             >
               <span className="mr-auto text-body-sm font-medium">{selectedIds.length} selected</span>
-              <Button size="sm" icon={CheckCheck} onClick={() => void changeStatus(selectedIds, 'contacted')}>
+              <Button size="sm" icon={Send} loading={writingIds.size > 0} onClick={() => void writeAndSendEmails(selectedIds)}>
+                Write & send
+              </Button>
+              <Button size="sm" variant="secondary" icon={PenLine} disabled={writingIds.size > 0} onClick={() => void writeEmails(selectedIds)}>
+                Write emails
+              </Button>
+              <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => void changeStatus(selectedIds, 'contacted')}>
                 Mark contacted
               </Button>
               <Button size="sm" variant="secondary" icon={RotateCcw} onClick={() => void changeStatus(selectedIds, 'new')}>
@@ -466,6 +607,10 @@ export default function LeadsPage() {
                   onSelect={(on) => toggle(lead.id, on)}
                   onStatus={(status) => void changeStatus([lead.id], status)}
                   onDelete={() => void removeLeads([lead.id])}
+                  draft={drafts[lead.id]}
+                  writing={writingIds.has(lead.id)}
+                  onWriteEmail={() => void writeEmails([lead.id])}
+                  onWriteAndSend={() => void writeAndSendEmails([lead.id])}
                 />
               ))}
             </div>
