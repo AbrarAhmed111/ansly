@@ -8,6 +8,7 @@ then applied to a copy of the user's own Word document.
 Dates stay as written on the resume so protected fields can be compared exactly.
 """
 
+import re
 from typing import Iterator, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -147,6 +148,18 @@ ResumeFileType = Literal["pdf", "docx"]
 ResumeParseStatus = Literal["pending", "parsed", "needs_review", "failed"]
 
 
+def resume_file_name(row: dict) -> Optional[str]:
+    """The name the user uploaded ("Sam Rivera Resume.pdf"), used for downloads and email attachments.
+    Falls back to the stored file name without its upload timestamp prefix."""
+    file_type = str(row.get("file_type") or "")
+    name = str(row.get("name") or "").strip()
+    if name and file_type and name.lower().endswith(f".{file_type}"):
+        return name
+    stored = str(row.get("file_path") or "").rsplit("/", 1)[-1]
+    stored = re.sub(r"^\d{10,}-", "", stored)
+    return stored or None
+
+
 class ResumeRecord(CamelModel):
     id: str
     name: str
@@ -157,6 +170,12 @@ class ResumeRecord(CamelModel):
     version: int
     is_master: bool
     dismissed_discrepancies: List[str] = Field(default_factory=list)
+    # Role resume library (Leads): set on resumes meant to be attached to emails for one kind of role.
+    role_label: Optional[str] = None
+    role_note: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    archived_at: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -166,6 +185,9 @@ class ResumeRecord(CamelModel):
             id=row["id"], name=row["name"], file_type=row["file_type"], parse_status=row["parse_status"],
             parse_error=row.get("parse_error"), parsed_content=row.get("parsed_content"), version=row["version"],
             is_master=row["is_master"], dismissed_discrepancies=list(row.get("dismissed_discrepancies") or []),
+            role_label=row.get("role_label"), role_note=row.get("role_note"),
+            file_name=resume_file_name(row), file_size=row.get("file_size"),
+            archived_at=str(row["archived_at"]) if row.get("archived_at") else None,
             created_at=str(row.get("created_at", "")),
             updated_at=str(row.get("updated_at", "")),
         )
@@ -184,6 +206,10 @@ class CreateResumeRequest(CamelModel):
     file_path: str = Field(min_length=1, max_length=1000)
     # Checked in the endpoint, so a PDF gets a clear message instead of a schema error.
     file_type: str = Field(min_length=1, max_length=20)
+    # Set for a role resume (library): uploaded under {user}/library/, PDF or Word, never made the master.
+    role_label: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    role_note: Optional[str] = Field(default=None, max_length=500)
+    file_size: Optional[int] = Field(default=None, ge=0, le=10 * 1024 * 1024)
 
 
 class MasterResumeResponse(CamelModel):
@@ -195,6 +221,25 @@ class UpdateResumeRequest(CamelModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     parsed_content: Optional[StructuredResume] = None
     dismissed_discrepancies: Optional[List[str]] = Field(default=None, max_length=500)
+    role_label: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    role_note: Optional[str] = Field(default=None, max_length=500)
+
+
+class ReplaceResumeRequest(CamelModel):
+    name: str = Field(min_length=1, max_length=200)
+    file_path: str = Field(min_length=1, max_length=1000)
+    file_type: str = Field(min_length=1, max_length=20)
+    file_size: Optional[int] = Field(default=None, ge=0, le=10 * 1024 * 1024)
+
+
+class ReplaceResumeResponse(CamelModel):
+    resume: "ResumeRecord"
+    replaced_id: str
+    drafts_updated: int
+
+
+class ResumeDownloadResponse(CamelModel):
+    url: str
 
 
 class ResumeListResponse(CamelModel):

@@ -128,6 +128,12 @@ export interface ResumeRecord {
   isMaster: boolean
   /** Discrepancy keys the user chose to keep as they are. */
   dismissedDiscrepancies: string[]
+  /** Role resume library (Leads): set on resumes attached to emails for one kind of role. */
+  roleLabel?: string | null
+  roleNote?: string | null
+  fileName?: string | null
+  fileSize?: number | null
+  archivedAt?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -146,10 +152,28 @@ export interface ResumeDiscrepancy {
 /** `POST /api/v1/resumes` — after the web app uploads the file to Storage. */
 export interface CreateResumeRequest {
   name: string
-  /** `{user_id}/masters/....docx` in the `resumes` bucket. */
+  /** `{user_id}/masters/....docx`, or `{user_id}/library/...` for a role resume, in the `resumes` bucket. */
   filePath: string
-  /** Only Word documents are accepted. */
-  fileType: 'docx'
+  /** Masters must be Word; role resumes may be PDF or Word. */
+  fileType: 'docx' | 'pdf'
+  /** Makes this a role resume (never the master). */
+  roleLabel?: string
+  roleNote?: string | null
+  fileSize?: number
+}
+
+/** `POST /api/v1/resumes/{id}/replace` — new file for a role resume; unsent drafts switch to it. */
+export interface ReplaceResumeRequest {
+  name: string
+  filePath: string
+  fileType: 'docx' | 'pdf'
+  fileSize?: number
+}
+
+export interface ReplaceResumeResponse {
+  resume: ResumeRecord
+  replacedId: string
+  draftsUpdated: number
 }
 
 /** `GET /api/v1/resumes/master` */
@@ -165,6 +189,8 @@ export interface UpdateResumeRequest {
   parsedContent?: StructuredResume
   /** Discrepancy keys the user chose to keep as they are. */
   dismissedDiscrepancies?: string[]
+  roleLabel?: string
+  roleNote?: string
 }
 
 /** `GET /api/v1/resumes` — every version, newest first. */
