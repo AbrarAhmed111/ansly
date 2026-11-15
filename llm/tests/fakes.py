@@ -103,6 +103,10 @@ class FakeRest:
                 return False
             if value == "is.null" and row.get(key) is not None:
                 return False
+            if value.startswith(("lt.", "gt.")) and row.get(key) is not None:
+                left, right = str(row.get(key)), value[3:]
+                if (value.startswith("lt.") and not left < right) or (value.startswith("gt.") and not left > right):
+                    return False
             if value.startswith("in.("):
                 options = value[4:-1].split(",")
                 if str(row.get(key)) not in options:
