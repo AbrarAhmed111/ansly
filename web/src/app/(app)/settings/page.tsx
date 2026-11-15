@@ -3,11 +3,14 @@
 import { clsx } from 'clsx'
 import { CircleHelp, Download, FileJson, FileText, LogOut, Palette, Upload, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
+import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { Dialog } from '@/components/dialog'
+import { EmailConnectionCard } from '@/components/email-connection'
 import { EnabledSites } from '@/components/enabled-sites'
+import { UserAvatar, useIdentity } from '@/components/identity'
 import { ThemeToggle } from '@/components/theme'
-import { Alert, Avatar, Badge, Button, Card, CardHeader, Checkbox, ErrorText, IconButton, Overline, PageHeader, SegmentedControl } from '@/components/ui'
+import { Alert, Badge, Button, Card, CardHeader, Checkbox, ErrorText, IconButton, Overline, PageHeader, SegmentedControl, buttonStyles } from '@/components/ui'
 import { errorMessage, humanize, plural } from '@/lib/format'
 import {
   MAX_PROFILE_IMPORT_BYTES,
@@ -25,6 +28,7 @@ import { createClient } from '@/lib/supabase/client'
 
 export default function SettingsPage() {
   const [email, setEmail] = useState<string | null>(null)
+  const identity = useIdentity()
   const [userId, setUserId] = useState<string | null>(null)
   const [plan, setPlan] = useState<ImportPlan | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -132,11 +136,15 @@ export default function SettingsPage() {
         <Card>
           <CardHeader icon={UserRound} title="Account" />
           <div className="mt-5 flex flex-wrap items-center gap-4 rounded-lg border border-border bg-surface-muted/50 p-4">
-            <Avatar name={email ?? '?'} className="h-10 w-10" />
+            <UserAvatar className="h-10 w-10" />
             <div className="min-w-0 flex-1">
               <Overline>Signed in as</Overline>
-              <p className="truncate font-medium">{email ?? '…'}</p>
+              <p className="truncate font-medium">{identity?.name || email || '…'}</p>
+              {identity?.name && email && <p className="truncate text-body-sm text-muted">{email}</p>}
             </div>
+            <Link href="/profile/personal" className={buttonStyles({ variant: 'secondary' })}>
+              Edit details
+            </Link>
             <form action="/auth/signout" method="post">
               <Button variant="secondary" icon={LogOut}>
                 Sign out
@@ -156,6 +164,8 @@ export default function SettingsPage() {
         </Card>
 
         <EnabledSites />
+
+        <EmailConnectionCard />
 
         <Card>
           <CardHeader
