@@ -95,3 +95,140 @@ export interface LeadDraft {
   created_at: string
   updated_at: string
 }
+
+// ---------------------------------------------------------------------------
+// Lead emails: drafts, sending, and the Gmail connection (keep in sync with llm/src/app/schemas/lead_emails.py)
+// ---------------------------------------------------------------------------
+
+export type ResumeSelection = 'auto' | 'user' | 'none_by_user' | 'needs_selection'
+export type DeliveryStatus = 'draft' | 'sending' | 'sent' | 'failed'
+export type MatchConfidence = 'high' | 'medium' | 'low' | 'none'
+
+export interface DetectedRole {
+  title: string
+  role_family: string
+  seniority: string | null
+  technologies: string[]
+  responsibilities: string[]
+  evidence_quote: string
+  other_roles?: string[]
+  /** The hiring company as the post names it. */
+  company?: string | null
+  /** What the post says the company does. */
+  company_context?: string | null
+}
+
+export interface DraftResume {
+  id: string
+  label: string | null
+  name: string
+  file_name: string | null
+  file_type: 'pdf' | 'docx'
+  file_size: number | null
+}
+
+export interface EmailDraft {
+  id: string
+  lead_id: string
+  recipient_email: string | null
+  recipient_source: 'post' | 'user'
+  /** The address written in the post, for comparison when the user changed the recipient. */
+  post_email: string | null
+  subject: string
+  body: string
+  resume: DraftResume | null
+  resume_selection: ResumeSelection
+  match_confidence: MatchConfidence | null
+  match_reason: string | null
+  detected_role: DetectedRole | null
+  is_user_edited: boolean
+  approved: boolean
+  approved_at: string | null
+  delivery_status: DeliveryStatus
+  sent_at: string | null
+  last_error_code: string | null
+  version: number
+  updated_at: string | null
+  /** What blocks sending right now (not counting the Gmail connection). */
+  issues: string[]
+}
+
+export interface EmailDraftListResponse {
+  drafts: EmailDraft[]
+}
+
+export interface GeneratePreviewResponse {
+  eligible: number
+  no_email: number
+  existing_drafts: number
+  eligible_lead_ids: string[]
+  preview_token: string | null
+}
+
+export interface GenerateResult {
+  lead_id: string
+  outcome: 'created' | 'existing' | 'insufficient_evidence' | 'failed'
+  message: string | null
+  draft: EmailDraft | null
+}
+
+export interface UpdateDraftRequest {
+  expected_version: number
+  recipient_email?: string
+  subject?: string
+  body?: string
+  resume_id?: string
+  send_without_resume?: boolean
+}
+
+export interface SendPreviewItem {
+  draft_id: string
+  lead_id: string
+  recipient_email: string
+  subject: string
+  attachment_name: string | null
+  may_duplicate: boolean
+}
+
+export interface SendPreviewResponse {
+  ready: SendPreviewItem[]
+  excluded: { draft_id: string; lead_id: string; issues: string[] }[]
+  connection_email: string | null
+  connection_issue: 'not_connected' | 'reauth_required' | null
+  confirm_token: string | null
+}
+
+export interface SendResult {
+  draft_id: string
+  lead_id: string | null
+  outcome: 'sent' | 'failed' | 'skipped' | 'not_attempted'
+  code: string | null
+  message: string | null
+}
+
+export interface SendResponse {
+  results: SendResult[]
+  stopped: string | null
+}
+
+export interface EmailConnection {
+  configured: boolean
+  connected: boolean
+  provider: 'gmail' | null
+  email_address: string | null
+  status: 'connected' | 'needs_reauth' | null
+  granted_scopes: string[]
+}
+
+export interface WriteAndSendResult {
+  lead_id: string
+  outcome: 'sent' | 'needs_review' | 'failed' | 'skipped' | 'insufficient_evidence'
+  code: string | null
+  message: string | null
+  draft: EmailDraft | null
+}
+
+export interface WriteAndSendResponse {
+  results: WriteAndSendResult[]
+  stopped: string | null
+}
