@@ -1,7 +1,7 @@
 'use client'
 
 import type { TailoringListItem } from '@ansly/types'
-import { ArrowRight, Download, Eye, FileText, Plus, RefreshCcw, Trash2, TriangleAlert, Upload } from 'lucide-react'
+import { ArrowRight, Download, Eye, FileText, Files, Plus, RefreshCcw, Trash2, TriangleAlert, Upload } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/dialog'
@@ -178,6 +178,18 @@ export default function ResumePage() {
           )}
         </div>
       </Card>
+
+      <Link
+        href="/resume/roles"
+        className="mt-4 flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-body-sm transition hover:border-border-strong"
+      >
+        <Files className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="font-medium text-fg">Role resumes</span>
+          <span className="block text-muted">Resumes for each kind of role, attached to your Leads emails.</span>
+        </span>
+        <ArrowRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+      </Link>
 
       <h2 className="mt-8 text-title">Tailored resumes</h2>
       <div className="mt-3">
