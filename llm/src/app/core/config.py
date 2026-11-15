@@ -34,6 +34,17 @@ class Settings(BaseSettings):
     # Only needed if the project still signs user JWTs with the legacy HS256 secret.
     SUPABASE_JWT_SECRET: str = ""
 
+    # Gmail sending for Leads (send-only scope). Create an OAuth "Web application" client in Google Cloud; its
+    # authorized redirect URI is the web app's /settings/email/callback page.
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_REDIRECT_URI: str = "http://localhost:3000/settings/email/callback"
+    # Encrypts stored Gmail refresh tokens (AES-256-GCM): 32 random bytes, base64. Generate with
+    #   python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
+    # Changing it disconnects everyone (their tokens can't be decrypted); bump EMAIL_TOKEN_KEY_ID when rotating.
+    EMAIL_TOKEN_ENCRYPTION_KEY: str = ""
+    EMAIL_TOKEN_KEY_ID: str = "k1"
+
     # Answer generation
     LLM_TEMPERATURE: float = 0.4
     LLM_MAX_TOKENS: int = 2048
