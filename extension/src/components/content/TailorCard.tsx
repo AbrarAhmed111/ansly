@@ -2,6 +2,7 @@ import { TAILORING_STEP_COUNT, tailoringPollDelay, tailoringProgress, type Tailo
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DetectedJob, ExtractResult } from '@/lib/job/detect'
 import { send, type ApiFailure } from '@/lib/messages'
+import { Brand, Icon, LogoMark } from '@/components/brand'
 
 // How often the progress bar and activity line move between polls.
 const TICK_MS = 500
@@ -148,10 +149,11 @@ export function TailorCard({
     return (
       <div className={`tailor-pill-wrap${stacked ? ' stacked' : ''}`}>
         <button className="pill tailor-pill" onClick={() => setState({ step: 'offer' })} aria-label={`Tailor your resume for ${job.title}`}>
-          <span className="pill-brand">📄 Tailor resume</span>
+          <LogoMark size={16} />
+          <span className="pill-brand">Tailor resume</span>
         </button>
         <button className="pill-dismiss" onClick={onDismiss} aria-label="Hide for this job" title="Hide for this job">
-          ✕
+          <Icon name="x" size={12} />
         </button>
       </div>
     )
@@ -162,15 +164,15 @@ export function TailorCard({
   return (
     <div className={`tailor-card${stacked ? ' stacked' : ''}`} role="dialog" aria-label="Tailor your resume">
       <div className="header">
-        <span className="brand">Ansly</span>
+        <Brand />
         <span className="spacer" />
         {!busy && (
-          <button className="icon-btn" onClick={() => setState({ step: 'pill' })} aria-label="Minimize">
-            ▾
+          <button className="icon-btn" onClick={() => setState({ step: 'pill' })} aria-label="Minimize" title="Minimize">
+            <Icon name="minus" size={16} />
           </button>
         )}
-        <button className="icon-btn" onClick={onDismiss} aria-label="Close">
-          ✕
+        <button className="icon-btn" onClick={onDismiss} aria-label="Close" title="Close">
+          <Icon name="x" size={16} />
         </button>
       </div>
       <div className="body">

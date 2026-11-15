@@ -8,6 +8,7 @@ import { fillChoice, fillField, hasValue, restoreValue, snapshotValue, type Snap
 import { send } from '@/lib/messages'
 import { LENGTHS, TONES } from '@/lib/style'
 import { applyMissing, LEARNED, MissingForm, type MissingSubmit } from './MissingForm'
+import { Brand, Icon } from '@/components/brand'
 
 /** One vocabulary everywhere (see ANSWER_STATE_LABELS): idle and skipped are the panel's own. */
 export type RowStatus = 'idle' | 'generating' | 'ready' | 'review' | 'needs_info' | 'filled' | 'failed' | 'skipped'
@@ -300,12 +301,12 @@ export function Panel({ fields, ignoredCount, defaults, useJobDescription, getJo
         }
       }}>
       <div className="header">
-        <span className="brand">Ansly</span>
+        <Brand />
         <span className="question">
           Application Assistant · {fields.length} field{fields.length === 1 ? '' : 's'}
           {ignoredCount > 0 && <span className="muted"> · {ignoredCount} skipped</span>}
         </span>
-        <button className="icon-btn" aria-label="Close" onClick={onClose}>×</button>
+        <button className="icon-btn" aria-label="Close" onClick={onClose}><Icon name="x" size={16} /></button>
       </div>
 
       <div className="body">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Icon, IconTile } from '@/components/brand'
 import { send } from '@/lib/messages'
 import { sitesNoticeItem } from '@/lib/settings'
 import {
@@ -111,11 +112,16 @@ export function Sites() {
     <>
       {notice && (
         <section className="card notice">
-          <p>
-            <strong>Ansly now runs only on sites you choose.</strong> Turn it on for the job sites you use — or scan any
-            page once.
-          </p>
-          <button className="link" onClick={dismissNotice}>Got it</button>
+          <div className="card-head">
+            <IconTile icon="info" tone="accent" size="sm" />
+            <div className="card-head-text">
+              <p>
+                <strong>Ansly now runs only on sites you choose.</strong> Turn it on for the job sites you use — or scan
+                any page once.
+              </p>
+              <button className="link" onClick={dismissNotice}>Got it</button>
+            </div>
+          </div>
         </section>
       )}
 
@@ -123,10 +129,16 @@ export function Sites() {
         {here && (
           <div className="site-here">
             {enabledHere ? (
-              <p className="ready">On for {here}</p>
+              <p className="ready">
+                <span className="dot" />
+                <span>On for <strong>{here}</strong></span>
+              </p>
             ) : (
               <>
-                <p className="muted">Ansly is off on {here}.</p>
+                <p className="site-off">
+                  <Icon name="globe" size={15} />
+                  <span>Ansly is off on <strong>{here}</strong>.</span>
+                </p>
                 <div className="actions">
                   <button className="btn" onClick={() => void scan()} disabled={scanned}>
                     {scanned ? 'Scanned' : 'Scan this page'}
@@ -150,14 +162,17 @@ export function Sites() {
 
         <h2>Enabled sites</h2>
         {sites.length === 0 ? (
-          <p className="muted">None yet.</p>
+          <p className="empty">None yet. Enable a job site above or pick one below.</p>
         ) : (
           <ul className="site-list">
             {sites.map((d) => (
               <li key={d}>
-                <span>{d}</span>
+                <span className="site-name">
+                  <Icon name="globe" size={14} />
+                  {d}
+                </span>
                 <button className="remove" aria-label={`Remove ${d}`} title={`Remove ${d}`} onClick={() => void remove(d)}>
-                  ×
+                  <Icon name="x" size={14} />
                 </button>
               </li>
             ))}
@@ -174,7 +189,12 @@ export function Sites() {
           </div>
         )}
 
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="alert t-danger" role="alert">
+            <Icon name="alert" size={15} />
+            <span>{error}</span>
+          </p>
+        )}
       </section>
     </>
   )

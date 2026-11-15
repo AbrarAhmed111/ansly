@@ -18,6 +18,7 @@ import { Panel, type Row, type RowStatus } from './Panel'
 import { Popover, type PopoverTarget } from './Popover'
 import { LeadsCard, pagePosts, usePostSearch } from './LeadsCard'
 import { TailorCard } from './TailorCard'
+import { LogoMark } from '@/components/brand'
 
 const JOB_CHECK_MS = 1500
 // Checks after a navigation before giving up (content often renders after the URL changes).
@@ -458,6 +459,7 @@ export function App({ host, initialSettings, subscribe }: {
           : `${jobName ? `${jobName}: ` : ''}${detected.length} fields detected`
         return (
           <button className="pill" onClick={() => { setPanelOpen(true); setPanelMounted(true) }} aria-label={`Ansly: ${summary}. Open the application assistant`}>
+            <LogoMark size={16} />
             <span className="pill-brand">Ansly</span>
             {started ? (
               <>
@@ -531,7 +533,12 @@ export function App({ host, initialSettings, subscribe }: {
           onAnswerRest={() => answerRest(target.el)}
         />
       )}
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {toast && (
+        <div className="toast" role="status">
+          <LogoMark size={14} />
+          <span>{toast}</span>
+        </div>
+      )}
     </div>
   )
 }

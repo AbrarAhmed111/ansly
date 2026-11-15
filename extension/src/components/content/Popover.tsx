@@ -11,6 +11,7 @@ import { MEMORY_OPTIONS } from '@/lib/memory-options'
 import { send, type ApiFailure } from '@/lib/messages'
 import { autoLabel, LENGTHS, localCategory, resolveLength, sameStyle, TONES } from '@/lib/style'
 import { applyMissing, directAnswer, LEARNED, MissingForm, type MissingSubmit } from './MissingForm'
+import { Brand, Icon } from '@/components/brand'
 
 export interface PopoverTarget {
   el: HTMLElement
@@ -537,9 +538,9 @@ export function Popover({
       onKeyDown={onKeyDown}
     >
       <div className="header">
-        <span className="brand">Ansly</span>
+        <Brand />
         <span className="question" title={target.question}>{target.question}</span>
-        <button className="icon-btn" aria-label="Close" onClick={() => onClose({ refocus: true })}>×</button>
+        <button className="icon-btn" aria-label="Close" onClick={() => onClose({ refocus: true })}><Icon name="x" size={16} /></button>
       </div>
 
       <div className="body">
