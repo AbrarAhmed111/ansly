@@ -46,9 +46,8 @@ export function TailoredReadyCard({
   onPdf: () => void
 }) {
   return (
-    <Card className="relative overflow-hidden">
-      <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-success/10 blur-3xl" aria-hidden />
-      <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+    <Card>
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="h-6 w-6 shrink-0 text-success" aria-hidden />

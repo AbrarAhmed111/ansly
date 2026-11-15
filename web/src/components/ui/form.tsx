@@ -3,7 +3,7 @@ import { X, type LucideIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 
 export const controlStyles = clsx(
-  'w-full rounded-lg border border-border bg-surface px-3 text-body text-fg shadow-xs transition-[border-color,box-shadow]',
+  'w-full rounded-lg border border-border bg-surface px-3 text-body text-fg shadow-xs transition-[border-color,box-shadow] duration-150',
   'placeholder:text-subtle hover:border-border-strong',
   'focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15',
   'disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted',
@@ -32,7 +32,7 @@ export function Input({
 /** Small button for use as an Input's `trailing` element. */
 export function InputAction({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} title={label} className="rounded-md p-1.5 text-subtle hover:text-fg">
+    <button type="button" onClick={onClick} aria-label={label} title={label} className="rounded-md p-1.5 text-subtle transition-colors hover:text-fg">
       <Icon className="h-4 w-4" aria-hidden />
     </button>
   )
@@ -61,15 +61,19 @@ export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
   return <textarea className={clsx(controlStyles, 'min-h-[96px] resize-y py-2 leading-relaxed', className)} {...props} />
 }
 
-export function Select({ className, ...props }: ComponentProps<'select'>) {
+// Chevron-down drawn as the select's background (an arbitrary Tailwind url() class was never generated).
+const SELECT_ARROW =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")"
+
+export function Select({ className, style, ...props }: ComponentProps<'select'>) {
   return (
     <select
       className={clsx(
         controlStyles,
         'h-9 cursor-pointer appearance-none bg-[length:16px] bg-[right_0.6rem_center] bg-no-repeat pr-9',
-        "bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E\")]",
         className,
       )}
+      style={{ backgroundImage: SELECT_ARROW, ...style }}
       {...props}
     />
   )

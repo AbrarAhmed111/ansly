@@ -269,11 +269,11 @@ export function RoleResumes({ startUpload = false }: { startUpload?: boolean }) 
           />
         )}
         {items && items.length > 0 && (
-          <ul className="divide-y divide-border rounded-xl border border-border">
+          <ul className="animate-fade-in divide-y divide-border rounded-xl border border-border">
             {items.map((resume) => {
               const status = PARSE_STATUS[resume.parseStatus]
               return (
-                <li key={resume.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <li key={resume.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/50">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{resume.roleLabel}</span>

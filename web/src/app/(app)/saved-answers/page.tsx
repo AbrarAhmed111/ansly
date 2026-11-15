@@ -247,7 +247,6 @@ export default function SavedAnswersPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Workspace"
         title="Saved answers"
         description='Answers you saved with "Save as preferred answer" in the extension or playground. When a similar question comes up, Ansly offers them before generating a new one.'
         actions={
@@ -276,7 +275,7 @@ export default function SavedAnswersPage() {
 
       <ErrorText>{error}</ErrorText>
 
-      <div className="space-y-3">
+      <div className="stagger space-y-3">
         {items === null &&
           !error &&
           [0, 1, 2].map((i) => (
@@ -291,7 +290,7 @@ export default function SavedAnswersPage() {
           <EmptyState
             icon={BookmarkCheck}
             title="No saved answers yet"
-            description='When an answer from ✨ is just right, click "Save as preferred answer". It will show up here and be offered for similar questions.'
+            description='When a generated answer is just right, click "Save as preferred answer". It will show up here and be offered for similar questions.'
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <Button icon={Plus} onClick={() => setAdding(true)}>

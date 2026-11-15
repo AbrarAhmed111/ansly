@@ -62,7 +62,6 @@ export function TailorForm({ prefill }: { prefill: TailorPrefill }) {
         Resume
       </Link>
       <PageHeader
-        eyebrow="Tailor"
         title="Tailor for a job description"
         description="Paste the job. Ansly matches its requirements against your real experience and builds a tailored copy of your master resume."
       />

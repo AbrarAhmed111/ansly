@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, KeyRound } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, type FormEvent } from 'react'
-import { Alert, Button, ErrorText, Field, GridPattern, IconTile, PasswordInput, Skeleton } from '@/components/ui'
+import { Alert, Button, ErrorText, Field, IconTile, PasswordInput, Skeleton } from '@/components/ui'
 import { errorMessage } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 
@@ -45,19 +45,17 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main className="relative flex min-h-dvh flex-col bg-bg px-4 py-4 sm:px-8">
-      <GridPattern className="opacity-[0.45]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-accent-soft/70 to-transparent" aria-hidden />
+    <main className="flex min-h-dvh flex-col bg-bg px-4 py-4 sm:px-8">
 
       <Link
         href="/login"
-        className="relative inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-muted transition hover:bg-surface-muted hover:text-fg"
+        className="inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-muted transition-colors hover:bg-surface-muted hover:text-fg"
       >
         <ArrowLeft className="h-4 w-4" />
         Sign in
       </Link>
 
-      <div className="relative flex flex-1 items-center justify-center py-6">
+      <div className="flex flex-1 animate-fade-up items-center justify-center py-6">
         <section className="w-full max-w-[420px] rounded-2xl border border-border bg-surface/95 p-6 shadow-raised backdrop-blur">
           <IconTile icon={KeyRound} tone="accent" />
           <h1 className="mt-4 text-h2">Choose a new password</h1>

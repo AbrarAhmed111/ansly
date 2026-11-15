@@ -1,6 +1,6 @@
 import type { CleanupResult, EmailDraft } from '@ansly/types'
 import { CLEANUP_CHUNK, runCleanup } from '../lead-cleanup'
-import { needsReview } from '../lead-emails'
+import { needsReview, pendingDraftCount } from '../lead-emails'
 
 jest.mock('@/lib/api', () => ({ cleanupLeads: jest.fn() }))
 
@@ -66,5 +66,20 @@ describe('needsReview', () => {
     expect(needsReview(draft({ approved: true }), { status: 'new' })).toBe(false)
     expect(needsReview(draft({}), { status: 'contacted' })).toBe(false)
     expect(needsReview(draft({ delivery_status: 'failed' }), { status: 'contacted' })).toBe(false)
+  })
+})
+
+describe('pendingDraftCount', () => {
+  it('counts drafts to review or approved, never sent ones', () => {
+    const d = (lead_id: string, extra: Partial<EmailDraft>) =>
+      ({ lead_id, delivery_status: 'draft', resume_selection: 'auto', approved: false, ...extra }) as EmailDraft
+    const drafts = [
+      d('a', {}),
+      d('b', { approved: true }),
+      d('c', { delivery_status: 'sent' }),
+      d('d', { delivery_status: 'sent' }),
+      d('e', {}),
+    ]
+    expect(pendingDraftCount(drafts, { a: { status: 'new' }, b: { status: 'new' }, e: { status: 'contacted' } })).toBe(2)
   })
 })

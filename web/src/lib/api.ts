@@ -3,6 +3,7 @@ import type {
   AnalyzeJobResponse,
   AnswerResponse,
   CleanupResponse,
+  CleanupResult,
   CreateLeadRequest,
   EmailConnection,
   EmailDraft,
@@ -109,6 +110,12 @@ export const createLead = (req: CreateLeadRequest) => call<Lead>('/api/v1/leads'
 
 /** Ansly Cleanup for up to 50 leads: confident non-matches are deleted, unsure ones come back for review. */
 export const cleanupLeads = (leadIds: string[]) => call<CleanupResponse>('/api/v1/leads/cleanup', { lead_ids: leadIds })
+
+/** Removes review-list leads the user chose. They are hidden, not deleted, so the post isn't collected again. */
+export const confirmCleanupRemoval = (items: Pick<CleanupResult, 'lead_id' | 'category' | 'reason'>[]) =>
+  call<{ removed_lead_ids: string[] }>('/api/v1/leads/cleanup/confirm', {
+    items: items.map(({ lead_id, category, reason }) => ({ lead_id, category, reason: reason.slice(0, 500) })),
+  })
 
 /** Saves answers to the questions a resume doesn't cover (onboarding) or that Ansly asked for. */
 export const saveMissing = (req: SaveMissingRequest) => call<SaveMissingResponse>('/api/v1/profile/missing', req)

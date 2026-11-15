@@ -47,7 +47,7 @@ export function SegmentedControl<T extends string>({
             title={iconOnly ? l : undefined}
             onClick={() => onChange(v)}
             className={clsx(
-              'inline-flex flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition',
+              'inline-flex flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-[background-color,color,box-shadow,transform] duration-200 ease-out active:scale-[0.97]',
               size === 'sm' ? 'h-7 px-2 text-body-sm' : 'h-8 px-3 text-body-sm',
               selected ? 'bg-surface text-fg shadow-xs ring-1 ring-border' : 'text-muted hover:text-fg',
             )}
@@ -64,7 +64,7 @@ export function SegmentedControl<T extends string>({
 /** Rounded pill for suggestions and quick actions. */
 export function chipStyles({ selected, className }: { selected?: boolean; className?: string } = {}) {
   return clsx(
-    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-caption font-medium transition disabled:opacity-50',
+    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-caption font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.97] disabled:opacity-50',
     selected
       ? 'border-accent/40 bg-accent-soft text-accent'
       : 'border-border bg-surface text-muted hover:border-accent/40 hover:text-accent',

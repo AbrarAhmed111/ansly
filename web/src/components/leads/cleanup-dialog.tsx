@@ -23,8 +23,8 @@ export function CleanupDialog({
 }: {
   state: CleanupState
   onClose: () => void
-  /** Deletes the leads the user chose to remove; resolves when done. */
-  onRemove: (ids: string[]) => Promise<void>
+  /** Removes the leads the user chose (hidden from the list, kept stored); resolves when done. */
+  onRemove: (results: CleanupResult[]) => Promise<void>
 }) {
   const [choices, setChoices] = useState<Record<string, Choice>>({})
   const [removing, setRemoving] = useState(false)
@@ -32,7 +32,7 @@ export function CleanupDialog({
   useEffect(() => setChoices({}), [summary])
 
   const review = summary?.review ?? []
-  const chosenRemove = review.filter((r) => choices[r.lead_id] === 'remove').map((r) => r.lead_id)
+  const chosenRemove = review.filter((r) => choices[r.lead_id] === 'remove')
   const undecided = review.filter((r) => !choices[r.lead_id]).length
   const setAll = (choice: Choice) => setChoices(Object.fromEntries(review.map((r) => [r.lead_id, choice])))
 

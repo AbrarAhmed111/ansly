@@ -130,7 +130,7 @@ export default function SettingsPage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader eyebrow="Workspace" title="Settings" description="Your account, appearance and data." />
+      <PageHeader title="Settings" description="Your account, appearance and data." />
 
       <div className="space-y-6">
         <Card>

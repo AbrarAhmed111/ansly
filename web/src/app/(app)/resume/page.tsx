@@ -101,7 +101,6 @@ export default function ResumePage() {
     <div className="animate-fade-up">
       {confirmDialog}
       <PageHeader
-        eyebrow="Resume"
         title="Resume tailoring"
         description="Ansly tailors your own Word resume to a job, keeping its design, using only your real experience. Your master is never changed."
         actions={
@@ -181,14 +180,14 @@ export default function ResumePage() {
 
       <Link
         href="/resume/roles"
-        className="mt-4 flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-body-sm transition hover:border-border-strong"
+        className="group mt-4 flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-body-sm shadow-card transition-colors hover:border-border-strong"
       >
         <Files className="h-4 w-4 shrink-0 text-accent" aria-hidden />
         <span className="min-w-0 flex-1">
           <span className="font-medium text-fg">Role resumes</span>
           <span className="block text-muted">Resumes for each kind of role, attached to your Leads emails.</span>
         </span>
-        <ArrowRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+        <ArrowRight className="h-4 w-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" aria-hidden />
       </Link>
 
       <h2 className="mt-8 text-title">Tailored resumes</h2>
@@ -214,9 +213,9 @@ export default function ResumePage() {
           />
         )}
         {items && items.length > 0 && (
-          <Card className="divide-y divide-border p-0">
+          <Card className="animate-fade-in divide-y divide-border p-0">
             {items.map((item) => (
-              <div key={item.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+              <div key={item.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5 transition-colors hover:bg-surface-muted/50">
                 <div className="min-w-0 flex-1">
                   <Link
                     href={`/resume/${item.id}`}

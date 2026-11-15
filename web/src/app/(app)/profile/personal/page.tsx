@@ -213,7 +213,7 @@ export default function PersonalPage() {
   if (!form) {
     return (
       <>
-        <PageHeader eyebrow="Profile" title="Personal" />
+        <PageHeader title="Personal" />
         <ErrorText>{error}</ErrorText>
         {!error && (
           <div className="space-y-4">
@@ -232,15 +232,13 @@ export default function PersonalPage() {
     <>
       <form ref={formRef} onSubmit={onSubmit} className="animate-fade-up">
         <PageHeader
-          eyebrow="Profile"
           title="Personal"
           description="Who you are and how you'd describe yourself. Ansly never fills in your name, email or phone on applications — it answers the open-ended questions."
         />
 
         {/* Live preview, with the profile picture */}
-        <Card className="relative mb-8 overflow-hidden">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-r from-accent/15 via-orchid-400/10 to-transparent" aria-hidden />
-          <div className="relative flex flex-col gap-4 pt-4 sm:flex-row sm:items-center">
+        <Card className="mb-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <button
                 type="button"
@@ -251,7 +249,7 @@ export default function PersonalPage() {
               >
                 <UserAvatar
                   name={form.full_name || form.email || '?'}
-                  className={clsx('h-16 w-16 text-h3 ring-4 ring-surface sm:h-20 sm:w-20', avatarBusy && 'opacity-60')}
+                  className={clsx('h-16 w-16 text-h3 sm:h-20 sm:w-20', avatarBusy && 'opacity-60')}
                 />
                 <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   <Camera className="h-5 w-5" aria-hidden />

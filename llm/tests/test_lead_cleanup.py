@@ -23,7 +23,8 @@ TERMS = profile_terms(PROFILE, ["Node.js", "TypeScript"])
 
 def _lead(title, description=None, status="new"):
     return {"id": str(uuid4()), "user_id": USER_ID, "title": title, "description": description or title,
-            "status": status}
+            "status": status, "source_platform": "linkedin", "source_name": "LinkedIn", "author_name": "Sam",
+            "company_name": "Unverified employer", "opportunity_type": "job"}
 
 
 def test_included_keywords_outnumbering_excluded_ones_keep_the_lead():
@@ -107,8 +108,8 @@ async def test_a_batch_the_ai_cannot_answer_keeps_its_leads():
     assert verdicts[1].action == "remove"  # the keyword rule needs no AI
 
 
-def _rest(leads):
-    return FakeRest({"leads": leads, "lead_drafts": [], "targeting_profiles": [PROFILE],
+def _rest(leads, drafts=()):
+    return FakeRest({"leads": leads, "lead_drafts": list(drafts), "targeting_profiles": [PROFILE],
                      "skills": [{"id": str(uuid4()), "name": "Node.js", "sort_order": 0}], "usage_events": [],
                      "llm_calls": []})
 
@@ -120,7 +121,9 @@ async def test_cleanup_removes_confident_non_matches_and_returns_unsure_ones_for
     laravel = _lead("We need a Laravel developer")
     react = _lead("Hiring", "We need someone who knows React, Next.js, JavaScript and Java")
     contacted_seeker = _lead("Open to work", "Available for Full Stack Developer opportunities", status="contacted")
-    rest = _rest([seeker, seeker_maybe, laravel, react, contacted_seeker])
+    emailed = _lead("We need a Laravel developer, again")
+    rest = _rest([seeker, seeker_maybe, laravel, react, contacted_seeker, emailed],
+                 [{"id": str(uuid4()), "lead_id": emailed["id"], "delivery_status": "sent"}])
     gateway = FakeGateway({"You clean a candidate's list": _ai({
         "We are available": ("job_seeker", True, True),
         "Available for": ("job_seeker", True, True),
@@ -133,7 +136,7 @@ async def test_cleanup_removes_confident_non_matches_and_returns_unsure_ones_for
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post("/api/v1/leads/cleanup", json={
-                "lead_ids": [l["id"] for l in (seeker, seeker_maybe, laravel, react, contacted_seeker)]})
+                "lead_ids": [l["id"] for l in (seeker, seeker_maybe, laravel, react, contacted_seeker, emailed)]})
     finally:
         app.dependency_overrides.clear()
 
@@ -145,10 +148,14 @@ async def test_cleanup_removes_confident_non_matches_and_returns_unsure_ones_for
     assert by_id[seeker_maybe["id"]]["outcome"] == "review"
     assert by_id[seeker_maybe["id"]]["title"] == "Full stack" and "cofounder" in by_id[seeker_maybe["id"]]["description"]
     assert by_id[react["id"]]["outcome"] == "kept" and by_id[react["id"]]["description"] is None
-    # A contacted lead keeps its email history: it is offered for review, never deleted.
-    assert by_id[contacted_seeker["id"]]["outcome"] == "review" and by_id[contacted_seeker["id"]]["contacted"]
-    assert (body["removed"], body["review"], body["kept"], body["unchecked"]) == (2, 2, 1, 0)
-    assert {l["id"] for l in rest.tables["leads"]} == {seeker_maybe["id"], react["id"], contacted_seeker["id"]}
+    # Contacted leads and leads whose email was sent keep their history: they aren't checked at all.
+    assert contacted_seeker["id"] not in by_id and emailed["id"] not in by_id
+    assert (body["removed"], body["review"], body["kept"], body["unchecked"]) == (2, 1, 1, 0)
+    # Removed leads are hidden, not deleted: the row keeps why, so it can be compared and isn't collected again.
+    hidden = {l["id"]: l for l in rest.tables["leads"] if l.get("removed_at")}
+    assert set(hidden) == {seeker["id"], laravel["id"]}
+    assert hidden[seeker["id"]]["removed_by"] == "cleanup" and hidden[seeker["id"]]["removed_category"] == "job_seeker"
+    assert len(rest.tables["leads"]) == 6
 
 
 @pytest.mark.asyncio
@@ -161,3 +168,63 @@ async def test_cleanup_limits_each_request():
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 422
+
+
+def _client_for(rest, gateway=None):
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(id=USER_ID, email="sam@example.com", token="t")
+    app.dependency_overrides[get_rest] = lambda: rest
+    if gateway is not None:
+        app.dependency_overrides[get_gateway] = lambda: gateway
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.mark.asyncio
+async def test_confirmed_removals_are_hidden_listed_apart_and_drop_unsent_drafts():
+    unsure = _lead("Full stack", "I need a full stack developer role. a@b.test")
+    contacted = _lead("Hiring", "Hiring a React developer", status="contacted")
+    rest = _rest([unsure, contacted], [{"id": str(uuid4()), "lead_id": unsure["id"], "delivery_status": "draft"}])
+    try:
+        async with _client_for(rest) as client:
+            confirmed = await client.post("/api/v1/leads/cleanup/confirm", json={"items": [
+                {"lead_id": unsure["id"], "category": "job_seeker", "reason": "Looking for work."},
+                {"lead_id": contacted["id"], "category": "job_seeker", "reason": "x"},
+            ]})
+            visible = (await client.get("/api/v1/leads")).json()["leads"]
+            removed = (await client.get("/api/v1/leads", params={"removed": "true"})).json()["leads"]
+    finally:
+        app.dependency_overrides.clear()
+
+    assert confirmed.json()["removed_lead_ids"] == [unsure["id"]]  # a contacted lead is never removed
+    assert [l["id"] for l in visible] == [contacted["id"]]
+    assert [(l["id"], l["removed_by"], l["removed_reason"]) for l in removed] == [
+        (unsure["id"], "user", "Looking for work.")]
+    assert rest.tables["lead_drafts"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_removed_post_collected_again_counts_as_a_duplicate(monkeypatch):
+    from src.app.db.rest import SupabaseError
+
+    rest = _rest([])
+    urn = "urn:li:activity:99"
+    rest.tables["leads"].append({**_lead("We need a Laravel developer"), "source_post_id": urn,
+                                 "removed_at": "2026-11-16T00:00:00+00:00"})
+    original = rest.insert
+
+    async def unique_insert(table, row):
+        # The DB's unique post index: the hidden row still holds this post.
+        if table == "leads" and any(l.get("source_post_id") == row.get("source_post_id") for l in rest.tables["leads"]):
+            raise SupabaseError(409, "duplicate key value violates unique constraint")
+        return await original(table, row)
+
+    monkeypatch.setattr(rest, "insert", unique_insert)
+    rest.tables.setdefault("lead_collection_sessions", [])
+    rest.tables["targeting_profiles"][0].update(keywords=["Laravel"], excluded_keywords=[])
+    try:
+        async with _client_for(rest) as client:
+            response = await client.post("/api/v1/leads/collect", json={"loaded_count": 1, "candidates": [
+                {"source_post_id": urn, "post_text": "We are hiring a Laravel developer. jobs@acme.test"}]})
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    assert response.json()["duplicate_count"] == 1 and response.json()["saved_count"] == 0

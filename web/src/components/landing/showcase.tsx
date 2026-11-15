@@ -110,7 +110,7 @@ export function ProductTour() {
                 <span className={clsx('text-title', !active && 'text-muted')}>{title}</span>
               </button>
               {active && (
-                <div className="px-5 pb-5 pl-[3.25rem]">
+                <div className="animate-fade-up px-5 pb-5 pl-[3.25rem]">
                   <p className="max-w-[52ch] leading-relaxed text-muted">{body}</p>
                   <Link href={href} className="mt-3 inline-block text-body-sm font-medium text-accent underline-offset-4 hover:underline">
                     {link}
@@ -129,7 +129,9 @@ export function ProductTour() {
         })}
       </div>
       <div id="tour-stage" role="tabpanel" aria-labelledby={`tour-tab-${feature.id}`} className="min-w-0 lg:pt-2">
-        <Scene key={feature.id} step={step} />
+        <div key={feature.id} className="animate-fade-in">
+          <Scene step={step} />
+        </div>
       </div>
     </div>
   )

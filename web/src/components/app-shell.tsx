@@ -77,7 +77,7 @@ function SearchButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-body-sm text-subtle shadow-xs transition hover:border-border-strong hover:text-muted"
+      className="flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-body-sm text-subtle shadow-xs transition-[border-color,color,transform] duration-150 hover:border-border-strong hover:text-muted active:scale-[0.99]"
     >
       <Search className="h-4 w-4" />
       <span className="flex-1 text-left">Search…</span>
@@ -112,12 +112,12 @@ function NavLinks() {
                     href={href}
                     aria-current={active ? 'page' : undefined}
                     className={clsx(
-                      'group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body-sm font-medium transition-colors',
+                      'group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body-sm font-medium transition-[background-color,color,box-shadow,transform] duration-150 ease-out active:scale-[0.98]',
                       active ? 'bg-surface text-fg shadow-xs ring-1 ring-border' : 'text-muted hover:bg-surface-muted hover:text-fg',
                     )}
                   >
                     <Icon
-                      className={clsx('h-4 w-4 shrink-0', active ? 'text-accent' : 'text-subtle group-hover:text-muted')}
+                      className={clsx('h-4 w-4 shrink-0 transition-colors duration-150', active ? 'text-accent' : 'text-subtle group-hover:text-fg')}
                       aria-hidden
                     />
                     {label}

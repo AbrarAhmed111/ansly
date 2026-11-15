@@ -21,7 +21,6 @@ import {
   CardHeader,
   ErrorText,
   Field,
-  Glow,
   IconTile,
   Input,
   PageHeader,
@@ -163,14 +162,12 @@ export default function ExtensionPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Workspace"
         title="Browser extension"
         description="Connect the browser extension so Ansly can draft answers beside open-ended questions on job application forms."
       />
 
-      <Card className="relative mb-6 overflow-hidden p-0">
-        <Glow className="-right-24 -top-24 h-64 w-64" />
-        <div className="relative grid lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+      <Card className="mb-6 overflow-hidden p-0">
+        <div className="grid lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <div className="border-b border-border p-6 lg:border-b-0 lg:border-r">
             <div className="flex flex-wrap items-start gap-4">
               {!checked ? (

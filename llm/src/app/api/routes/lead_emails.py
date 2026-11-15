@@ -238,7 +238,7 @@ async def preview_generation(request: GeneratePreviewRequest, rest: SupabaseRest
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose leads or all eligible leads.")
     try:
         if request.all_eligible:
-            leads = await rest.select("leads", {"order": "collected_at.desc", "limit": "1000"})
+            leads = await rest.select("leads", {"order": "collected_at.desc", "removed_at": "is.null", "limit": "1000"})
         else:
             leads = list((await _by_ids(rest, "leads", {str(i) for i in request.lead_ids})).values())
         drafted = {str(d["lead_id"]) for d in await rest.select("lead_drafts", {"select": "lead_id", "limit": "5000"})}

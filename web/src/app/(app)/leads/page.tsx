@@ -1,6 +1,6 @@
 'use client'
 
-import type { EmailDraft, Lead, TargetingProfile } from '@ansly/types'
+import type { CleanupResult, EmailDraft, Lead, TargetingProfile } from '@ansly/types'
 import {
   CheckCheck,
   Inbox,
@@ -42,9 +42,9 @@ import {
   buttonStyles,
 } from '@/components/ui'
 import { connectGmail, GmailStatus } from '@/components/email-connection'
-import { getEmailConnection, listEmailDrafts, listLeads, previewEmailGeneration } from '@/lib/api'
+import { confirmCleanupRemoval, getEmailConnection, listEmailDrafts, listLeads, previewEmailGeneration } from '@/lib/api'
 import { runCleanup } from '@/lib/lead-cleanup'
-import { ERROR_LABEL, generateDrafts, writeAndSend } from '@/lib/lead-emails'
+import { ERROR_LABEL, generateDrafts, pendingDraftCount, writeAndSend } from '@/lib/lead-emails'
 import {
   activateTargetingProfile,
   createTargetingProfile,
@@ -269,25 +269,30 @@ export default function LeadsPage() {
 
   /** Ansly Cleanup over every lead: clear non-matches are removed, unsure ones wait for the user's call. */
   const startCleanup = async () => {
+    // Only leads not emailed yet: contacted leads, and leads whose email went out, keep their history.
+    const ids = leads.filter((lead) => lead.status === 'new' && drafts[lead.id]?.delivery_status !== 'sent').map((l) => l.id)
+    if (!ids.length) {
+      toast('Every lead has been contacted. Nothing to clean up.')
+      return
+    }
     const ok = await confirm({
-      title: `Clean up ${leads.length} lead${leads.length === 1 ? '' : 's'}?`,
+      title: `Clean up ${ids.length} lead${ids.length === 1 ? '' : 's'} not contacted yet?`,
       description:
-        'Ansly checks every lead against your active profile and skills. Posts from job seekers and roles that use only your excluded keywords are removed. Leads Ansly isn’t sure about are listed for you to keep or remove. Contacted leads are never removed without asking.',
+        'Ansly checks each lead you haven’t emailed against your active profile and skills. Posts from job seekers and roles that use only your excluded keywords are removed from your list (Ansly keeps a copy, so the same post isn’t collected again). Leads Ansly isn’t sure about are listed for you to keep or remove. Contacted leads are left alone.',
       confirmLabel: 'Run cleanup',
       tone: 'neutral',
     })
     if (!ok) return
-    const ids = leads.map((lead) => lead.id)
     setCleanup({ step: 'running', done: 0, total: ids.length, removed: 0 })
     const summary = await runCleanup(ids, (done, total, removed) => setCleanup({ step: 'running', done, total, removed }))
     dropLeads(summary.removed.map((r) => r.lead_id))
     setCleanup({ step: 'done', summary })
   }
 
-  const removeReviewed = async (ids: string[]) => {
-    if (!ids.length) return
+  const removeReviewed = async (results: CleanupResult[]) => {
+    if (!results.length) return
     try {
-      await deleteLeads(ids)
+      const { removed_lead_ids: ids } = await confirmCleanupRemoval(results)
       dropLeads(ids)
       toast.success(ids.length === 1 ? 'Lead removed' : `${ids.length} leads removed`)
     } catch (reason) {
@@ -327,18 +332,26 @@ export default function LeadsPage() {
       })
   }, [leads, query, statusFilter, contactFilter, sort, sessionIds, isFresh])
 
-  const stats = useMemo(
-    () => ({
+  const stats = useMemo(() => {
+    // Email and link counts follow the Status filter, so they match what the Contact filter then shows.
+    const inStatus = leads.filter((lead) => statusFilter === 'all' || lead.status === statusFilter)
+    return {
       total: leads.length,
       new: leads.filter((lead) => lead.status === 'new').length,
-      email: leads.filter((lead) => leadTier(lead) === 'email').length,
-      link: leads.filter((lead) => leadTier(lead) === 'link').length,
-    }),
-    [leads],
-  )
+      email: inStatus.filter((lead) => leadTier(lead) === 'email').length,
+      link: inStatus.filter((lead) => leadTier(lead) === 'link').length,
+    }
+  }, [leads, statusFilter])
+  const statusHint = statusFilter === 'new' ? 'not contacted yet' : statusFilter === 'contacted' ? 'contacted' : 'all leads' 
   const sessionCount = leads.filter(isFresh).length
   const filtersActive = Boolean(query) || statusFilter !== 'all' || contactFilter !== 'all'
   const selectedIds = [...selected].filter((id) => visibleLeads.some((lead) => lead.id === id))
+  // Emails can only go to leads whose post gives an address; apply-link leads get no email actions.
+  const selectedEmailIds = selectedIds.filter((id) => {
+    const lead = leads.find((item) => item.id === id)
+    return Boolean(lead && leadTier(lead) === 'email')
+  })
+  const emailCountLabel = selectedEmailIds.length < selectedIds.length ? ` (${selectedEmailIds.length})` : ''
   const allVisibleSelected = visibleLeads.length > 0 && selectedIds.length === visibleLeads.length
 
   const resetFilters = useCallback(() => {
@@ -469,13 +482,16 @@ export default function LeadsPage() {
   }
 
   const draftCount = Object.keys(drafts).length
+  const pendingCount = useMemo(
+    () => pendingDraftCount(Object.values(drafts), Object.fromEntries(leads.map((lead) => [lead.id, lead]))),
+    [drafts, leads],
+  )
 
   // ---------------------------------------------------------------- render
 
   return (
-    <div className="space-y-6">
+    <div className="animate-fade-up space-y-6">
       <PageHeader
-        eyebrow="Workspace"
         title="Leads"
         description="Opportunities from LinkedIn posts you collected with the extension, matched to your targeting profile."
         actions={
@@ -496,7 +512,7 @@ export default function LeadsPage() {
             {draftCount > 0 && (
               <Link href="/leads/review" className={buttonStyles({ variant: 'secondary' })}>
                 <Mail className="h-4 w-4" />
-                Review emails ({draftCount})
+                {pendingCount ? `Review emails (${pendingCount})` : 'Review emails'}
               </Link>
             )}
           </div>
@@ -552,11 +568,11 @@ export default function LeadsPage() {
       )}
 
       {!loading && !loadError && leads.length > 0 && (
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="stagger grid grid-cols-2 gap-4 xl:grid-cols-4">
           <Stat label="All leads" value={stats.total} icon={Inbox} />
           <Stat label="New" value={stats.new} icon={Sparkles} hint="Not contacted yet" />
-          <Stat label="With email" value={stats.email} icon={Mail} hint="Best: write directly" />
-          <Stat label="Apply link only" value={stats.link} icon={Link2} hint="Apply on their site" />
+          <Stat label="With email" value={stats.email} icon={Mail} hint={`Best: write directly · ${statusHint}`} />
+          <Stat label="Apply link only" value={stats.link} icon={Link2} hint={`Apply on their site · ${statusHint}`} />
         </div>
       )}
 
@@ -584,16 +600,23 @@ export default function LeadsPage() {
           <Card className="space-y-3 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="min-w-0 flex-1">
-                <SearchInput value={query} onChange={setQuery} icon={Search} placeholder="Search title, post text, author, email" />
+                {/* 34px tall, like the filter controls beside it. */}
+                <SearchInput
+                  value={query}
+                  onChange={setQuery}
+                  icon={Search}
+                  placeholder="Search title, post text, author, email"
+                  className="[&_input]:h-[34px]"
+                />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
                 <SegmentedControl label="Status" size="sm" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
                 <SegmentedControl label="Contact" size="sm" options={CONTACT_OPTIONS} value={contactFilter} onChange={setContactFilter} />
                 <Select
                   aria-label="Sort"
                   value={sort}
                   onChange={(event) => setSort(event.target.value as SortOrder)}
-                  className="h-8 w-auto text-body-sm"
+                  className="!h-[34px] !w-auto shrink-0 text-body-sm"
                 >
                   <option value="best">Email first</option>
                   <option value="newest">Newest first</option>
@@ -630,12 +653,22 @@ export default function LeadsPage() {
               className="sticky top-4 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-surface px-4 py-3 shadow-lg"
             >
               <span className="mr-auto text-body-sm font-medium">{selectedIds.length} selected</span>
-              <Button size="sm" icon={Send} loading={writingIds.size > 0} onClick={() => void writeAndSendEmails(selectedIds)}>
-                Write & send
-              </Button>
-              <Button size="sm" variant="secondary" icon={PenLine} disabled={writingIds.size > 0} onClick={() => void writeEmails(selectedIds)}>
-                Write emails
-              </Button>
+              {selectedEmailIds.length > 0 && (
+                <>
+                  <Button size="sm" icon={Send} loading={writingIds.size > 0} onClick={() => void writeAndSendEmails(selectedEmailIds)}>
+                    Write & send{emailCountLabel}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={PenLine}
+                    disabled={writingIds.size > 0}
+                    onClick={() => void writeEmails(selectedEmailIds)}
+                  >
+                    Write emails{emailCountLabel}
+                  </Button>
+                </>
+              )}
               <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => void changeStatus(selectedIds, 'contacted')}>
                 Mark contacted
               </Button>
@@ -663,7 +696,7 @@ export default function LeadsPage() {
               }
             />
           ) : (
-            <div className="space-y-3">
+            <div className="stagger space-y-3">
               {visibleLeads.map((lead) => (
                 <LeadCard
                   key={lead.id}

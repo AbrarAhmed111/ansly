@@ -1,6 +1,5 @@
 export * from './button'
 export * from './copy-button'
-export * from './decor'
 export * from './feedback'
 export * from './form'
 export * from './layout'

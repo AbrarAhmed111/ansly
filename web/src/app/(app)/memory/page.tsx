@@ -252,9 +252,8 @@ export default function MemoryPage() {
   const groups = (data?.groups ?? []).map((g) => ({ group: g, items: active.filter((i) => i.group === g) })).filter((g) => g.items.length)
 
   return (
-    <>
+    <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Workspace"
         title="Application Memory"
         description="Everything Ansly has learned outside your resume: what you told it while applying, and the preferences on your profile. It answers similar questions from here, instantly."
       />
@@ -275,7 +274,7 @@ export default function MemoryPage() {
       )}
 
       {data && (
-        <div className="space-y-6">
+        <div className="stagger space-y-6">
           <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-3">
             <Stat label="Learned facts" value={data.counts.learned} icon={Brain} hint="From your applications" />
             <Stat label="Application preferences" value={data.counts.preferences} icon={ShieldCheck} hint="Scoped to a role, company or job" />
@@ -335,6 +334,6 @@ export default function MemoryPage() {
           )}
         </div>
       )}
-    </>
+    </div>
   )
 }

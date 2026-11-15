@@ -46,6 +46,11 @@ export function needsReview(draft: EmailDraft, lead?: Pick<Lead, 'status'> | nul
   return state === 'draft' || state === 'needs_resume' || state === 'failed'
 }
 
+/** Drafts still waiting on the user: to review, or approved and not sent yet. Sent ones don't count. */
+export function pendingDraftCount(drafts: EmailDraft[], leadsById: Record<string, Pick<Lead, 'status'>>): number {
+  return drafts.filter((d) => needsReview(d, leadsById[d.lead_id]) || draftState(d) === 'approved').length
+}
+
 export const STATE_BADGE: Record<DraftState, { label: string; tone: Tone }> = {
   needs_resume: { label: 'Needs resume', tone: 'warning' },
   draft: { label: 'Draft', tone: 'neutral' },

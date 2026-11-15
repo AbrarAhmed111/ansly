@@ -2,11 +2,12 @@ import { ArrowUpRight, Github, Lock, MailCheck, Plus, UserCheck } from 'lucide-r
 import Image from 'next/image'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import founderPhoto from '@/assets/img/founder.webp'
+import founderPhoto from '@/assets/img/founder.png'
 import { GmailLogo } from '@/components/email-connection'
 import { ProvenanceDemo } from '@/components/landing/provenance-demo'
 import { GmailShowcase, ProductTour } from '@/components/landing/showcase'
 import { LogoMark } from '@/components/logo'
+import { Reveal } from '@/components/reveal'
 import { SignedInSwitch } from '@/components/signed-in'
 import { Container, SiteFooter, SiteHeader } from '@/components/site'
 import { buttonStyles } from '@/components/ui'
@@ -156,11 +157,13 @@ function Section({ id, title, intro, children }: { id?: string; title: string; i
   return (
     <section id={id} className="scroll-mt-20 border-t border-border">
       <Container className="grid gap-10 py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-16 lg:py-28">
-        <div className="lg:sticky lg:top-24 lg:self-start">
+        <Reveal className="lg:sticky lg:top-24 lg:self-start">
           <h2 className="text-h1 tracking-tight">{title}</h2>
           {intro && <div className="mt-4 max-w-sm text-body-lg leading-relaxed text-muted">{intro}</div>}
-        </div>
-        <div className="min-w-0">{children}</div>
+        </Reveal>
+        <Reveal delay={80} className="min-w-0">
+          {children}
+        </Reveal>
       </Container>
     </section>
   )
@@ -199,10 +202,10 @@ export default function Home() {
         <section>
           <Container className="pb-20 pt-14 sm:pt-20 lg:pb-24 lg:pt-24">
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-end lg:gap-16">
-              <h1 className="max-w-[19ch] text-[clamp(2.5rem,5.6vw,4.75rem)] font-semibold leading-[0.98] tracking-[-0.035em]">
+              <h1 className="max-w-[19ch] animate-fade-up text-[clamp(2.5rem,5.6vw,4.75rem)] font-semibold leading-[0.98] tracking-[-0.035em]">
                 Job applications, written from your own record.
               </h1>
-              <div className="max-w-md lg:pb-2">
+              <div className="max-w-md animate-fade-up [animation-delay:90ms] lg:pb-2">
                 <p className="text-body-lg leading-relaxed text-muted">
                   Ansly drafts application answers, tailors your resume and finds hiring posts, using only what’s in your
                   profile. Every sentence can be traced back to something you did.
@@ -216,7 +219,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-14 lg:mt-20">
+            <div className="mt-14 animate-fade-up [animation-delay:180ms] lg:mt-20">
               <ProvenanceDemo />
               <p className="mt-4 text-body-sm text-subtle">Hover a phrase in the answer to see where it came from.</p>
             </div>
@@ -226,12 +229,14 @@ export default function Home() {
         {/* 2. Hiring band: inverted colors, one big line over a moving list of roles */}
         <section className="overflow-hidden bg-fg text-bg">
           <Container className="py-16 lg:py-20">
-            <p className="max-w-[22ch] text-[clamp(2rem,4.6vw,3.75rem)] font-semibold leading-[1.02] tracking-[-0.03em]">
-              Your next job is closer than you think.
-            </p>
-            <p className="mt-4 max-w-lg text-body-lg opacity-70">
-              Spend your time on the applications that fit, and send each one with a resume and answers made for that job.
-            </p>
+            <Reveal>
+              <p className="max-w-[22ch] text-[clamp(2rem,4.6vw,3.75rem)] font-semibold leading-[1.02] tracking-[-0.03em]">
+                Your next job is closer than you think.
+              </p>
+              <p className="mt-4 max-w-lg text-body-lg opacity-70">
+                Spend your time on the applications that fit, and send each one with a resume and answers made for that job.
+              </p>
+            </Reveal>
           </Container>
           <div className="relative pb-14 lg:pb-16" aria-hidden>
             <div className="flex w-max animate-marquee gap-3 motion-reduce:animate-none">
@@ -249,15 +254,15 @@ export default function Home() {
         {/* 3. Product tour: tabs on the left, a live scene on the right */}
         <section id="features" className="scroll-mt-20">
           <Container className="py-20 lg:py-28">
-            <div className="flex flex-wrap items-end justify-between gap-6">
+            <Reveal className="flex flex-wrap items-end justify-between gap-6">
               <h2 className="max-w-[20ch] text-h1 tracking-tight">One profile behind every part of your search.</h2>
               <p className="max-w-sm text-body-lg leading-relaxed text-muted">
                 Upload your resume once. Ansly turns it into a profile and uses it everywhere.
               </p>
-            </div>
-            <div className="mt-12">
+            </Reveal>
+            <Reveal delay={80} className="mt-12">
               <ProductTour />
-            </div>
+            </Reveal>
           </Container>
         </section>
 
@@ -265,10 +270,10 @@ export default function Home() {
         <section className="border-t border-border bg-surface-muted/40">
           <Container className="py-20 lg:py-28">
             <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-16">
-              <div className="order-2 min-w-0 lg:order-1">
+              <Reveal delay={80} className="order-2 min-w-0 lg:order-1">
                 <GmailShowcase />
-              </div>
-              <div className="order-1 lg:order-2">
+              </Reveal>
+              <Reveal className="order-1 lg:order-2">
                 <div className="flex items-center gap-3" aria-label="Gmail and Ansly">
                   <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface shadow-card">
                     <GmailLogo className="h-8 w-8" />
@@ -298,7 +303,7 @@ export default function Home() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Reveal>
             </div>
           </Container>
         </section>
@@ -321,18 +326,20 @@ export default function Home() {
         {/* 6. Reviews: uneven columns, like a wall of notes */}
         <section className="border-t border-border">
           <Container className="py-20 lg:py-28">
-            <div className="flex flex-wrap items-end justify-between gap-6">
+            <Reveal className="flex flex-wrap items-end justify-between gap-6">
               <h2 className="max-w-[18ch] text-h1 tracking-tight">From people back in interviews.</h2>
               <p className="rounded-full border border-dashed border-border-strong px-3 py-1 text-caption text-muted">
                 Reviews other than the creator’s are samples during early access
               </p>
-            </div>
+            </Reveal>
             <div className="mt-12 gap-4 sm:columns-2 lg:columns-3">
-              {REVIEWS.map(({ name, role, quote, tone, founder, photo }) => {
+              {REVIEWS.map(({ name, role, quote, tone, founder, photo }, i) => {
                 const featured = Boolean(founder)
                 return (
-                  <figure
+                  <Reveal
+                    as="figure"
                     key={name}
+                    delay={(i % 3) * 70}
                     className={`mb-4 break-inside-avoid rounded-2xl border p-6 ${featured ? 'border-accent bg-accent text-accent-fg' : 'border-border bg-surface'}`}
                   >
                     <blockquote className={featured ? 'text-h3 leading-snug tracking-tight' : 'leading-relaxed'}>“{quote}”</blockquote>
@@ -356,7 +363,7 @@ export default function Home() {
                         <p className={`text-caption ${featured ? 'opacity-80' : 'text-muted'}`}>{role}</p>
                       </div>
                     </figcaption>
-                  </figure>
+                  </Reveal>
                 )
               })}
             </div>
@@ -366,7 +373,7 @@ export default function Home() {
         {/* 7. Creator's letter: a narrow reading column beside a signature card */}
         <section id="founder" className="scroll-mt-20 border-t border-border bg-surface-muted/40">
           <Container className="grid gap-12 py-20 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] lg:gap-20 lg:py-28">
-            <aside className="lg:sticky lg:top-24 lg:self-start">
+            <Reveal as="aside" className="lg:sticky lg:top-24 lg:self-start">
               {/* The photo has its own black studio backdrop, so the frame is black too and it reads the same in both themes. */}
               <figure className="w-full max-w-[18rem] sm:max-w-xs lg:max-w-sm">
                 <div className="relative aspect-[800/933] overflow-hidden rounded-3xl bg-black shadow-raised ring-1 ring-border">
@@ -390,9 +397,9 @@ export default function Home() {
                 </blockquote>
                 <OpenSourceLink />
               </div>
-            </aside>
+            </Reveal>
 
-            <article className="max-w-[64ch]">
+            <Reveal as="article" delay={80} className="max-w-[64ch]">
               <h2 className="text-h1 tracking-tight">A note from the creator</h2>
               <div className="mt-8 space-y-5 text-body-lg leading-[1.75] text-fg/85">
                 <p>
@@ -434,7 +441,7 @@ export default function Home() {
               <div className="lg:hidden">
                 <OpenSourceLink />
               </div>
-            </article>
+            </Reveal>
           </Container>
         </section>
 
@@ -455,11 +462,11 @@ export default function Home() {
           <div className="divide-y divide-border border-y border-border">
             {FAQ.map(({ q, a }) => (
               <details key={q} className="group">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg py-5 text-title focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg py-5 text-title transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 [&::-webkit-details-marker]:hidden">
                   {q}
                   <Plus className="h-5 w-5 shrink-0 text-subtle transition-transform duration-200 group-open:rotate-45" aria-hidden />
                 </summary>
-                <p className="max-w-[62ch] pb-6 leading-relaxed text-muted">{a}</p>
+                <p className="max-w-[62ch] animate-fade-up pb-6 leading-relaxed text-muted">{a}</p>
               </details>
             ))}
           </div>
@@ -468,14 +475,14 @@ export default function Home() {
         {/* 10. Contact: the builder on one side, ways to reach him on the other */}
         <section id="contact" className="scroll-mt-20 border-t border-border">
           <Container className="py-20 lg:py-28">
-            <div className="grid overflow-hidden rounded-3xl border border-border bg-surface lg:grid-cols-2">
+            <Reveal className="grid overflow-hidden rounded-3xl border border-border bg-surface lg:grid-cols-2">
               <div className="p-8 sm:p-10 lg:p-12">
                 <h2 className="text-h1 tracking-tight">Talk to the person who builds it.</h2>
                 <p className="mt-4 max-w-md text-body-lg leading-relaxed text-muted">
                   Ansly is built by Abrar Ahmed. Get in touch for extension access, a bug, a feature you need, or help
                   setting up your profile.
                 </p>
-                <a href={BUILDER_URL} target="_blank" rel="noreferrer" className="mt-8 inline-flex items-center gap-2 text-body-sm text-muted hover:text-fg">
+                <a href={BUILDER_URL} target="_blank" rel="noreferrer" className="mt-8 inline-flex items-center gap-2 text-body-sm text-muted transition-colors hover:text-fg">
                   Built by
                   <Image src="https://www.abrarahmed.pro/assets/devAbby-fulllogo-C9-MX7QK.png" alt="DevAbby" width={98} height={20} className="h-6 w-auto" />
                 </a>
@@ -500,21 +507,21 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-            </div>
+            </Reveal>
           </Container>
         </section>
 
         {/* 11. Closing */}
         <section className="border-t border-border">
           <Container className="flex flex-col gap-8 py-20 lg:flex-row lg:items-end lg:justify-between lg:py-28">
-            <div>
+            <Reveal>
               <h2 className="max-w-[18ch] text-[clamp(2rem,4.4vw,3.5rem)] font-semibold leading-[1.02] tracking-[-0.03em]">
                 Get hired with applications you can stand behind.
               </h2>
               <p className="mt-4 max-w-md text-body-lg text-muted">
                 Start with the resume you already have. Your first tailored answer is a few minutes away.
               </p>
-            </div>
+            </Reveal>
             <StartButton signedOutLabel="Start for free" />
           </Container>
         </section>

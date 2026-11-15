@@ -191,7 +191,7 @@ export default function SetupPage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader eyebrow="Setup" title="Get Ansly ready" description="About two minutes. Your resume does most of the work; skip anything and Ansly will ask when an application needs it." />
+      <PageHeader title="Get Ansly ready" description="About two minutes. Your resume does most of the work; skip anything and Ansly will ask when an application needs it." />
 
       {error && <ErrorText>{error}</ErrorText>}
 
@@ -216,7 +216,7 @@ export default function SetupPage() {
       {!profile && !error ? (
         <div className="space-y-4" aria-busy="true">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-28" />)}</div>
       ) : profile && (
-        <div className="space-y-4">
+        <div className="stagger space-y-4">
           <StepCard n={1} title="Let’s build your profile" state={state('resume')} icon={FileText} onSkip={() => skip('resume')}>
             {done.resume ? (
               <p>{resume ? `Using ${resume.name}.` : 'Your profile already has your experience.'}</p>

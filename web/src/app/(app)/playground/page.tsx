@@ -178,7 +178,6 @@ export default function PlaygroundPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Workspace"
         title="Try it"
         description="Ask any application question and see exactly what Ansly would write from your profile — the same engine the extension uses."
       />

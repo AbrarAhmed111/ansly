@@ -59,6 +59,11 @@ class LeadRecord(BaseModel):
     contact_info: Optional[LeadContactInfo] = None
     confidence: Optional[float] = None
     qualification_reason: Optional[str] = None
+    # Set when Ansly Cleanup removed the lead: it stays stored so the same post isn't collected again.
+    removed_at: Optional[str] = None
+    removed_by: Optional[Literal["cleanup", "user"]] = None
+    removed_category: Optional[str] = None
+    removed_reason: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -158,3 +163,26 @@ class CleanupResponse(BaseModel):
     review: int
     kept: int
     unchecked: int
+
+
+CleanupCategory = Literal["job_seeker", "stack_mismatch", "not_hiring", "match", "unclear"]
+
+
+class CleanupConfirmItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lead_id: UUID
+    category: CleanupCategory
+    reason: str = Field(default="", max_length=500)
+
+
+class CleanupConfirmRequest(BaseModel):
+    """Review-list leads the user chose to remove."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: List[CleanupConfirmItem] = Field(min_length=1, max_length=500)
+
+
+class CleanupConfirmResponse(BaseModel):
+    removed_lead_ids: List[UUID]

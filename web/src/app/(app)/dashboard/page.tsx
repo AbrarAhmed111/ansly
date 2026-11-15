@@ -7,10 +7,8 @@ import { UserAvatar } from '@/components/identity'
 import { SECTION_ICONS } from '@/components/section-icons'
 import { AiUsage } from '@/components/token-usage'
 import {
-  Badge,
   Card,
   ErrorText,
-  Glow,
   IconTile,
   Overline,
   PageHeader,
@@ -47,9 +45,9 @@ function QuickAction({
     <Link
       href={href}
       className={clsx(
-        'group relative flex flex-col rounded-xl border p-4 shadow-card transition hover:-translate-y-0.5 hover:border-border-strong',
+        'group relative flex flex-col rounded-xl border bg-surface p-4 shadow-card transition-[transform,border-color,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-raised active:translate-y-0',
         focusRing,
-        primary ? 'border-accent/30 bg-gradient-to-br from-accent-soft via-surface to-surface' : 'border-border bg-surface',
+        primary ? 'border-accent/40 hover:border-accent/60' : 'border-border hover:border-border-strong',
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -114,7 +112,7 @@ export default async function DashboardPage() {
             <h1 className="mt-0.5 truncate text-h2">
               <Greeting firstName={name ?? null} fallback={name ? `Welcome back, ${name}` : 'Welcome to Ansly'} />
             </h1>
-            <p className="mt-0.5 text-muted">Answers come only from your profile. Here’s where things stand.</p>
+            <p className="mt-0.5 text-muted">Every answer comes from your profile.</p>
           </div>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -129,7 +127,7 @@ export default async function DashboardPage() {
 
       {/* Resume-first setup, until the core is in place */}
       {(!hasMaster || counts.experience === 0) && (
-        <Card className="flex flex-wrap items-center gap-4 border-accent/30 bg-gradient-to-br from-accent-soft via-surface to-surface">
+        <Card className="flex flex-wrap items-center gap-4 border-accent/40">
           <IconTile icon={Rocket} tone="accent" />
           <div className="min-w-0 flex-1">
             <h2 className="text-title">Get Ansly ready in about two minutes</h2>
@@ -142,7 +140,7 @@ export default async function DashboardPage() {
       )}
 
       {/* Quick actions */}
-      <nav aria-label="Quick actions" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <nav aria-label="Quick actions" className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
         {hasMaster ? (
           <QuickAction icon={FilePen} title="Tailor a resume" body="Fit your master resume to a job." href="/resume/tailor" count={tailoredCount ?? 0} />
         ) : (
@@ -150,13 +148,12 @@ export default async function DashboardPage() {
         )}
         <QuickAction icon={BookmarkCheck} title="Saved answers" body="Reused on similar questions." href="/saved-answers" count={savedCount ?? 0} />
         <QuickAction icon={Brain} title="Memory" body="Facts Ansly learned from you." href="/memory" />
-        <QuickAction icon={Puzzle} title="Extension" body="Use ✨ on any application form." href="/extension" primary={hasMaster && percent === 100} />
+        <QuickAction icon={Puzzle} title="Extension" body="Draft answers on any application form." href="/extension" primary={hasMaster && percent === 100} />
       </nav>
 
       {/* Completeness: the full checklist only while something is missing */}
       {percent < 100 && (
-        <section className="relative overflow-hidden rounded-xl border border-border bg-surface shadow-card">
-          <Glow className="-right-24 -top-24 h-64 w-64" />
+        <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
           <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
             <div className="flex flex-col items-center gap-5 border-b border-border p-6 text-center sm:flex-row sm:text-left md:flex-col md:border-b-0 md:border-r md:text-center lg:flex-row lg:text-left">
               <ProgressRing value={percent} size={120} stroke={10}>
@@ -197,12 +194,9 @@ export default async function DashboardPage() {
         <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* Weekly activity */}
           <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
-            <div className="flex items-center justify-between gap-3 px-5 pt-5">
-              <h2 className="text-title">This week</h2>
-              <Badge>Last 7 days</Badge>
-            </div>
+            <h2 className="px-5 pt-5 text-title">Last 7 days</h2>
             <div className="mt-3 grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-4 lg:grid-cols-2 [&>*]:bg-surface">
-              <Activity label="Answers generated" value={usage.generated} icon={Sparkles} hint="Drafted by ✨ on forms" />
+              <Activity label="Answers generated" value={usage.generated} icon={Sparkles} hint="Drafted on forms" />
               <Activity label="Fields filled" value={usage.filled} icon={MousePointerClick} hint="Answers you approved" />
               <Activity label="Answers reused" value={usage.reused} icon={RefreshCcw} hint="Instant, no generation" />
               <Activity label="Resumes tailored" value={usage.tailored} icon={FileText} hint="From your master" />

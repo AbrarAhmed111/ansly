@@ -861,3 +861,26 @@ test('a sent email marks its lead contacted, and sent leads that drifted are rep
     assert.equal(await status(tx, drifted.untouched), 'new')
   })
 })
+
+test('a lead removed by Ansly Cleanup stays stored and still blocks re-collecting its post', async () => {
+  const insert = (tx) =>
+    tx.query(
+      `insert into public.leads (source_platform, source_name, author_name, company_name, title,
+         opportunity_type, status, contactability, description, source_post_id)
+       values ('linkedin', 'LinkedIn', 'A', 'X', 'Laravel dev', 'job', 'new', 'email_available', 'Laravel', $1)
+       returning id`,
+      ['urn:li:activity:9001'],
+    )
+  await asUser(ALICE, async (tx) => {
+    const id = (await insert(tx)).rows[0].id
+    await tx.query(
+      `update public.leads set removed_at = now(), removed_by = 'cleanup', removed_category = 'stack_mismatch',
+         removed_reason = 'Only Laravel.' where id = $1`,
+      [id],
+    )
+  })
+  await assert.rejects(asUser(ALICE, (tx) => insert(tx)), /duplicate key/)
+  await assert.rejects(
+    asUser(ALICE, (tx) => tx.query(`update public.leads set removed_by = 'robot' where source_post_id = 'urn:li:activity:9001'`)),
+  )
+})

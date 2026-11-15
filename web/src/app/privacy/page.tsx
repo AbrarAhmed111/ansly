@@ -63,11 +63,11 @@ export default function PrivacyPage() {
           <ul>
             <li>
               The extension looks at form fields on the pages you visit to
-              decide where to show the ✨ button. This happens in your browser
+              decide where to show the Ansly button. This happens in your browser
               and nothing is sent anywhere.
             </li>
             <li>
-              When you click ✨ and generate an answer, it sends the question
+              When you click it and generate an answer, it sends the question
               text, the field&apos;s character limit, and the company and role
               shown on the page to the Ansly API. It never sends the full page.
             </li>

@@ -469,7 +469,6 @@ export function SectionEditor({ slug }: { slug: string }) {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Profile"
         title={
           <span className="flex items-center gap-3">
             {section.title}
@@ -522,7 +521,7 @@ export function SectionEditor({ slug }: { slug: string }) {
       )}
 
       {rows && !isSkills && rows.length > 0 && (
-        <div className="space-y-3">
+        <div className="stagger space-y-3">
           {rows.map((row, i) => (
             <ItemCard
               key={row.id}

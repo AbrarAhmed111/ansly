@@ -17,6 +17,8 @@ from src.app.gateway import LLMGateway
 from src.app.leads.cleanup import Verdict, classify, profile_terms
 from src.app.leads.posts import _terms, canonical_post_url, post_identity, qualify_post
 from src.app.schemas.leads import (
+    CleanupConfirmRequest,
+    CleanupConfirmResponse,
     CleanupRequest,
     CleanupResponse,
     CleanupResult,
@@ -37,11 +39,15 @@ def _upstream(error: SupabaseError) -> HTTPException:
 
 @router.get("", response_model=LeadListResponse, summary="List leads for the current user")
 async def list_leads(
+    removed: bool = False,
     user: AuthUser = Depends(get_current_user),
     rest: SupabaseRest = Depends(get_rest),
 ) -> LeadListResponse:
+    """The user's leads. Leads Ansly Cleanup removed are kept (so the same post isn't collected again) and are left
+    out, unless `removed=true` asks for only those."""
     try:
-        rows = await rest.select("leads", {"order": "collected_at.desc"})
+        rows = await rest.select("leads", {"order": "collected_at.desc",
+                                           "removed_at": "not.is.null" if removed else "is.null"})
     except SupabaseError as exc:
         raise _upstream(exc) from exc
     return {"leads": rows}
@@ -196,20 +202,25 @@ def _cleanup_result(verdict: Verdict, lead: Dict[str, Any], outcome: str, reason
     )
 
 
-async def _remove(rest: SupabaseRest, ids: List[str]) -> set[str]:
-    """Deletes the leads; returns the ids that were removed. One that can't go (its email is sending) stays."""
-    if not ids:
-        return set()
-    try:
-        return {str(r["id"]) for r in await rest.delete("leads", {"id": f"in.({','.join(ids)})"})}
-    except SupabaseError:
-        removed: set[str] = set()
-        for lead_id in ids:
-            try:
-                removed |= {str(r["id"]) for r in await rest.delete("leads", {"id": f"eq.{lead_id}"})}
-            except SupabaseError as exc:
-                logger.warning("Cleanup could not remove lead %s: %s", lead_id, exc)
-        return removed
+async def hide_leads(rest: SupabaseRest, items: List[tuple[str, str, str]], removed_by: str) -> set[str]:
+    """Removes leads from the user's list without deleting them: each (lead_id, category, reason) is stamped with
+    when, why and by whom. Only leads not contacted yet are touched, and their unsent drafts go with them. Returns
+    the ids that were removed; one that fails stays visible."""
+    removed: set[str] = set()
+    now = datetime.now(timezone.utc).isoformat()
+    for lead_id, category, reason in items:
+        try:
+            rows = await rest.update(
+                "leads", {"id": f"eq.{lead_id}", "status": "eq.new", "removed_at": "is.null"},
+                {"removed_at": now, "removed_by": removed_by, "removed_category": category,
+                 "removed_reason": reason[:500]},
+            )
+            if rows:
+                removed.add(lead_id)
+                await rest.delete("lead_drafts", {"lead_id": f"eq.{lead_id}", "delivery_status": "in.(draft,failed)"})
+        except SupabaseError as exc:
+            logger.warning("Cleanup could not remove lead %s: %s", lead_id, exc)
+    return removed
 
 
 @router.post(
@@ -225,13 +236,17 @@ async def cleanup_leads(
     gateway: LLMGateway = Depends(get_gateway),
 ) -> CleanupResponse:
     """Classifies each lead against the active targeting profile and the user's skills. Confident non-matches are
-    deleted now; leads Ansly is unsure about (and contacted leads, which keep their email history) are returned
-    for review and left in place. Nothing else changes."""
+    removed from the list now (kept in the table, see hide_leads); leads Ansly is unsure about are returned for review and left in place. Only leads not contacted
+    yet are checked: a contacted lead (its email was sent) keeps its history and is skipped. Nothing else changes."""
     ids = sorted({str(i) for i in request.lead_ids})
     try:
         await check_rate_limit(rest, get_settings().RATE_LIMIT_PER_MINUTE)
         profile = await _targeting_profile(rest, None)
-        leads = await rest.select("leads", {"id": f"in.({','.join(ids)})", "limit": str(len(ids))})
+        leads = await rest.select("leads", {"id": f"in.({','.join(ids)})", "status": "eq.new", "removed_at": "is.null",
+                                            "limit": str(len(ids))})
+        sent = {str(d["lead_id"]) for d in await rest.select(
+            "lead_drafts", {"select": "lead_id", "lead_id": f"in.({','.join(ids)})", "delivery_status": "eq.sent"})}
+        leads = [lead for lead in leads if str(lead["id"]) not in sent]
         skills = [row.get("name") for row in await rest.select(
             "skills", {"select": "name", "order": "sort_order.asc", "limit": "100"})]
     except SupabaseError as exc:
@@ -239,17 +254,14 @@ async def cleanup_leads(
 
     verdicts = await classify(gateway, leads, profile_terms(profile, skills))
     by_id = {str(lead["id"]): lead for lead in leads}
-    to_remove = [v.lead_id for v in verdicts if v.action == "remove" and by_id[v.lead_id].get("status") != "contacted"]
-    removed = await _remove(rest, to_remove)
+    removed = await hide_leads(rest, [(v.lead_id, v.category, v.reason) for v in verdicts if v.action == "remove"],
+                               "cleanup")
 
     results: List[CleanupResult] = []
     for verdict in verdicts:
         lead = by_id[verdict.lead_id]
         if verdict.lead_id in removed:
             results.append(_cleanup_result(verdict, lead, "removed"))
-        elif verdict.action == "remove" and lead.get("status") == "contacted":
-            results.append(_cleanup_result(verdict, lead, "review",
-                                           verdict.reason + " You already contacted this lead, so it wasn't removed."))
         elif verdict.action == "remove":
             results.append(_cleanup_result(verdict, lead, "review",
                                            verdict.reason + " It couldn't be removed right now."))
@@ -264,3 +276,17 @@ async def cleanup_leads(
         kept=sum(r.outcome == "kept" for r in results),
         unchecked=sum(not r.checked for r in results),
     )
+
+
+@router.post(
+    "/cleanup/confirm",
+    response_model=CleanupConfirmResponse,
+    summary="Remove the leads the user chose in Ansly Cleanup's review list (kept in the table, hidden from the list)",
+)
+async def confirm_cleanup(
+    request: CleanupConfirmRequest,
+    user: AuthUser = Depends(get_current_user),
+    rest: SupabaseRest = Depends(get_rest),
+) -> CleanupConfirmResponse:
+    removed = await hide_leads(rest, [(str(i.lead_id), i.category, i.reason) for i in request.items], "user")
+    return CleanupConfirmResponse(removed_lead_ids=sorted(removed))

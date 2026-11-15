@@ -14,7 +14,6 @@ export default function RoleResumesPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        eyebrow="Resume"
         title="Role resumes"
         description="Keep a resume for each kind of role you apply for. When you write a Leads email, Ansly attaches the one that fits, exactly as you uploaded it, and asks you when it isn’t sure."
       />

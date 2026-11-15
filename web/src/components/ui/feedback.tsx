@@ -35,7 +35,7 @@ const ALERT_ICONS: Record<AlertTone, LucideIcon> = { danger: AlertCircle, warnin
 export function Alert({ children, tone = 'accent', title, className }: { children?: ReactNode; tone?: AlertTone; title?: ReactNode; className?: string }) {
   const Icon = ALERT_ICONS[tone]
   return (
-    <div role={tone === 'danger' ? 'alert' : 'status'} className={clsx('flex gap-2.5 rounded-lg border px-3.5 py-3', TONE_SURFACE[tone], className)}>
+    <div role={tone === 'danger' ? 'alert' : 'status'} className={clsx('flex animate-fade-in gap-2.5 rounded-lg border px-3.5 py-3', TONE_SURFACE[tone], className)}>
       <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <div className="min-w-0 space-y-1 leading-relaxed">
         {title && <p className="font-medium">{title}</p>}
@@ -80,11 +80,8 @@ export function EmptyState({
   className?: string
 }) {
   return (
-    <div className={clsx('flex flex-col items-center rounded-xl border border-dashed border-border-strong bg-surface/50 px-6 py-14 text-center', className)}>
-      <div className="relative">
-        <div className="absolute inset-0 -z-10 scale-150 rounded-full bg-accent/10 blur-xl" aria-hidden />
-        <IconTile icon={icon} tone="accent" size="lg" />
-      </div>
+    <div className={clsx('flex animate-fade-up flex-col items-center rounded-xl border border-dashed border-border-strong bg-surface/50 px-6 py-14 text-center', className)}>
+      <IconTile icon={icon} tone="accent" size="lg" />
       <h3 className="mt-4 text-title">{title}</h3>
       {description && <p className="mt-1 max-w-sm leading-relaxed text-muted">{description}</p>}
       {action && <div className="mt-5">{action}</div>}

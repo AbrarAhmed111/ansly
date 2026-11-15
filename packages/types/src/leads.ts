@@ -81,6 +81,11 @@ export interface Lead {
   contact_info?: LeadContactInfo | null
   confidence?: number | null
   qualification_reason?: string | null
+  /** Set when Ansly Cleanup removed the lead; it stays stored so the same post isn't collected again. */
+  removed_at?: string | null
+  removed_by?: 'cleanup' | 'user' | null
+  removed_category?: CleanupCategory | null
+  removed_reason?: string | null
   created_at?: string | null
   updated_at?: string | null
 }

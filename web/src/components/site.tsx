@@ -76,10 +76,10 @@ export function SiteFooter() {
           <span className="text-subtle">Find roles, tailor your resume, and apply truthfully.</span>
         </div>
         <nav className="flex gap-5">
-          <Link href="/privacy" className="hover:text-fg">
+          <Link href="/privacy" className="transition-colors hover:text-fg">
             Privacy
           </Link>
-          <Link href="/login" className="hover:text-fg">
+          <Link href="/login" className="transition-colors hover:text-fg">
             Sign in
           </Link>
         </nav>

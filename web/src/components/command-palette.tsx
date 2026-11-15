@@ -74,7 +74,7 @@ export function CommandPalette({
         onOpenChange(false)
       }}
       onClick={(e) => e.target === ref.current && onOpenChange(false)}
-      className="mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl open:animate-dialog-in"
+      className="mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl open:animate-dialog-in [&:not([open])]:translate-y-1 [&:not([open])]:scale-[0.98]"
     >
       {open && (
         <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-raised">
@@ -121,7 +121,7 @@ export function CommandPalette({
                     onMouseMove={() => setActive(i)}
                     onClick={() => run(c)}
                     className={clsx(
-                      'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
+                      'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors duration-100',
                       i === active ? 'bg-accent-soft text-accent' : 'text-fg',
                     )}
                   >

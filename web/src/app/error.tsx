@@ -11,7 +11,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   }, [error])
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
+    <main className="flex min-h-screen animate-fade-up flex-col items-center justify-center px-4 text-center">
       <IconTile icon={TriangleAlert} tone="danger" size="lg" />
       <h1 className="mt-6 text-h2">Something went wrong</h1>
       <p className="mt-2 max-w-sm text-body-lg text-muted">An unexpected error occurred. Try again, or head back to the homepage.</p>

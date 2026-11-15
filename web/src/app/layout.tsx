@@ -42,6 +42,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {ORIGINS.map((origin) => (
           <link key={origin} rel="preconnect" href={origin} crossOrigin="anonymous" />
         ))}
+        {/* Scroll-revealed content must not stay hidden when script is off. */}
+        <noscript>
+          <style>{'.reveal{opacity:1!important;transform:none!important}'}</style>
+        </noscript>
       </head>
       <body suppressHydrationWarning className="min-h-screen">
         <Toaster />
