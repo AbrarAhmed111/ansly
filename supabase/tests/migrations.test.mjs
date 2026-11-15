@@ -376,8 +376,14 @@ test('new resumes must be Word documents; older PDF versions keep working', asyn
     assert.equal((await tx.query('delete from public.resumes where version = 7')).affectedRows, 1)
   })
   const { rows } = await db.query(`select allowed_mime_types from storage.buckets where id = 'resumes'`)
+  // PDF is accepted again since the role resume library; the insert trigger keeps masters Word-only.
   assert.deepEqual(rows, [
-    { allowed_mime_types: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'] },
+    {
+      allowed_mime_types: [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ],
+    },
   ])
 })
 
@@ -501,6 +507,11 @@ test('dashboard_summary aggregates the caller’s own data only', async () => {
   assert.equal(s.education, 0)
   assert.deepEqual(s.usage_7d, { generate: 2, fill: 1 })
   assert.equal(s.token_buckets.reduce((sum, [, tokens]) => sum + Number(tokens), 0), 150)
+  // Each bucket names the usage kind its tokens came from, for the per-feature dashboard cards.
+  assert.deepEqual(
+    s.token_buckets.map(([, tokens, kind]) => [kind, Number(tokens)]),
+    [['generate', 150]],
+  )
   assert.equal(s.master_resume, false)
   assert.equal(s.ready_tailorings, 0)
 
@@ -674,4 +685,126 @@ test('the owner usage report runs', async () => {
   assert.equal(Number(quality.rows[0].regenerations_per_generated), Number((Number(regenerated) / Number(generated)).toFixed(3)))
   assert.equal(Number(quality.rows[0].edited_before_fill_rate), 1)
   assert.equal(Number(quality.rows[0].median_wait_ms), 4200)
+})
+
+test('library resumes may be PDF; masters must stay Word', async () => {
+  await asUser(ALICE, async (tx) => {
+    await tx.query(
+      `insert into public.resumes (name, file_path, file_type, version, role_label)
+       values ('Backend', $1, 'pdf', 900, 'Backend Engineer')`,
+      [`${ALICE}/library/a/backend.pdf`],
+    )
+  })
+  await assert.rejects(
+    asUser(ALICE, (tx) =>
+      tx.query(
+        `insert into public.resumes (name, file_path, file_type, version) values ('Master', $1, 'pdf', 901)`,
+        [`${ALICE}/masters/master.pdf`],
+      ),
+    ),
+    /Word/,
+  )
+})
+
+test('drafts attach only the owner\'s resumes and lose the attachment when it is deleted', async () => {
+  const lead = (tx, id) =>
+    tx.query(
+      `insert into public.leads (source_platform, source_name, author_name, company_name, title,
+         opportunity_type, status, contactability, description, original_post_url)
+       values ('linkedin', 'LinkedIn', 'A', 'X', 'Hiring', 'job', 'new', 'email_available', 'Hiring', $1)
+       returning id`,
+      [`https://www.linkedin.com/feed/update/urn:li:activity:${id}/`],
+    )
+  const { leadId, resumeId } = await asUser(ALICE, async (tx) => {
+    const leadId = (await lead(tx, 7001)).rows[0].id
+    const resumeId = (
+      await tx.query(
+        `insert into public.resumes (name, file_path, file_type, version, role_label)
+         values ('FE', $1, 'docx', 902, 'Frontend Developer') returning id`,
+        [`${ALICE}/library/b/fe.docx`],
+      )
+    ).rows[0].id
+    await tx.query(
+      `insert into public.lead_drafts (lead_id, recipient_email, subject, body, resume_id, resume_selection)
+       values ($1, 'jobs@example.com', 'Hi', 'Body', $2, 'auto')`,
+      [leadId, resumeId],
+    )
+    return { leadId, resumeId }
+  })
+
+  // Bob can't attach Alice's resume to his own draft.
+  await assert.rejects(
+    asUser(BOB, async (tx) => {
+      const bobLead = (await lead(tx, 7002)).rows[0].id
+      await tx.query(
+        `insert into public.lead_drafts (lead_id, subject, body, resume_id, resume_selection)
+         values ($1, 'Hi', 'Body', $2, 'user')`,
+        [bobLead, resumeId],
+      )
+    }),
+  )
+
+  await asUser(ALICE, async (tx) => {
+    await tx.query('delete from public.resumes where id = $1', [resumeId])
+    const { rows } = await tx.query('select resume_id, resume_selection from public.lead_drafts where lead_id = $1', [leadId])
+    assert.deepEqual(rows, [{ resume_id: null, resume_selection: 'needs_selection' }])
+
+    await tx.query(`update public.lead_drafts set delivery_status = 'sending' where lead_id = $1`, [leadId])
+  })
+  await assert.rejects(asUser(ALICE, (tx) => tx.query('delete from public.leads where id = $1', [leadId])), /being sent/)
+})
+
+test('email connections and send history are private', async () => {
+  await asUser(ALICE, (tx) =>
+    tx.query(
+      `insert into public.email_connections (provider, email_address, refresh_token_ciphertext, token_key_id)
+       values ('gmail', 'alice@gmail.com', 'ciphertext', 'k1')`,
+    ),
+  )
+  await asUser(BOB, async (tx) => {
+    const { rows } = await tx.query('select id from public.email_connections')
+    assert.equal(rows.length, 0)
+  })
+  await assert.rejects(
+    asUser(ALICE, (tx) =>
+      tx.query(
+        `insert into public.email_connections (provider, email_address, refresh_token_ciphertext, token_key_id)
+         values ('gmail', 'other@gmail.com', 'c', 'k1')`,
+      ),
+    ),
+  )
+})
+
+test('profile pictures live in a private, image-only bucket under the owner’s prefix', async () => {
+  const { rows: buckets } = await db.query(
+    `select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'avatars'`,
+  )
+  assert.deepEqual(buckets, [
+    { public: false, file_size_limit: 2097152, allowed_mime_types: ['image/png', 'image/jpeg', 'image/webp'] },
+  ])
+
+  await asUser(ALICE, async (tx) => {
+    await tx.query(`insert into storage.objects (bucket_id, name) values ('avatars', $1)`, [`${ALICE}/avatar-1.png`])
+    // The profile can point at the owner's own file, never at another user's prefix.
+    await tx.query(`update public.profiles set avatar_path = $1 where id = $2`, [`${ALICE}/avatar-1.png`, ALICE])
+  })
+  await assert.rejects(
+    asUser(ALICE, (tx) =>
+      tx.query(`insert into storage.objects (bucket_id, name) values ('avatars', $1)`, [`${BOB}/avatar-1.png`]),
+    ),
+  )
+  await assert.rejects(
+    asUser(ALICE, (tx) => tx.query(`update public.profiles set avatar_path = $1 where id = $2`, [`${BOB}/x.png`, ALICE])),
+  )
+  await asUser(BOB, async (tx) => {
+    const { rows } = await tx.query(`select name from storage.objects where bucket_id = 'avatars'`)
+    assert.deepEqual(rows, [])
+    assert.equal((await tx.query(`delete from storage.objects where bucket_id = 'avatars'`)).affectedRows, 0)
+    const { rows: profiles } = await tx.query(`select avatar_path from public.profiles where id = $1`, [ALICE])
+    assert.deepEqual(profiles, [])
+  })
+  await asUser(ALICE, async (tx) => {
+    assert.equal((await tx.query(`delete from storage.objects where bucket_id = 'avatars'`)).affectedRows, 1)
+    await tx.query(`update public.profiles set avatar_path = null where id = $1`, [ALICE])
+  })
 })
