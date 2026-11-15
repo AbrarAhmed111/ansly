@@ -1,10 +1,12 @@
 'use client'
 
-import type { Lead } from '@ansly/types'
+import type { EmailDraft, Lead } from '@ansly/types'
 import { clsx } from 'clsx'
-import { ArrowUpRight, CheckCheck, Link2, Mail, RotateCcw, Trash2, UserRound } from 'lucide-react'
+import { ArrowUpRight, CheckCheck, Link2, Mail, PenLine, RotateCcw, Send, Trash2, UserRound } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 import { Badge, Button, CopyButton, IconButton, buttonStyles } from '@/components/ui'
+import { STATE_BADGE, draftState } from '@/lib/lead-emails'
 import { leadTier, relativeDate } from '@/lib/leads'
 
 const EXTERNAL = { target: '_blank', rel: 'noopener noreferrer nofollow' } as const
@@ -17,6 +19,10 @@ export function LeadCard({
   onSelect,
   onStatus,
   onDelete,
+  draft,
+  writing,
+  onWriteEmail,
+  onWriteAndSend,
 }: {
   lead: Lead
   selected: boolean
@@ -26,6 +32,12 @@ export function LeadCard({
   onSelect: (selected: boolean) => void
   onStatus: (status: Lead['status']) => void
   onDelete: () => void
+  /** This lead's email draft, when one exists. */
+  draft?: EmailDraft
+  writing?: boolean
+  onWriteEmail?: () => void
+  /** Write and send at once when Ansly is confident about the resume. */
+  onWriteAndSend?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const tier = leadTier(lead)
@@ -67,10 +79,17 @@ export function LeadCard({
             )}
             {contacted && <Badge>Contacted</Badge>}
             {highlighted && <Badge tone="warning">Just collected</Badge>}
+            {draft && (
+              <Badge tone={STATE_BADGE[draftState(draft)].tone} dot>
+                Email: {STATE_BADGE[draftState(draft)].label}
+              </Badge>
+            )}
             {lead.source_platform === 'linkedin' && <span className="text-caption text-subtle">LinkedIn</span>}
           </div>
 
-          <h3 className="mt-2 text-title leading-snug">{lead.title}</h3>
+          <h3 className="mt-2 line-clamp-3 text-title leading-snug [overflow-wrap:anywhere]" title={lead.title}>
+            {lead.title}
+          </h3>
 
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-muted">
             <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -136,6 +155,27 @@ export function LeadCard({
                 View post
               </a>
             )}
+
+            {email &&
+              (draft ? (
+                <Link href={`/leads/review?leads=${lead.id}`} className={buttonStyles({ variant: 'primary', size: 'sm' })}>
+                  <PenLine className="h-4 w-4" aria-hidden />
+                  {draftState(draft) === 'sent' ? 'View email' : 'Review email'}
+                </Link>
+              ) : (
+                <>
+                  {onWriteAndSend && (
+                    <Button size="sm" icon={Send} loading={writing} disabled={busy} onClick={onWriteAndSend}>
+                      Write & send
+                    </Button>
+                  )}
+                  {onWriteEmail && (
+                    <Button size="sm" variant="secondary" icon={PenLine} disabled={busy || writing} onClick={onWriteEmail}>
+                      Write email
+                    </Button>
+                  )}
+                </>
+              ))}
 
             <div className="ml-auto flex items-center gap-1">
               {contacted ? (
