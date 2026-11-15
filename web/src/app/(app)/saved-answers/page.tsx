@@ -101,15 +101,21 @@ function SavedAnswerCard({
   }
 
   const long = item.answer.length > LONG
+  const actions = (
+    <>
+      <CopyButton text={item.answer} />
+      <IconButton icon={Pencil} label="Edit" onClick={() => setEditing(true)} />
+      <IconButton icon={Trash2} label="Delete" tone="danger" onClick={remove} />
+    </>
+  )
   return (
     <Card className="group p-0 transition hover:border-border-strong">
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
-          <p className="text-title">{item.question}</p>
-          <div className="-mr-1.5 -mt-1 flex shrink-0 gap-0.5 transition md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
-            <CopyButton text={item.answer} />
-            <IconButton icon={Pencil} label="Edit" onClick={() => setEditing(true)} />
-            <IconButton icon={Trash2} label="Delete" tone="danger" onClick={remove} />
+          <p className="min-w-0 max-w-[75ch] text-title">{item.question}</p>
+          {/* Beside the question from sm up; below the answer on phones, so the question gets the full width. */}
+          <div className="-mr-1.5 -mt-1 hidden shrink-0 gap-0.5 transition sm:flex md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
+            {actions}
           </div>
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -126,7 +132,7 @@ function SavedAnswerCard({
           </Badge>
         </div>
         <div className="mt-4 rounded-lg border border-border bg-surface-muted/50 px-4 py-3">
-          <p className={`whitespace-pre-wrap leading-relaxed text-fg/85 ${long && !expanded ? 'line-clamp-4' : ''}`}>
+          <p className={`max-w-[75ch] whitespace-pre-wrap leading-relaxed text-fg/85 ${long && !expanded ? 'line-clamp-4' : ''}`}>
             {item.answer}
           </p>
           {long && (
@@ -139,6 +145,7 @@ function SavedAnswerCard({
             </button>
           )}
         </div>
+        <div className="-mb-2 -mr-1.5 mt-2 flex justify-end gap-0.5 sm:hidden">{actions}</div>
       </div>
     </Card>
   )
