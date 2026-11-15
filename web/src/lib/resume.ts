@@ -142,3 +142,35 @@ export function formatDate(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+// ---------------------------------------------------------------------------
+// Role resume library (Leads): PDF or Word, attached to emails exactly as uploaded.
+// ---------------------------------------------------------------------------
+
+export const PDF_MIME = 'application/pdf'
+export const ROLE_RESUME_ACCEPT = `.pdf,.docx,${PDF_MIME},${DOCX_MIME}`
+
+export function roleResumeFileProblem(file: { name: string; size: number }): string | null {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.doc')) return 'That’s an older Word (.doc) file. Save it as .docx or PDF and upload that.'
+  if (!name.endsWith('.pdf') && !name.endsWith('.docx')) return 'Upload a PDF or Word (.docx) resume.'
+  if (file.size > MAX_RESUME_BYTES) return 'That file is over 10 MB. Upload a smaller file.'
+  return null
+}
+
+/** Uploads a role resume to `{user_id}/library/{timestamp}-{safe name}` and returns its path and type. */
+export async function uploadRoleResumeFile(supabase: SupabaseClient, userId: string, file: File) {
+  const fileType: 'pdf' | 'docx' = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'docx'
+  const path = masterPath(userId, file.name).replace(`${userId}/masters/`, `${userId}/library/`)
+  const { error } = await supabase.storage
+    .from('resumes')
+    .upload(path, file, { contentType: fileType === 'pdf' ? PDF_MIME : DOCX_MIME, upsert: false })
+  if (error) throw new Error(error.message)
+  return { path, fileType, size: file.size }
+}
+
+export function formatBytes(bytes: number | null | undefined): string {
+  if (!bytes) return ''
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
