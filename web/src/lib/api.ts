@@ -3,6 +3,17 @@ import type {
   AnalyzeJobResponse,
   AnswerResponse,
   CreateLeadRequest,
+  EmailConnection,
+  EmailDraft,
+  EmailDraftListResponse,
+  GeneratePreviewResponse,
+  GenerateResult,
+  ReplaceResumeRequest,
+  ReplaceResumeResponse,
+  SendPreviewResponse,
+  SendResponse,
+  UpdateDraftRequest,
+  WriteAndSendResponse,
   CreateResumeRequest,
   CreateSavedAnswerRequest,
   GenerateAnswerRequest,
@@ -143,6 +154,89 @@ export const makeMasterResume = (id: string) =>
 
 export const deleteResume = (id: string) =>
   changedResumes(request<void>('DELETE', `/api/v1/resumes/${encodeURIComponent(id)}`))
+
+// Role resume library (Leads)
+
+export const listRoleResumes = () => request<ResumeListResponse>('GET', '/api/v1/resumes?library=true')
+
+export const replaceRoleResume = (id: string, req: ReplaceResumeRequest) =>
+  changedResumes(call<ReplaceResumeResponse>(`/api/v1/resumes/${encodeURIComponent(id)}/replace`, req))
+
+/** A short-lived link to the original file; `inline` opens it in the browser instead of downloading. */
+export const resumeFileLink = (id: string, inline = false) =>
+  request<{ url: string }>('GET', `/api/v1/resumes/${encodeURIComponent(id)}/download${inline ? '?inline=true' : ''}`)
+
+// Lead emails
+
+const lead = (id: string) => `/api/v1/leads/${encodeURIComponent(id)}/email-draft`
+
+export const listEmailDrafts = (leadIds?: string[]) =>
+  request<EmailDraftListResponse>(
+    'GET',
+    `/api/v1/leads/email-drafts${leadIds?.length ? `?lead_ids=${leadIds.map(encodeURIComponent).join(',')}` : ''}`,
+  )
+
+export const previewEmailGeneration = (req: { lead_ids?: string[]; all_eligible?: boolean }) =>
+  call<GeneratePreviewResponse>('/api/v1/leads/email-drafts/preview', req)
+
+export const generateEmailDrafts = (previewToken: string, leadIds: string[]) =>
+  call<{ results: GenerateResult[] }>('/api/v1/leads/email-drafts/generate', {
+    preview_token: previewToken,
+    lead_ids: leadIds,
+  })
+
+/** The fast path: write each email and send it at once when its resume match is confident. */
+export const writeAndSendEmails = (previewToken: string, leadIds: string[]) =>
+  call<WriteAndSendResponse>('/api/v1/leads/email-drafts/write-and-send', {
+    preview_token: previewToken,
+    lead_ids: leadIds,
+    confirm_send: true,
+  })
+
+/** Match resumes again for drafts still waiting for one; confident matches are attached (nothing is sent). */
+export const rematchEmailDrafts = (draftIds: string[]) =>
+  call<{ checked: number; matched: number; drafts: EmailDraft[] }>('/api/v1/leads/email-drafts/rematch', {
+    draft_ids: draftIds,
+  })
+
+/** Approve every unsent draft whose only remaining step is approval (nothing is sent). */
+export const approveReadyEmailDrafts = (draftIds: string[] = []) =>
+  call<{ approved: number; drafts: EmailDraft[] }>('/api/v1/leads/email-drafts/approve-ready', { draft_ids: draftIds })
+
+export const updateEmailDraft = (leadId: string, req: UpdateDraftRequest) =>
+  request<EmailDraft>('PATCH', lead(leadId), req)
+
+export const approveEmailDraft = (leadId: string, expectedVersion: number) =>
+  call<EmailDraft>(`${lead(leadId)}/approve`, { expected_version: expectedVersion })
+
+export const unapproveEmailDraft = (leadId: string, expectedVersion: number) =>
+  call<EmailDraft>(`${lead(leadId)}/unapprove`, { expected_version: expectedVersion })
+
+export const regenerateEmailDraft = (
+  leadId: string,
+  req: { expected_version: number; confirm_replace: true; confirm_discard_edits?: boolean; rematch_resume?: boolean },
+) => call<EmailDraft>(`${lead(leadId)}/regenerate`, req)
+
+export const previewSend = (req: { draft_ids?: string[]; all_ready?: boolean; retry?: boolean }) =>
+  call<SendPreviewResponse>('/api/v1/leads/email-drafts/send-preview', req)
+
+export const sendEmailDrafts = (confirmToken: string, draftIds: string[], confirmMayDuplicate = false) =>
+  call<SendResponse>('/api/v1/leads/email-drafts/send', {
+    confirm_token: confirmToken,
+    draft_ids: draftIds,
+    confirm_may_duplicate: confirmMayDuplicate,
+  })
+
+// Email connection (Gmail, send-only)
+
+export const getEmailConnection = () => request<EmailConnection>('GET', '/api/v1/email/connection')
+
+export const startGmailConnect = () => call<{ authorization_url: string }>('/api/v1/email/gmail/connect', {})
+
+export const finishGmailConnect = (code: string, state: string) =>
+  call<EmailConnection>('/api/v1/email/gmail/callback', { code, state })
+
+export const disconnectEmail = () => request<void>('DELETE', '/api/v1/email/connection')
 
 export const analyzeJob = (req: AnalyzeJobRequest) => call<AnalyzeJobResponse>('/api/v1/jobs/analyze', req)
 
