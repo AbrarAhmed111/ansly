@@ -1,6 +1,7 @@
 'use client'
 
 import type { MemoryConflict, MemoryItem, MemoryResponse, MemoryScope } from '@ansly/types'
+import { clsx } from 'clsx'
 import { Brain, Check, History, Pencil, RotateCcw, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
@@ -110,7 +111,10 @@ function MemoryRow({ item, onChanged, confirm }: {
   confirm: ReturnType<typeof useConfirm>[0]
 }) {
   const [editing, setEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const learned = item.sourceType !== 'profile' && item.sourceType !== 'skills'
+  // Long free-text facts (an intro paragraph, say) are clamped so the list stays scannable.
+  const longValue = item.value.length > 280
 
   async function run(action: () => Promise<unknown>, done: string) {
     try {
@@ -138,11 +142,20 @@ function MemoryRow({ item, onChanged, confirm }: {
       <div className="flex items-start gap-3">
         <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-body">
+          <p className={clsx('max-w-[75ch] whitespace-pre-line text-body', longValue && !expanded && 'line-clamp-3')}>
             <span className="font-medium">{item.label}</span>
             <span className="text-muted">: </span>
             {item.value}
           </p>
+          {longValue && (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="mt-1 text-caption font-medium text-accent hover:underline"
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
           <p className="mt-0.5 text-caption text-muted">
             {provenance(item)}
             {item.updatedAt && <> · Last updated {timeAgo(item.updatedAt)}</>}
@@ -241,6 +254,7 @@ export default function MemoryPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Workspace"
         title="Application Memory"
         description="Everything Ansly has learned outside your resume: what you told it while applying, and the preferences on your profile. It answers similar questions from here, instantly."
       />
@@ -262,7 +276,7 @@ export default function MemoryPage() {
 
       {data && (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-3">
             <Stat label="Learned facts" value={data.counts.learned} icon={Brain} hint="From your applications" />
             <Stat label="Application preferences" value={data.counts.preferences} icon={ShieldCheck} hint="Scoped to a role, company or job" />
             <Stat label="From your profile" value={data.counts.profile} icon={Check} hint="Always used first" />
