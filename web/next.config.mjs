@@ -21,6 +21,11 @@ const nextConfig = {
         hostname: 'www.abrarahmed.pro',
         pathname: '/assets/devAbby-fulllogo-C9-MX7QK.png',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.abrarahmed.pro',
+        pathname: '/assets/myprofile-Bvbi06Pv.png',
+      },
     ],
   },
 }
