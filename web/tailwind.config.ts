@@ -37,12 +37,15 @@ const config: Config = {
           to: { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         'fade-up': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'none' } },
+        // Landing page role ticker: the track holds the list twice, so -50% loops seamlessly.
+        marquee: { from: { transform: 'translateX(0)' }, to: { transform: 'translateX(-50%)' } },
       },
       animation: {
         'sheet-in': 'sheet-in 260ms cubic-bezier(0.32, 0.72, 0, 1)',
         'sheet-in-left': 'sheet-in-left 260ms cubic-bezier(0.32, 0.72, 0, 1)',
         'dialog-in': 'dialog-in 180ms cubic-bezier(0.32, 0.72, 0, 1)',
         'fade-up': 'fade-up 320ms cubic-bezier(0.32, 0.72, 0, 1) both',
+        marquee: 'marquee 60s linear infinite',
       },
     },
   },

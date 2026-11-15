@@ -26,7 +26,15 @@ export function SegmentedControl<T extends string>({
 }) {
   const itemRole = role === 'tablist' ? 'tab' : 'radio'
   return (
-    <div role={role} aria-label={label} className={clsx('inline-flex rounded-lg border border-border bg-surface-muted p-0.5', className)}>
+    <div
+      role={role}
+      aria-label={label}
+      // Labels never wrap; on a narrow screen the row scrolls sideways instead of squeezing them onto two lines.
+      className={clsx(
+        'inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-surface-muted p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        className,
+      )}
+    >
       {options.map(({ value: v, label: l, icon: Icon }) => {
         const selected = v === value
         return (
@@ -39,7 +47,7 @@ export function SegmentedControl<T extends string>({
             title={iconOnly ? l : undefined}
             onClick={() => onChange(v)}
             className={clsx(
-              'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md font-medium transition',
+              'inline-flex flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition',
               size === 'sm' ? 'h-7 px-2 text-body-sm' : 'h-8 px-3 text-body-sm',
               selected ? 'bg-surface text-fg shadow-xs ring-1 ring-border' : 'text-muted hover:text-fg',
             )}

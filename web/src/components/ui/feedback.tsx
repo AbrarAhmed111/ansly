@@ -112,7 +112,21 @@ export function KeyHint({ keys, children }: { keys: ReactNode[]; children?: Reac
   )
 }
 
-export function Avatar({ name, className }: { name: string; className?: string }) {
+/**
+ * Round identity badge: the picture at `src` when given, over an initials fallback (so a slow or missing
+ * image still shows something). `onImageError` lets client callers drop a broken URL.
+ */
+export function Avatar({
+  name,
+  src,
+  className,
+  onImageError,
+}: {
+  name: string
+  src?: string | null
+  className?: string
+  onImageError?: () => void
+}) {
   const initials =
     name
       .split(/[\s@._-]+/)
@@ -123,12 +137,16 @@ export function Avatar({ name, className }: { name: string; className?: string }
   return (
     <span
       className={clsx(
-        'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-brand text-body-sm font-semibold text-accent-fg',
+        'relative inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-brand text-body-sm font-semibold text-accent-fg',
         className,
       )}
       aria-hidden
     >
       {initials}
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs; next/image would cache them
+        <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" onError={onImageError} draggable={false} />
+      )}
     </span>
   )
 }

@@ -3,8 +3,15 @@ import type { LucideIcon } from 'lucide-react'
 import type { ElementType, ReactNode } from 'react'
 import { TONE_SURFACE, type Tone } from './tone'
 
+/** A base padding class (`p-0`, `p-4`…) in `className` replaces the default `p-5`; CSS order would otherwise keep p-5. */
+const HAS_PADDING = /(?:^|\s)p-\S+/
+
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={clsx('rounded-xl border border-border bg-surface p-5 shadow-card', className)}>{children}</div>
+  return (
+    <div className={clsx('rounded-xl border border-border bg-surface shadow-card', !HAS_PADDING.test(className ?? '') && 'p-5', className)}>
+      {children}
+    </div>
+  )
 }
 
 export function CardHeader({
