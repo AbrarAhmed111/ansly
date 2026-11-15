@@ -82,3 +82,27 @@ def extract_text(content: bytes) -> str:
             "and upload it again."
         )
     return text[:MAX_TEXT_CHARS]
+
+
+def pdf_text(content: bytes) -> str:
+    """Text of a PDF resume, for library resumes only (they're attached as uploaded and never tailored)."""
+    import io
+
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+
+    if not content.startswith(b"%PDF"):
+        raise ResumeReadError("This file isn't a PDF.")
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        text = "\n".join((page.extract_text() or "") for page in reader.pages[:10])
+    except (PdfReadError, ValueError, KeyError) as e:
+        raise ResumeReadError("We couldn't read the text in this PDF.") from e
+    text = _clean(text)
+    if len(text) < MIN_TEXT_CHARS:
+        raise ResumeReadError("We couldn't find text in this PDF. It may be a scanned image.")
+    return text[:MAX_TEXT_CHARS]
+
+
+def resume_text(content: bytes, file_type: str) -> str:
+    return pdf_text(content) if file_type == "pdf" else extract_text(content)
