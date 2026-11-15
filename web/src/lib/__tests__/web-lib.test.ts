@@ -9,7 +9,8 @@ import {
 import { companyKey, fileStem, linesToBullets, masterPath, resumeFileProblem, stepState, wordDiff } from '../resume'
 import { safeNext } from '../safe-next'
 import { sectionBySlug, toFormValues, toRow, type Row } from '../sections'
-import { compactNumber, tokenUsage } from '../usage'
+import { avatarFileError, avatarPath, displayName } from '../avatar'
+import { compactNumber, tokenFeature, tokenUsage, tokensByFeature } from '../usage'
 
 describe('safeNext', () => {
   it.each([
@@ -259,5 +260,64 @@ describe('tokenUsage', () => {
 
   it('formats large numbers compactly', () => {
     expect([compactNumber(950), compactNumber(12_400), compactNumber(2_300_000)]).toEqual(['950', '12.4K', '2.3M'])
+  })
+})
+
+describe('tokensByFeature', () => {
+  const now = new Date(2026, 10, 15, 12)
+  const at = (daysAgo: number) => new Date(2026, 10, 15 - daysAgo, 9).toISOString()
+
+  it('maps usage kinds to features', () => {
+    expect(tokenFeature('generate')).toBe('answers')
+    expect(tokenFeature('fit_to_limit')).toBe('answers')
+    expect(tokenFeature('tailoring_completed')).toBe('tailoring')
+    expect(tokenFeature('job_analyzed')).toBe('tailoring')
+    expect(tokenFeature('lead_email')).toBe('emails')
+    expect(tokenFeature('something_new')).toBe('other')
+  })
+
+  it('sums tokens per feature for today and the window', () => {
+    const byFeature = tokensByFeature(
+      [
+        { created_at: at(0), tokens: 100, kind: 'generate' },
+        { created_at: at(2), tokens: 50, kind: 'fill' },
+        { created_at: at(0), tokens: 400, kind: 'tailoring_completed' },
+        { created_at: at(1), tokens: 30, kind: 'lead_email' },
+        { created_at: at(60), tokens: 999, kind: 'lead_email' },
+      ],
+      now,
+    )
+    expect(byFeature).toEqual({
+      answers: { today: 100, total: 150 },
+      tailoring: { today: 400, total: 400 },
+      emails: { today: 0, total: 30 },
+      other: { today: 0, total: 0 },
+    })
+  })
+
+  it('returns null when the events do not say which feature they came from', () => {
+    expect(tokensByFeature([{ created_at: at(0), tokens: 10 }], now)).toBeNull()
+    expect(tokensByFeature([], now)).not.toBeNull()
+  })
+})
+
+describe('avatar helpers', () => {
+  it('accepts small PNG, JPEG and WebP images only', () => {
+    expect(avatarFileError({ type: 'image/png', size: 1000 })).toBeNull()
+    expect(avatarFileError({ type: 'image/webp', size: 2 * 1024 * 1024 })).toBeNull()
+    expect(avatarFileError({ type: 'image/gif', size: 1000 })).toMatch(/PNG, JPEG or WebP/)
+    expect(avatarFileError({ type: 'image/jpeg', size: 2 * 1024 * 1024 + 1 })).toMatch(/2 MB/)
+    expect(avatarFileError({ type: 'image/jpeg', size: 0 })).toMatch(/empty/)
+  })
+
+  it('stores each upload under the owner prefix with a fresh name', () => {
+    expect(avatarPath('u1', 'image/jpeg', 36)).toBe('u1/avatar-10.jpg')
+    expect(avatarPath('u1', 'image/webp', 37)).toBe('u1/avatar-11.webp')
+  })
+
+  it('shows the name, else the email', () => {
+    expect(displayName(' Ada Lovelace ', 'ada@example.com')).toBe('Ada Lovelace')
+    expect(displayName('  ', 'ada@example.com')).toBe('ada@example.com')
+    expect(displayName(null, null)).toBe('Your account')
   })
 })
