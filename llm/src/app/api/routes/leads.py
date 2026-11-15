@@ -7,13 +7,19 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from src.app.api.deps import get_rest
+from src.app.api.deps import get_gateway, get_rest
+from src.app.api.routes.lead_emails import record_lead_usage
 from src.app.core.auth import AuthUser, get_current_user
 from src.app.core.config import get_settings
 from src.app.core.rate_limit import check_rate_limit
 from src.app.db.rest import SupabaseError, SupabaseRest
+from src.app.gateway import LLMGateway
+from src.app.leads.cleanup import Verdict, classify, profile_terms
 from src.app.leads.posts import _terms, canonical_post_url, post_identity, qualify_post
 from src.app.schemas.leads import (
+    CleanupRequest,
+    CleanupResponse,
+    CleanupResult,
     CollectLinkedInPostsRequest,
     CollectLinkedInPostsResponse,
     CreateLeadRequest,
@@ -170,4 +176,91 @@ async def collect_linkedin_leads(
         status=session_status,
         **counts,
         leads=[LeadRecord.model_validate(lead) for lead in saved_leads],
+    )
+
+
+# --------------------------------------------------------------------------- Ansly Cleanup
+
+CLEANUP_TEXT_CHARS = 1500
+
+
+def _cleanup_result(verdict: Verdict, lead: Dict[str, Any], outcome: str, reason: Optional[str] = None
+                    ) -> CleanupResult:
+    shown = outcome != "kept"
+    return CleanupResult(
+        lead_id=verdict.lead_id, outcome=outcome, category=verdict.category, reason=reason or verdict.reason,
+        included_keywords=verdict.included[:10], excluded_keywords=verdict.excluded[:10],
+        title=(lead.get("title") or "")[:300] if shown else None,
+        description=(lead.get("description") or "")[:CLEANUP_TEXT_CHARS] if shown else None,
+        contacted=lead.get("status") == "contacted", checked=verdict.decided_by != "none",
+    )
+
+
+async def _remove(rest: SupabaseRest, ids: List[str]) -> set[str]:
+    """Deletes the leads; returns the ids that were removed. One that can't go (its email is sending) stays."""
+    if not ids:
+        return set()
+    try:
+        return {str(r["id"]) for r in await rest.delete("leads", {"id": f"in.({','.join(ids)})"})}
+    except SupabaseError:
+        removed: set[str] = set()
+        for lead_id in ids:
+            try:
+                removed |= {str(r["id"]) for r in await rest.delete("leads", {"id": f"eq.{lead_id}"})}
+            except SupabaseError as exc:
+                logger.warning("Cleanup could not remove lead %s: %s", lead_id, exc)
+        return removed
+
+
+@router.post(
+    "/cleanup",
+    response_model=CleanupResponse,
+    dependencies=[Depends(record_lead_usage)],
+    summary="Ansly Cleanup: remove job-seeker posts and off-stack roles from these leads (up to 50 per request)",
+)
+async def cleanup_leads(
+    request: CleanupRequest,
+    user: AuthUser = Depends(get_current_user),
+    rest: SupabaseRest = Depends(get_rest),
+    gateway: LLMGateway = Depends(get_gateway),
+) -> CleanupResponse:
+    """Classifies each lead against the active targeting profile and the user's skills. Confident non-matches are
+    deleted now; leads Ansly is unsure about (and contacted leads, which keep their email history) are returned
+    for review and left in place. Nothing else changes."""
+    ids = sorted({str(i) for i in request.lead_ids})
+    try:
+        await check_rate_limit(rest, get_settings().RATE_LIMIT_PER_MINUTE)
+        profile = await _targeting_profile(rest, None)
+        leads = await rest.select("leads", {"id": f"in.({','.join(ids)})", "limit": str(len(ids))})
+        skills = [row.get("name") for row in await rest.select(
+            "skills", {"select": "name", "order": "sort_order.asc", "limit": "100"})]
+    except SupabaseError as exc:
+        raise _upstream(exc) from exc
+
+    verdicts = await classify(gateway, leads, profile_terms(profile, skills))
+    by_id = {str(lead["id"]): lead for lead in leads}
+    to_remove = [v.lead_id for v in verdicts if v.action == "remove" and by_id[v.lead_id].get("status") != "contacted"]
+    removed = await _remove(rest, to_remove)
+
+    results: List[CleanupResult] = []
+    for verdict in verdicts:
+        lead = by_id[verdict.lead_id]
+        if verdict.lead_id in removed:
+            results.append(_cleanup_result(verdict, lead, "removed"))
+        elif verdict.action == "remove" and lead.get("status") == "contacted":
+            results.append(_cleanup_result(verdict, lead, "review",
+                                           verdict.reason + " You already contacted this lead, so it wasn't removed."))
+        elif verdict.action == "remove":
+            results.append(_cleanup_result(verdict, lead, "review",
+                                           verdict.reason + " It couldn't be removed right now."))
+        elif verdict.action == "review":
+            results.append(_cleanup_result(verdict, lead, "review"))
+        else:
+            results.append(_cleanup_result(verdict, lead, "kept"))
+    return CleanupResponse(
+        results=results,
+        removed=sum(r.outcome == "removed" for r in results),
+        review=sum(r.outcome == "review" for r in results),
+        kept=sum(r.outcome == "kept" for r in results),
+        unchecked=sum(not r.checked for r in results),
     )

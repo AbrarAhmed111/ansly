@@ -808,3 +808,56 @@ test('profile pictures live in a private, image-only bucket under the owner’s 
     await tx.query(`update public.profiles set avatar_path = null where id = $1`, [ALICE])
   })
 })
+
+test('a sent email marks its lead contacted, and sent leads that drifted are repaired', async () => {
+  const lead = (tx, id) =>
+    tx.query(
+      `insert into public.leads (source_platform, source_name, author_name, company_name, title,
+         opportunity_type, status, contactability, description, original_post_url)
+       values ('linkedin', 'LinkedIn', 'A', 'X', 'Hiring', 'job', 'new', 'email_available', 'Hiring', $1)
+       returning id`,
+      [`https://www.linkedin.com/feed/update/urn:li:activity:${id}/`],
+    )
+  const draft = (tx, leadId) =>
+    tx.query(
+      `insert into public.lead_drafts (lead_id, recipient_email, subject, body, resume_selection)
+       values ($1, 'jobs@example.com', 'Hi', 'Body', 'none_by_user') returning id`,
+      [leadId],
+    )
+  const status = (tx, id) => tx.query('select status from public.leads where id = $1', [id]).then((r) => r.rows[0].status)
+
+  // New sends: the draft turning 'sent' marks the lead contacted, with a status event.
+  await asUser(ALICE, async (tx) => {
+    const leadId = (await lead(tx, 8001)).rows[0].id
+    await draft(tx, leadId)
+    await tx.query(`update public.lead_drafts set delivery_status = 'failed' where lead_id = $1`, [leadId])
+    assert.equal(await status(tx, leadId), 'new')
+    await tx.query(`update public.lead_drafts set delivery_status = 'sent', sent_at = now() where lead_id = $1`, [leadId])
+    assert.equal(await status(tx, leadId), 'contacted')
+    const { rows } = await tx.query('select new_status, reason from public.lead_status_events where lead_id = $1', [leadId])
+    assert.deepEqual(rows, [{ new_status: 'contacted', reason: 'email_sent' }])
+  })
+
+  // Old rows: Gmail accepted the email but the draft and lead were never updated.
+  const drifted = await asUser(ALICE, async (tx) => {
+    const leadId = (await lead(tx, 8002)).rows[0].id
+    const draftId = (await draft(tx, leadId)).rows[0].id
+    await tx.query(
+      `insert into public.email_send_attempts (draft_id, lead_id, provider, from_address, recipient_email, subject, body,
+         status, provider_message_id)
+       values ($1, $2, 'gmail', 'a@gmail.com', 'jobs@example.com', 'Hi', 'Body', 'sending', 'msg-1')`,
+      [draftId, leadId],
+    )
+    const untouched = (await lead(tx, 8003)).rows[0].id
+    await draft(tx, untouched)
+    return { leadId, untouched }
+  })
+  await db.exec(await readFile(join(migrationsDir, '20261116000000_lead_sent_contacted.sql'), 'utf8'))
+
+  await asUser(ALICE, async (tx) => {
+    const { rows } = await tx.query('select delivery_status from public.lead_drafts where lead_id = $1', [drifted.leadId])
+    assert.deepEqual(rows, [{ delivery_status: 'sent' }])
+    assert.equal(await status(tx, drifted.leadId), 'contacted')
+    assert.equal(await status(tx, drifted.untouched), 'new')
+  })
+})

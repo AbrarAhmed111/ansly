@@ -123,3 +123,38 @@ class CollectLinkedInPostsResponse(BaseModel):
     duplicate_count: int
     saved_count: int
     leads: List[LeadRecord] = Field(default_factory=list)
+
+
+MAX_CLEANUP_LEADS = 50
+
+
+class CleanupRequest(BaseModel):
+    """One chunk of the user's leads for Ansly Cleanup (the dashboard sends all of them, chunk by chunk)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lead_ids: List[UUID] = Field(min_length=1, max_length=MAX_CLEANUP_LEADS)
+
+
+class CleanupResult(BaseModel):
+    lead_id: UUID
+    # removed: deleted now (a confident non-match). review: Ansly would remove it but the user decides. kept.
+    outcome: Literal["removed", "review", "kept"]
+    category: Literal["job_seeker", "stack_mismatch", "not_hiring", "match", "unclear"]
+    reason: str
+    included_keywords: List[str] = Field(default_factory=list)
+    excluded_keywords: List[str] = Field(default_factory=list)
+    # Title and post text, for removed and review leads only (kept ones are already on the page).
+    title: Optional[str] = None
+    description: Optional[str] = None
+    contacted: bool = False
+    # False when the AI couldn't check this lead (it is kept).
+    checked: bool = True
+
+
+class CleanupResponse(BaseModel):
+    results: List[CleanupResult]
+    removed: int
+    review: int
+    kept: int
+    unchecked: int

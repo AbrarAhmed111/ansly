@@ -232,3 +232,31 @@ export interface WriteAndSendResponse {
   results: WriteAndSendResult[]
   stopped: string | null
 }
+
+// Ansly Cleanup
+
+export type CleanupCategory = 'job_seeker' | 'stack_mismatch' | 'not_hiring' | 'match' | 'unclear'
+
+export interface CleanupResult {
+  lead_id: string
+  /** removed: deleted (a confident non-match). review: Ansly would remove it; the user decides. */
+  outcome: 'removed' | 'review' | 'kept'
+  category: CleanupCategory
+  reason: string
+  included_keywords: string[]
+  excluded_keywords: string[]
+  /** Set for removed and review leads only. */
+  title: string | null
+  description: string | null
+  contacted: boolean
+  /** False when the AI couldn't check this lead (it was kept). */
+  checked: boolean
+}
+
+export interface CleanupResponse {
+  results: CleanupResult[]
+  removed: number
+  review: number
+  kept: number
+  unchecked: number
+}

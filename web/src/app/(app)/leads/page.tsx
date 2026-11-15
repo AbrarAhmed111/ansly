@@ -1,13 +1,30 @@
 'use client'
 
 import type { EmailDraft, Lead, TargetingProfile } from '@ansly/types'
-import { CheckCheck, Inbox, Link2, ListFilter, Mail, PenLine, Plus, RotateCcw, Search, Send, Sparkles, Target, Trash2, X } from 'lucide-react'
+import {
+  CheckCheck,
+  Inbox,
+  Link2,
+  ListFilter,
+  Mail,
+  PenLine,
+  Plus,
+  RotateCcw,
+  Search,
+  Send,
+  Sparkles,
+  Target,
+  Trash2,
+  WandSparkles,
+  X,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Sheet, useConfirm } from '@/components/dialog'
 import { LeadProfileJsonImport } from '@/components/lead-profile-json-import'
+import { CleanupDialog, type CleanupState } from '@/components/leads/cleanup-dialog'
 import { LeadCard } from '@/components/leads/lead-card'
 import { ProfileCard, type SaveState } from '@/components/leads/profile-card'
 import { ProfileEditor } from '@/components/leads/profile-editor'
@@ -26,6 +43,7 @@ import {
 } from '@/components/ui'
 import { connectGmail, GmailStatus } from '@/components/email-connection'
 import { getEmailConnection, listEmailDrafts, listLeads, previewEmailGeneration } from '@/lib/api'
+import { runCleanup } from '@/lib/lead-cleanup'
 import { ERROR_LABEL, generateDrafts, writeAndSend } from '@/lib/lead-emails'
 import {
   activateTargetingProfile,
@@ -81,6 +99,7 @@ export default function LeadsPage() {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [confirm, confirmElement] = useConfirm()
+  const [cleanup, setCleanup] = useState<CleanupState>({ step: 'idle' })
 
   const activeProfile = useMemo(
     () => profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0] ?? null,
@@ -239,6 +258,42 @@ export default function LeadsPage() {
         toast.error(reason instanceof Error ? reason.message : 'Could not delete.')
       }
     })
+  }
+
+  const dropLeads = (ids: string[]) => {
+    const gone = new Set(ids)
+    setLeads((current) => current.filter((lead) => !gone.has(lead.id)))
+    setSelected((current) => new Set([...current].filter((id) => !gone.has(id))))
+    setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([leadId]) => !gone.has(leadId))))
+  }
+
+  /** Ansly Cleanup over every lead: clear non-matches are removed, unsure ones wait for the user's call. */
+  const startCleanup = async () => {
+    const ok = await confirm({
+      title: `Clean up ${leads.length} lead${leads.length === 1 ? '' : 's'}?`,
+      description:
+        'Ansly checks every lead against your active profile and skills. Posts from job seekers and roles that use only your excluded keywords are removed. Leads Ansly isn’t sure about are listed for you to keep or remove. Contacted leads are never removed without asking.',
+      confirmLabel: 'Run cleanup',
+      tone: 'neutral',
+    })
+    if (!ok) return
+    const ids = leads.map((lead) => lead.id)
+    setCleanup({ step: 'running', done: 0, total: ids.length, removed: 0 })
+    const summary = await runCleanup(ids, (done, total, removed) => setCleanup({ step: 'running', done, total, removed }))
+    dropLeads(summary.removed.map((r) => r.lead_id))
+    setCleanup({ step: 'done', summary })
+  }
+
+  const removeReviewed = async (ids: string[]) => {
+    if (!ids.length) return
+    try {
+      await deleteLeads(ids)
+      dropLeads(ids)
+      toast.success(ids.length === 1 ? 'Lead removed' : `${ids.length} leads removed`)
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Could not remove these leads.')
+      throw reason
+    }
   }
 
   const isFresh = useCallback(
@@ -426,6 +481,18 @@ export default function LeadsPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <GmailStatus returnTo="/leads" />
+            {leads.length > 0 && (
+              <Button
+                variant="secondary"
+                icon={WandSparkles}
+                loading={cleanup.step === 'running'}
+                disabled={loading || !activeProfile}
+                title={activeProfile ? undefined : 'Create a targeting profile first'}
+                onClick={() => void startCleanup()}
+              >
+                Ansly Cleanup
+              </Button>
+            )}
             {draftCount > 0 && (
               <Link href="/leads/review" className={buttonStyles({ variant: 'secondary' })}>
                 <Mail className="h-4 w-4" />
@@ -643,6 +710,7 @@ export default function LeadsPage() {
         />
       </Sheet>
 
+      <CleanupDialog state={cleanup} onClose={() => setCleanup({ step: 'idle' })} onRemove={removeReviewed} />
       {confirmElement}
     </div>
   )

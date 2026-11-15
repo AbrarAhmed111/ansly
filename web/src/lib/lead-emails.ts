@@ -1,4 +1,4 @@
-import type { EmailDraft } from '@ansly/types'
+import type { EmailDraft, Lead } from '@ansly/types'
 import type { Tone } from '@/components/ui'
 import { generateEmailDrafts, previewEmailGeneration, sendEmailDrafts, writeAndSendEmails } from '@/lib/api'
 
@@ -37,6 +37,13 @@ export function draftState(draft: EmailDraft): DraftState {
   if (draft.delivery_status === 'failed') return 'failed'
   if (draft.resume_selection === 'needs_selection') return 'needs_resume'
   return draft.approved ? 'approved' : 'draft'
+}
+
+/** A draft still waiting on the user: not sent yet, and its lead wasn't already contacted (by email or by hand). */
+export function needsReview(draft: EmailDraft, lead?: Pick<Lead, 'status'> | null): boolean {
+  if (lead?.status === 'contacted') return false
+  const state = draftState(draft)
+  return state === 'draft' || state === 'needs_resume' || state === 'failed'
 }
 
 export const STATE_BADGE: Record<DraftState, { label: string; tone: Tone }> = {

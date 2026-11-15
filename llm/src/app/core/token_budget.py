@@ -39,6 +39,7 @@ ANSWER_SIMPLE = "answer_simple"
 LEAD_ROLE = "lead_role"
 RESUME_MATCH = "resume_match"
 LEAD_EMAIL = "lead_email"
+LEAD_CLEANUP = "lead_cleanup"
 EMBEDDING_QUERY = "embedding_query"
 EMBEDDING_PROFILE = "embedding_profile"
 EMBEDDING_STAGES = {EMBEDDING_QUERY, EMBEDDING_PROFILE}
@@ -69,6 +70,8 @@ BUDGETS: Dict[str, Budget] = {
     LEAD_ROLE: Budget(input=1500, output=400),
     RESUME_MATCH: Budget(input=2500, output=400),
     LEAD_EMAIL: Budget(input=2500, output=700),
+    # One call classifies up to 20 leads (leads/cleanup.py).
+    LEAD_CLEANUP: Budget(input=9000, output=2600),
 }
 
 
@@ -85,14 +88,14 @@ BUDGETS: Dict[str, Budget] = {
 # (Haiku 4.5) run without it.
 FAST, STRONG = "fast", "strong"
 STAGE_TIER: Dict[str, str] = {
-    JOB_ANALYSIS: FAST, VALIDATION: FAST, LEAD_ROLE: FAST, RESUME_MATCH: FAST, LEAD_EMAIL: STRONG, ADAPTATION: FAST, ANSWER_SIMPLE: FAST, REWRITE: FAST,
+    JOB_ANALYSIS: FAST, VALIDATION: FAST, LEAD_ROLE: FAST, RESUME_MATCH: FAST, LEAD_EMAIL: STRONG, LEAD_CLEANUP: FAST, ADAPTATION: FAST, ANSWER_SIMPLE: FAST, REWRITE: FAST,
     RESUME_PARSE: STRONG, MATCHING: STRONG, TAILORING: STRONG, TAILORING_SUMMARY: STRONG, ANSWER: STRONG, ANSWER_COMPLEX: STRONG,
     ANSWER_BATCH: STRONG, REGENERATION: STRONG,
 }
 FAST_MODEL_STAGES = {stage for stage, tier in STAGE_TIER.items() if tier == FAST}
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 STAGE_EFFORT: Dict[str, str] = {JOB_ANALYSIS: "low", MATCHING: "low", VALIDATION: "low", ADAPTATION: "low",
-                                REWRITE: "low", LEAD_ROLE: "low", RESUME_MATCH: "low"}
+                                REWRITE: "low", LEAD_ROLE: "low", RESUME_MATCH: "low", LEAD_CLEANUP: "low"}
 
 
 def effort_for(stage: str, configured: str) -> str:

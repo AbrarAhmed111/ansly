@@ -47,7 +47,15 @@ import {
   updateEmailDraft,
 } from '@/lib/api'
 import { errorMessage } from '@/lib/format'
-import { ERROR_LABEL, ISSUE_LABEL, STATE_BADGE, draftState, sendConfirmed, type SendSummary } from '@/lib/lead-emails'
+import {
+  ERROR_LABEL,
+  ISSUE_LABEL,
+  STATE_BADGE,
+  draftState,
+  needsReview,
+  sendConfirmed,
+  type SendSummary,
+} from '@/lib/lead-emails'
 import { formatBytes } from '@/lib/resume'
 
 type View = 'todo' | 'approved' | 'sent' | 'all'
@@ -72,11 +80,11 @@ function draftTitle(draft: EmailDraft, lead: Lead | undefined) {
   return raw.replace(/^[^\p{L}\p{N}]+/u, '').trim() || raw
 }
 
-function inView(draft: EmailDraft, view: View) {
+function inView(draft: EmailDraft, view: View, lead: Lead | undefined) {
   const state = draftState(draft)
   if (view === 'approved') return state === 'approved'
   if (view === 'sent') return state === 'sent'
-  if (view === 'todo') return state === 'draft' || state === 'needs_resume' || state === 'failed'
+  if (view === 'todo') return needsReview(draft, lead)
   return true
 }
 
@@ -114,14 +122,14 @@ export function EmailReview({ leadIds }: { leadIds: string[] | null }) {
 
   useEffect(() => void load(), [load])
 
-  const visible = useMemo(() => (drafts ?? []).filter((d) => inView(d, view)), [drafts, view])
+  const visible = useMemo(() => (drafts ?? []).filter((d) => inView(d, view, leads[d.lead_id])), [drafts, view, leads])
   const viewOptions = useMemo(
     () =>
       VIEWS.map((option) => {
-        const count = (drafts ?? []).filter((d) => inView(d, option.value)).length
+        const count = (drafts ?? []).filter((d) => inView(d, option.value, leads[d.lead_id])).length
         return { value: option.value, label: count ? `${option.label} ${count}` : option.label }
       }),
-    [drafts],
+    [drafts, leads],
   )
   const selected = drafts?.find((d) => d.id === selectedId) ?? visible[0] ?? null
   const counts = useMemo(() => {
