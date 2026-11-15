@@ -1,5 +1,4 @@
 import { clsx } from 'clsx'
-import { ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Logo } from '@/components/logo'
@@ -30,8 +29,17 @@ export function SiteHeader() {
           <Logo />
         </Link>
         <nav className="flex items-center gap-1 sm:gap-2">
-          <Link href="/#how-it-works" className={buttonStyles({ variant: 'ghost', className: 'hidden sm:inline-flex' })}>
-            How it works
+          <Link href="/#features" className={buttonStyles({ variant: 'ghost', className: 'hidden sm:inline-flex' })}>
+            Features
+          </Link>
+          <Link href="/#founder" className={buttonStyles({ variant: 'ghost', className: 'hidden lg:inline-flex' })}>
+            Our story
+          </Link>
+          <Link href="/#faq" className={buttonStyles({ variant: 'ghost', className: 'hidden md:inline-flex' })}>
+            FAQ
+          </Link>
+          <Link href="/#contact" className={buttonStyles({ variant: 'ghost', className: 'hidden md:inline-flex' })}>
+            Contact
           </Link>
           <Link href="/privacy" className={buttonStyles({ variant: 'ghost', className: 'hidden sm:inline-flex' })}>
             Privacy
@@ -40,7 +48,6 @@ export function SiteHeader() {
             signedIn={
               <Link href="/dashboard" className={buttonStyles()}>
                 Open dashboard
-                <ArrowRight className="h-4 w-4" />
               </Link>
             }
             signedOut={

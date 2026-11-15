@@ -1,16 +1,17 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { BookmarkCheck, Brain, FilePen, Rocket, FileText, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, Wand2, type LucideIcon } from 'lucide-react'
+import { BookmarkCheck, Brain, FilePen, Files, Rocket, FileText, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, UserRound, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CommandPalette, type Command } from '@/components/command-palette'
 import { Dialog, Sheet } from '@/components/dialog'
+import { IdentityProvider, UserAvatar, useIdentity } from '@/components/identity'
 import { Logo } from '@/components/logo'
 import { SECTION_ICONS } from '@/components/section-icons'
 import { ThemeToggle } from '@/components/theme'
-import { Avatar, Button, IconButton, IconTile, Kbd, Overline, buttonStyles } from '@/components/ui'
+import { Button, IconButton, IconTile, Kbd, Overline, buttonStyles } from '@/components/ui'
 import { SECTIONS } from '@/lib/sections'
 import { createClient } from '@/lib/supabase/client'
 
@@ -39,6 +40,7 @@ const GROUPS: { label?: string; items: NavItem[] }[] = [
     items: [
       { href: '/resume', label: 'Master & tailored', icon: FileText },
       { href: '/resume/tailor', label: 'Tailor for a job', icon: FilePen },
+      { href: '/resume/roles', label: 'Role resumes', icon: Files },
     ],
   },
   {
@@ -66,6 +68,7 @@ const COMMANDS: Command[] = [
   { label: 'Add saved answer', href: '/saved-answers?new=1', icon: Plus, group: 'Actions' },
   { label: 'Upload master resume', href: '/resume/upload', icon: FileText, group: 'Actions', keywords: 'resume cv word docx' },
   { label: 'Tailor resume for a job', href: '/resume/tailor', icon: FilePen, group: 'Actions', keywords: 'resume job description tailor' },
+  { label: 'Add a role resume', href: '/resume/roles?new=1', icon: Files, group: 'Actions', keywords: 'resume role library pdf leads email attach' },
   { label: 'Try a question', href: '/playground', icon: Wand2, group: 'Actions', keywords: 'generate answer playground' },
 ]
 
@@ -129,24 +132,56 @@ function NavLinks() {
   )
 }
 
-function UserFooter({ name, email }: { name: string | null; email: string }) {
+function UserFooter() {
+  const identity = useIdentity()
+  if (!identity) return null
+  const { name, email, label } = identity
   return (
     <div className="space-y-3 border-t border-border pt-4">
       <ThemeToggle compact className="flex w-full" />
-      <div className="flex items-center gap-2.5 px-1">
-        <Avatar name={name || email} className="h-8 w-8 text-caption" />
-        <div className="min-w-0 flex-1">
-          {name && <p className="truncate text-body-sm font-medium leading-tight">{name}</p>}
-          <p className="truncate text-caption leading-tight text-muted" title={email}>
-            {email}
-          </p>
-        </div>
+      <div className="flex items-center gap-1">
+        <Link
+          href="/profile/personal"
+          title="Edit personal details"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-surface-muted"
+        >
+          <UserAvatar className="h-8 w-8 text-caption" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-body-sm font-medium leading-tight">{label}</span>
+            {name && (
+              <span className="block truncate text-caption leading-tight text-muted" title={email}>
+                {email}
+              </span>
+            )}
+          </span>
+        </Link>
         <form action="/auth/signout" method="post">
           <IconButton type="submit" icon={LogOut} label="Sign out" />
         </form>
       </div>
     </div>
   )
+}
+
+/** Command palette entries, with the signed-in user's own entry first. */
+function ShellCommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const identity = useIdentity()
+  const label = identity?.label
+  const email = identity?.email ?? ''
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        label: label ? `${label} — personal details` : 'Personal details',
+        href: '/profile/personal',
+        icon: UserRound,
+        group: 'Account',
+        keywords: `${email} name profile picture photo avatar account me`,
+      },
+      ...COMMANDS,
+    ],
+    [label, email],
+  )
+  return <CommandPalette commands={commands} open={open} onOpenChange={onOpenChange} />
 }
 
 function NewUserExtensionNotice({ userId, createdAt }: { userId: string; createdAt?: string }) {
@@ -219,55 +254,64 @@ export function AppShell({
   useEffect(() => setMenuOpen(false), [path])
 
   return (
-    <div className="min-h-screen lg:flex">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:shrink-0 lg:flex-col lg:border-r lg:border-border lg:bg-bg">
-        <div className="flex h-16 items-center px-5">
-          <Link href="/dashboard" aria-label="Ansly dashboard">
-            <Logo />
-          </Link>
-        </div>
-        <div className="px-3 pb-3">
-          <SearchButton onClick={() => setPaletteOpen(true)} />
-        </div>
-        <div className="no-scroll flex-1 overflow-y-auto px-3 py-2">
-          <NavLinks />
-        </div>
-        <div className="px-3 pb-4">
-          <UserFooter name={name} email={email} />
-        </div>
-      </aside>
-
-      {/* Mobile top bar */}
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/80 px-4 backdrop-blur-lg lg:hidden">
-        <Link href="/dashboard" aria-label="Ansly dashboard">
-          <Logo />
-        </Link>
-        <div className="flex items-center gap-1">
-          <IconButton size="icon" icon={Search} label="Search" onClick={() => setPaletteOpen(true)} />
-          <IconButton size="icon" icon={Menu} label="Open menu" onClick={() => setMenuOpen(true)} />
-        </div>
-      </header>
-      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} side="left">
-        <div className="flex h-full flex-col">
-          <div className="flex h-14 items-center px-5">
-            <Logo />
+    <IdentityProvider userId={userId} email={email} name={name}>
+      <div className="min-h-screen lg:flex">
+        {/* Desktop sidebar */}
+        <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:shrink-0 lg:flex-col lg:border-r lg:border-border lg:bg-bg">
+          <div className="flex h-16 items-center px-5">
+            <Link href="/dashboard" aria-label="Ansly dashboard">
+              <Logo />
+            </Link>
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div className="px-3 pb-3">
+            <SearchButton onClick={() => setPaletteOpen(true)} />
+          </div>
+          <div className="no-scroll flex-1 overflow-y-auto px-3 py-2">
             <NavLinks />
           </div>
           <div className="px-3 pb-4">
-            <UserFooter name={name} email={email} />
+            <UserFooter />
           </div>
-        </div>
-      </Sheet>
+        </aside>
 
-      <CommandPalette commands={COMMANDS} open={paletteOpen} onOpenChange={setPaletteOpen} />
-      <NewUserExtensionNotice userId={userId} createdAt={createdAt} />
+        {/* Mobile top bar */}
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/80 px-4 backdrop-blur-lg lg:hidden">
+          <Link href="/dashboard" aria-label="Ansly dashboard">
+            <Logo />
+          </Link>
+          <div className="flex items-center gap-1">
+            <IconButton size="icon" icon={Search} label="Search" onClick={() => setPaletteOpen(true)} />
+            <Link
+              href="/profile/personal"
+              aria-label="Personal details"
+              className="mx-1 rounded-full ring-offset-2 ring-offset-bg transition hover:ring-2 hover:ring-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <UserAvatar className="h-8 w-8 text-caption" />
+            </Link>
+            <IconButton size="icon" icon={Menu} label="Open menu" onClick={() => setMenuOpen(true)} />
+          </div>
+        </header>
+        <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} side="left">
+          <div className="flex h-full flex-col">
+            <div className="flex h-14 items-center px-5">
+              <Logo />
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-2">
+              <NavLinks />
+            </div>
+            <div className="px-3 pb-4">
+              <UserFooter />
+            </div>
+          </div>
+        </Sheet>
 
-      <main className="min-w-0 flex-1">
-        <div className="mx-auto w-full max-w-5xl px-4 pb-24 pt-8 sm:px-6 lg:px-10 lg:pt-12">{children}</div>
-      </main>
-    </div>
+        <ShellCommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+        <NewUserExtensionNotice userId={userId} createdAt={createdAt} />
+
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto w-full max-w-7xl px-4 pb-24 pt-8 sm:px-6 lg:px-8 lg:pt-10">{children}</div>
+        </main>
+      </div>
+    </IdentityProvider>
   )
 }
