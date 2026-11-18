@@ -10,7 +10,9 @@ AI-powered job search workspace for discovering opportunities, organizing leads,
 
 **Built by DevAbby.**
 
-Ansly brings job discovery, lead organization, resume tailoring, and application preparation into one workspace. Build a structured profile once, collect matching opportunities from LinkedIn posts with the extension, tailor a resume to a role, and prepare application answers grounded in your experience. The web app is built with Next.js, the answer and lead-search API uses FastAPI, Supabase stores user data, and the WXT browser extension helps with supported application forms.
+Ansly is an AI-powered job search assistant for discovering jobs, organizing LinkedIn leads, tailoring resumes, and preparing truthful application answers. Build a structured profile once, then use it to prepare job-specific applications. With Job Outreach, copy a complete job advertisement from any source and paste it into Ansly—no URL or manual job-detail entry is needed. Ansly identifies the application route and instructions, writes a personalized email grounded in your profile, and matches a resume from your Roles Resume library. Review and edit before sending, or explicitly choose **Analyze and Send** to authorize sending when all confidence checks pass.
+
+The web app is built with Next.js, the API uses FastAPI, Supabase stores user data, and the WXT browser extension helps with supported application forms.
 
 ## What It Does
 
@@ -22,6 +24,13 @@ Ansly brings job discovery, lead organization, resume tailoring, and application
 - Supports optional job context: company, role, and job description when enabled.
 - Helps organize job discovery with role, skill, location, and work-preference targeting.
 - Collects LinkedIn posts you load on a post search (the extension counts them as you scroll), keeps those with an email or apply link that match your targeting profile, and saves them as leads.
+- Analyzes complete job advertisements pasted from anywhere, without requiring a job URL or searching inside Ansly.
+- Extracts the job, recipient email, application instructions, and explicitly requested subject; flags ambiguous details instead of inventing them.
+- Generates a concise application email grounded in your existing profile, experience, projects, and links.
+- Selects an appropriate resume from your Roles Resume library using the same role-matching logic as Leads.
+- Lets you edit the recipient, subject, body, and resume before manually sending; **Analyze** never sends automatically.
+- Supports **Analyze and Send**, authorized by your initial click, only when the recipient, application instructions, email generation, and resume match pass confidence checks. Uncertain applications stop for your review.
+- Sends through the existing Gmail integration with send-only permission; Ansly cannot read your inbox.
 - Imports targeting profiles from JSON, with validation and clear supported-field guidance.
 - Tailors a master resume to a job description and lets you review the suggested changes before downloading.
 - Supports personal use as an unpacked Chrome or Microsoft Edge extension, with no store publishing fee.
@@ -31,15 +40,15 @@ Ansly brings job discovery, lead organization, resume tailoring, and application
 ```text
 Build profile and targeting preferences
   -> discover and organize matching opportunities
-  -> review a job's requirements
+  -> paste a job ad or collect a LinkedIn lead
+  -> identify the role and application instructions
   -> tailor your resume if useful
-  -> prepare application answers
-  -> review / edit
-  -> fill supported form fields
-  -> you submit manually
+  -> prepare a profile-grounded email and match a role resume
+  -> review / edit and click Send Email
+     OR choose Analyze and Send for confident, automatic email sending
 ```
 
-Ansly never auto-submits applications. It only fills after user approval.
+The browser extension never submits web application forms; it fills fields only after you click Fill, and you submit the form yourself. Job Outreach sends email applications only after you click **Send Email** in the review workflow or explicitly choose **Analyze and Send**. The automated path stops for review if any required application detail is ambiguous or the resume match is not confident.
 
 Lead collection reads only posts already loaded on a LinkedIn search page and sends them only when the user clicks Collect. Matches are keyword-based and are not a verification of the author or the offer.
 
@@ -62,6 +71,8 @@ Web app
   - saved answers
   - resume tailoring
   - job discovery and lead pipeline
+  - paste-first Job Outreach, email generation, review, and authorized sending
+  - Gmail connection and send-only email operations
   - settings
   - extension connection
 
@@ -71,6 +82,8 @@ LLM API
   - structured profile retrieval
   - grounded answer generation
   - LinkedIn post qualification for lead collection
+  - job application detail extraction and profile-grounded Outreach email generation
+  - confidence-gated resume matching and Gmail sending
   - provider fallback gateway
   - usage/rate limits
 
@@ -82,6 +95,7 @@ Supabase
   - saved answers
   - targeting profiles, leads, and collection sessions
   - resume tailoring records
+  - private Job Outreach drafts and email send attempts
   - usage events
 ```
 
@@ -131,10 +145,12 @@ Set these values:
 | File | Variables |
 | --- | --- |
 | `web/.env` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_BASE_URL` |
-| `llm/.env` | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, provider keys such as `GOOGLE_API_KEY1`, `GROQ_API_KEY1`, `OPENAI_API_KEY1` |
+| `llm/.env` | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, provider keys such as `GOOGLE_API_KEY1`, `GROQ_API_KEY1`, `OPENAI_API_KEY1`; optional Gmail sending: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, `EMAIL_TOKEN_ENCRYPTION_KEY` |
 | `extension/.env` | `WXT_SUPABASE_URL`, `WXT_SUPABASE_PUBLISHABLE_KEY`, `WXT_API_URL`, `WXT_WEB_URL` |
 
 Only use the Supabase publishable key in app env files. Do not put the Supabase secret/service-role key in the web app, extension, or client bundle.
+
+To enable email sending, configure a Google OAuth web application for the `gmail.send` scope and set the Gmail variables in `llm/.env`. Use `http://localhost:3000/settings/email/callback` as the local OAuth redirect URI. Generate `EMAIL_TOKEN_ENCRYPTION_KEY` from 32 random bytes, base64-encoded. Gmail credentials and send operations stay on the backend; the browser receives neither provider credentials nor refresh tokens.
 
 ## Database
 
@@ -174,10 +190,10 @@ Then:
 
 1. Sign up in the web app.
 2. Build your profile.
-3. Open `/extension` in the web app.
-4. Connect the extension.
-5. Visit a job application.
-6. Enable Ansly on that site from the extension popup.
+3. Add role-specific resumes under **Resume → Role resumes**.
+4. To use Job Outreach, open **Jobs → Job Outreach**, paste a complete job ad, then choose **Analyze** or **Analyze and Send**.
+5. Connect Gmail in Settings if you want Ansly to send application emails.
+6. To use the browser extension, open `/extension`, connect it, visit a supported job application, and enable Ansly from the extension popup.
 
 ## Personal Extension Use
 
@@ -256,11 +272,13 @@ Extension:
 ## Privacy Notes
 
 - Detection runs locally.
-- Nothing is sent until you ask Ansly to generate, match, save, or fill.
+- A pasted job description is sent for analysis only after you click Analyze or Analyze and Send.
+- Application emails are sent only after you click Send Email or explicitly authorize Analyze and Send; the automated path stops when required confidence checks fail.
+- Gmail access is send-only. Ansly cannot read your inbox or contacts.
 - Job description sharing is opt-in.
 - Usage analytics do not store question or answer text.
 - Gender, race, veteran, and disability questions are intentionally not answered.
-- Ansly never submits applications.
+- The extension never submits web application forms; you submit those yourself.
 
 ## License
 

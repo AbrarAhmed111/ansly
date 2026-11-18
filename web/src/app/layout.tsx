@@ -23,7 +23,7 @@ const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
 export const metadata: Metadata = {
   title: { default: 'Ansly — discover jobs, tailor your resume, apply with confidence', template: '%s · Ansly' },
   description:
-    'Discover and organize job opportunities, tailor your resume to each role, and prepare truthful application answers grounded in your experience.',
+    'Discover jobs, organize LinkedIn leads, tailor your resume, and prepare truthful application answers. Paste any job ad to create a personalized application email, review it, or explicitly authorize confident Gmail sending.',
 }
 
 export const viewport: Viewport = {

@@ -86,7 +86,7 @@ class FakeRest:
         self.tables = copy.deepcopy(tables if tables is not None else SAMPLE_PROFILE)
         for name in ["profiles", "experiences", "projects", "skills", "education", "achievements",
                      "saved_answers", "usage_events", "profile_facts", "resumes", "job_contexts",
-                     "resume_tailorings", "candidate_evidence", "llm_calls"]:
+                     "resume_tailorings", "candidate_evidence", "llm_calls", "job_outreach_drafts"]:
             self.tables.setdefault(name, [])
         self.rate_limit_hits = 0
 
@@ -97,8 +97,10 @@ class FakeRest:
                 continue
             if value.startswith("eq.") and str(row.get(key)).lower() != value[3:].lower():
                 return False
-            if value.startswith("neq.") and str(row.get(key)).lower() == value[4:].lower():
-                return False
+            if value.startswith("neq."):
+                # PostgREST/Postgres excludes NULL values for `neq`, matching SQL three-valued logic.
+                if row.get(key) is None or str(row.get(key)).lower() == value[4:].lower():
+                    return False
             if value == "not.is.null" and row.get(key) is None:
                 return False
             if value == "is.null" and row.get(key) is not None:

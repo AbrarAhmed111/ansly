@@ -884,3 +884,62 @@ test('a lead removed by Ansly Cleanup stays stored and still blocks re-collectin
     asUser(ALICE, (tx) => tx.query(`update public.leads set removed_by = 'robot' where source_post_id = 'urn:li:activity:9001'`)),
   )
 })
+
+test('Job Outreach drafts, resume attachments, and send attempts stay owner-scoped', async () => {
+  const created = await asUser(ALICE, async (tx) => {
+    const resume = await tx.query(
+      `insert into public.resumes (name, file_path, file_type, version, role_label, parse_status)
+       values ('Backend.pdf', $1, 'pdf', 1, 'Backend Engineer', 'parsed') returning id`,
+      [`${ALICE}/library/backend.pdf`],
+    )
+    const draft = await tx.query(
+      `insert into public.job_outreach_drafts (job_text, job_info, resume_id, resume_selection, match_confidence,
+         status, recipient_email, subject, body)
+       values ('A complete pasted job advertisement', '{"application_method":"email"}', $1, 'auto', 'high',
+         'draft', 'jobs@example.com', 'Backend Engineer', 'Hello Hiring Team.') returning id`,
+      [resume.rows[0].id],
+    )
+    await tx.query(
+      `insert into public.email_send_attempts (job_outreach_id, provider, from_address, recipient_email, subject, body)
+       values ($1, 'gmail', 'alice@example.com', 'jobs@example.com', 'Backend Engineer', 'Hello')`,
+      [draft.rows[0].id],
+    )
+    return { resumeId: resume.rows[0].id, draftId: draft.rows[0].id }
+  })
+
+  await asUser(BOB, async (tx) => {
+    assert.equal((await tx.query('select * from public.job_outreach_drafts')).rows.length, 0)
+    assert.equal((await tx.query('update public.job_outreach_drafts set status = \'sent\'')).affectedRows, 0)
+    assert.equal((await tx.query('delete from public.job_outreach_drafts')).affectedRows, 0)
+    await assert.rejects(
+      tx.query(
+        `insert into public.job_outreach_drafts (job_text, resume_id)
+         values ('Another pasted ad', $1)`,
+        [created.resumeId],
+      ),
+      /foreign key/,
+    )
+  })
+
+  await asUser(ALICE, async (tx) => {
+    const { rows } = await tx.query(
+      'select status, resume_id, resume_selection from public.job_outreach_drafts where id = $1',
+      [created.draftId],
+    )
+    assert.deepEqual(rows, [{ status: 'draft', resume_id: created.resumeId, resume_selection: 'auto' }])
+    await tx.query('delete from public.resumes where id = $1', [created.resumeId])
+    const detached = await tx.query(
+      'select resume_id, resume_selection from public.job_outreach_drafts where id = $1',
+      [created.draftId],
+    )
+    assert.deepEqual(detached.rows, [{ resume_id: null, resume_selection: 'needs_selection' }])
+  })
+
+  await assert.rejects(
+    db.transaction(async (tx) => {
+      await tx.exec('set local role anon')
+      await tx.query('select * from public.job_outreach_drafts')
+    }),
+    /permission denied/,
+  )
+})

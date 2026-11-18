@@ -1,7 +1,7 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { BookmarkCheck, Brain, FilePen, Files, Rocket, FileText, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Settings, ShieldCheck, UserRound, Wand2, type LucideIcon } from 'lucide-react'
+import { BookmarkCheck, Brain, FilePen, Files, Rocket, FileText, LayoutDashboard, LogOut, Menu, Plus, Puzzle, Search, Send, Settings, ShieldCheck, UserRound, Wand2, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -44,12 +44,18 @@ const GROUPS: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: 'Jobs',
+    items: [
+      { href: '/leads', label: 'Leads from LinkedIn', icon: Search },
+      { href: '/job-outreach', label: 'Job Outreach', icon: Send },
+    ],
+  },
+  {
     label: 'Workspace',
     items: [
       { href: '/playground', label: 'Try it', icon: Wand2 },
       { href: '/memory', label: 'Application Memory', icon: Brain },
       { href: '/saved-answers', label: 'Saved answers', icon: BookmarkCheck },
-      { href: '/leads', label: 'Leads', icon: Search },
       { href: '/extension', label: 'Extension', icon: Puzzle },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],

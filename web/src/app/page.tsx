@@ -91,9 +91,9 @@ const REVIEWS: { name: string; role: string; quote: string; tone: string; founde
 
 const REFUSALS: { title: string; body: string }[] = [
   { title: 'Invent experience', body: 'If it isn’t in your profile or resume, it doesn’t go in an answer or a resume.' },
-  { title: 'Submit an application', body: 'It fills a field only when you click Fill. Sending is always yours.' },
+  { title: 'Submit an application form', body: 'The extension only fills a field when you click Fill. You submit the application yourself.' },
   { title: 'Browse LinkedIn for you', body: 'It reads only the posts already on your screen. No scrolling, no automation.' },
-  { title: 'Send email without you', body: 'Drafts wait in a review queue. Nothing leaves your Gmail until you approve it.' },
+  { title: 'Send email without your authorization', body: 'Job Outreach only sends after you choose Analyze and Send, or review the draft and click Send Email.' },
 ]
 
 const FAQ: { q: string; a: string }[] = [
@@ -104,7 +104,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Does it submit applications for me?',
-    a: 'Never. The extension drafts answers beside each field. You read them, edit them, click Fill, and submit the application yourself.',
+    a: 'The extension never submits application forms: it drafts answers for you to review and fill. For email applications, paste the job ad into Job Outreach and choose Analyze to review before sending, or Analyze and Send to authorize sending when recipient, instructions, email, and resume checks are confident.',
   },
   {
     q: 'Which job sites does the extension work on?',
@@ -112,7 +112,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'What can Ansly do with my Gmail?',
-    a: 'Only send the emails you approve. It asks Google for send-only permission, so it can’t read your inbox, and every draft waits for your review first.',
+    a: 'Ansly asks Google for send-only permission and cannot read your inbox. With Job Outreach, you can review a generated email before sending, or explicitly choose Analyze and Send for a confident application.',
   },
   {
     q: 'Who can see my profile and resumes?',
@@ -207,8 +207,9 @@ export default function Home() {
               </h1>
               <div className="max-w-md animate-fade-up [animation-delay:90ms] lg:pb-2">
                 <p className="text-body-lg leading-relaxed text-muted">
-                  Ansly drafts application answers, tailors your resume and finds hiring posts, using only what’s in your
-                  profile. Every sentence can be traced back to something you did.
+                  Paste a complete job ad from anywhere. Ansly finds the application details, writes an email from your
+                  profile and matches a role resume. Review it first, or choose Analyze and Send to email directly when
+                  every check is confident.
                 </p>
                 <div className="mt-7 flex flex-wrap items-center gap-3">
                   <StartButton />
@@ -285,13 +286,14 @@ export default function Home() {
                 </div>
                 <h2 className="mt-8 text-h1 tracking-tight">Reach hiring managers from your own Gmail.</h2>
                 <p className="mt-4 max-w-md text-body-lg leading-relaxed text-muted">
-                  Connect Gmail once. For every lead, Ansly writes a short, specific email and attaches the resume that fits
-                  the role. It sends from your address, so replies come straight to your inbox.
+                  Connect Gmail once. For a LinkedIn lead or a complete job ad you paste, Ansly writes a specific email
+                  and matches a role resume. Review and edit it before sending, or choose Analyze and Send when the
+                  application details and resume match are confident. Replies come straight to your inbox.
                 </p>
                 <ul className="mt-8 space-y-4">
                   {[
                     { icon: Lock, title: 'Send-only permission', body: 'Ansly can’t read your inbox or your contacts.' },
-                    { icon: UserCheck, title: 'You approve every email', body: 'Drafts wait in a review queue until you send them.' },
+                    { icon: UserCheck, title: 'You choose how to send', body: 'Review and send yourself, or authorize Analyze and Send for confident matches.' },
                     { icon: MailCheck, title: 'Sent as you', body: 'Recipients see your name and your address.' },
                   ].map(({ icon: Icon, title, body }) => (
                     <li key={title} className="flex gap-3">

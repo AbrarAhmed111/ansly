@@ -1,6 +1,8 @@
 import type {
   AnalyzeJobRequest,
   AnalyzeJobResponse,
+  JobOutreachResponse,
+  SendJobOutreachRequest,
   AnswerResponse,
   CleanupResponse,
   CleanupResult,
@@ -250,6 +252,18 @@ export const finishGmailConnect = (code: string, state: string) =>
 export const disconnectEmail = () => request<void>('DELETE', '/api/v1/email/connection')
 
 export const analyzeJob = (req: AnalyzeJobRequest) => call<AnalyzeJobResponse>('/api/v1/jobs/analyze', req)
+
+export const analyzeJobOutreach = (req: { id: string; job_text: string }) =>
+  call<JobOutreachResponse>('/api/v1/job-outreach/analyze', req)
+
+export const composeJobOutreach = (id: string, mode: 'analyze' | 'analyze_and_send') =>
+  call<JobOutreachResponse>(`/api/v1/job-outreach/${encodeURIComponent(id)}/compose`, { mode })
+
+export const sendJobOutreach = (id: string, req: SendJobOutreachRequest) =>
+  call<JobOutreachResponse>(`/api/v1/job-outreach/${encodeURIComponent(id)}/send`, req)
+
+export const deleteJobOutreach = (id: string) =>
+  request<void>('DELETE', `/api/v1/job-outreach/${encodeURIComponent(id)}`)
 
 export const startTailoring = (req: StartTailoringRequest) =>
   changedTailorings(call<StartTailoringResponse>('/api/v1/tailorings', req))

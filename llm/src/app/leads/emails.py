@@ -275,6 +275,7 @@ async def write_email(
     profile_text: str,
     candidate: Candidate,
     resume: Optional[Dict[str, Any]],
+    post_char_limit: int = 4000,
 ) -> EmailDraft:
     company = company_name(role, post_text)
     resume_block = ""
@@ -290,7 +291,7 @@ async def write_email(
     user = (f"Role: {role.get('title')}\nRole family: {role.get('role_family') or 'other'}\n"
             f"Seniority: {role.get('seniority') or '-'}\n"
             f"Technologies in the post: {', '.join(role.get('technologies') or []) or '-'}\n\n"
-            f"<post>\n{post_text[:4000]}\n</post>\n\n{facts}<profile>\n{profile_text}\n</profile>\n{resume_block}")
+            f"<post>\n{post_text[:post_char_limit]}\n</post>\n\n{facts}<profile>\n{profile_text}\n</profile>\n{resume_block}")
 
     def parse(data: Dict[str, Any]) -> EmailDraft | InsufficientEvidenceError:
         try:

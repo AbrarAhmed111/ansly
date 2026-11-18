@@ -1,11 +1,11 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { FileText, PenLine, Target, type LucideIcon } from 'lucide-react'
+import { FileText, PenLine, SendHorizontal, Target, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { prefersReducedMotion, useInView, useSteps } from './motion'
-import { FormScene, GmailScene, LeadsScene, ResumeScene } from './scenes'
+import { FormScene, GmailScene, LeadsScene, OutreachScene, ResumeScene } from './scenes'
 
 const TOUR: {
   id: string
@@ -38,6 +38,16 @@ const TOUR: {
     Scene: ResumeScene,
   },
   {
+    id: 'outreach',
+    icon: SendHorizontal,
+    title: 'Apply from any pasted job ad',
+    body: 'Copy the complete job description from any site and paste it into Job Outreach. Ansly finds the application email and instructions, writes a profile-grounded message, and matches a role resume. Review it yourself or choose Analyze and Send when all checks are confident.',
+    href: '/job-outreach',
+    link: 'Try Job Outreach',
+    steps: 4,
+    Scene: OutreachScene,
+  },
+  {
     id: 'leads',
     icon: Target,
     title: 'Leads from LinkedIn posts',
@@ -51,7 +61,7 @@ const TOUR: {
 
 const STEP_MS = 1400
 
-/** Three features, one stage: the scene plays while the section is on screen, then moves to the next feature. */
+/** Four features, one stage: the scene plays while the section is on screen, then moves to the next feature. */
 export function ProductTour() {
   const [ref, inView] = useInView<HTMLDivElement>(0.3)
   const [index, setIndex] = useState(0)

@@ -2,7 +2,7 @@
   "name": "ansly",
   "version": "0.1.0",
   "private": true,
-  "description": "AI job search workspace for discovering jobs, organizing leads, tailoring resumes, and preparing truthful application answers",
+  "description": "AI-powered job search assistant: discover jobs, organize LinkedIn leads, tailor resumes, draft profile-grounded application answers, and turn pasted job ads into personalized application emails with review or explicitly authorized Gmail sending. Built with WXT, Next.js, FastAPI, and Supabase.",
   "packageManager": "pnpm@10.34.6",
   "scripts": {
     "dev": "turbo run dev",

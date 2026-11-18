@@ -191,6 +191,50 @@ export function LeadsScene({ step }: { step: number }) {
 
 /* ---------------------------------------------------------------------------------------------------------------- */
 
+/** Paste a complete job advertisement, then prepare a matched, profile-grounded email. */
+export function OutreachScene({ step }: { step: number }) {
+  const ready = step >= 3
+  return (
+    <Frame title="Job Outreach · pasted job ad" aside={<span className="text-caption text-subtle">No URL needed</span>}>
+      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+        <div className={clsx('rounded-xl border border-border bg-bg p-4', fade, step >= 1 && 'border-accent/40')}>
+          <p className="text-caption font-medium text-muted">Copied from a company careers page</p>
+          <p className="mt-3 text-body-sm font-semibold">Senior Backend Engineer · Acme</p>
+          <p className="mt-2 text-caption leading-relaxed text-muted">
+            Build reliable services with Node.js and PostgreSQL. Apply by email to jobs@acme.example.
+          </p>
+          <div className={clsx('mt-3 inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-1 text-caption text-accent', fade, step >= 1 ? 'opacity-100' : 'opacity-0')}>
+            <Check className="h-3 w-3" aria-hidden /> Application details found
+          </div>
+        </div>
+        <div className={clsx('rounded-xl border border-border bg-bg p-4', fade, step >= 2 && 'border-success/30')}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-body-sm font-semibold">Application email</p>
+            <span className="text-caption text-muted">To: jobs@acme.example</span>
+          </div>
+          <p className="mt-3 text-caption font-medium text-muted">Subject: Backend Engineer application</p>
+          <p className="mt-2 text-caption leading-relaxed text-muted">
+            Hello Hiring Team, I’m reaching out to apply for the Senior Backend Engineer role…
+          </p>
+          <div className={clsx('mt-3 flex items-center justify-between gap-2 border-t border-border pt-3', fade, step >= 2 ? 'opacity-100' : 'opacity-0')}>
+            <span className="inline-flex items-center gap-1.5 text-caption text-muted">
+              <FileText className="h-3.5 w-3.5" aria-hidden /> Backend resume attached
+            </span>
+            <span className={clsx('inline-flex items-center gap-1 rounded-md bg-success-soft px-2 py-1 text-caption font-medium text-success', fade, ready ? 'opacity-100' : 'opacity-0')}>
+              <SendHorizontal className="h-3 w-3" aria-hidden /> Sent
+            </span>
+          </div>
+        </div>
+      </div>
+      <p className="px-5 pb-4 text-caption text-subtle">
+        Review and edit before sending, or choose Analyze and Send when Ansly is confident.
+      </p>
+    </Frame>
+  )
+}
+
+/* ---------------------------------------------------------------------------------------------------------------- */
+
 /** A Gmail draft: written by Ansly, the role resume attached, sent from the person's own account after review. */
 export function GmailScene({ step }: { step: number }) {
   const sent = step >= 4

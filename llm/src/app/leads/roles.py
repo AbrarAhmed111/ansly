@@ -76,8 +76,9 @@ def parse_role(data: Dict[str, Any], post_text: str) -> Dict[str, Any]:
     }
 
 
-async def detect_role(gateway: LLMGateway, post_text: str, target_roles: List[str]) -> Dict[str, Any]:
-    text = post_text[:MAX_POST_CHARS]
+async def detect_role(gateway: LLMGateway, post_text: str, target_roles: List[str],
+                      max_post_chars: int = MAX_POST_CHARS) -> Dict[str, Any]:
+    text = post_text[:max_post_chars]
     user = (f"Candidate's target roles: {', '.join(target_roles[:15]) or 'not specified'}\n\n"
             f"<post>\n{text}\n</post>")
     return await call_json(gateway, ROLE_SYSTEM, user, lambda d: parse_role(d, text), LEAD_ROLE, max_tokens=600)
@@ -220,7 +221,7 @@ def parse_match(data: Dict[str, Any], candidate_ids: List[str], unparsed: set) -
 
 
 async def match_resume(gateway: LLMGateway, role: Dict[str, Any], requirements: str,
-                       resumes: List[Dict[str, Any]]) -> MatchResult:
+                       resumes: List[Dict[str, Any]], max_requirement_chars: int = 1500) -> MatchResult:
     if not resumes:
         return MatchResult(None, "none", "You haven't added any role resumes yet.")
     summaries = sorted((resume_summary(r) for r in resumes), key=lambda s: -prescore(role, s))[:MAX_RESUMES]
@@ -239,6 +240,6 @@ async def match_resume(gateway: LLMGateway, role: Dict[str, Any], requirements: 
     user = (f"Role: {role.get('title')} ({role.get('seniority') or 'level not stated'}, {role.get('role_family')})\n"
             f"Technologies: {', '.join(role.get('technologies') or []) or '-'}\n"
             f"Responsibilities: {'; '.join(role.get('responsibilities') or []) or '-'}\n"
-            f"Post excerpt:\n{requirements[:1500]}\n\nResumes:\n" + "\n".join(lines))
+            f"Post excerpt:\n{requirements[:max_requirement_chars]}\n\nResumes:\n" + "\n".join(lines))
     return await call_json(gateway, MATCH_SYSTEM, user, lambda d: parse_match(d, ids, unparsed), RESUME_MATCH,
                            max_tokens=500)

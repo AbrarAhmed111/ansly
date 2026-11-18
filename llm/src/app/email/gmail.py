@@ -209,4 +209,6 @@ async def send(token: str, raw_message: bytes) -> str:
         raise ReauthRequiredError("Gmail refused to send for this account. Reconnect Gmail and allow sending.")
     if 400 <= response.status_code < 500:
         raise RejectedError("Gmail rejected this email. Check the recipient address.")
+    if response.status_code >= 500:
+        raise OutcomeUnknownError("Gmail had a problem sending this email. It may have been sent.")
     raise GmailError("Gmail had a problem sending this email. Nothing was confirmed as sent.")

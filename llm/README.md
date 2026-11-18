@@ -33,6 +33,9 @@ All `/api/v1` routes need `Authorization: Bearer <Supabase access token>`.
 | `POST` | `/api/v1/saved-answers/{id}/use` | Count a reuse |
 | `POST` | `/api/v1/events` | Usage event (`fill`, `use_saved_answer`) — no text |
 | `POST` | `/api/v1/leads/collect` | Qualify and save LinkedIn posts the extension read from a search page the user loaded (max 100 per request; the extension batches) |
+| `POST` | `/api/v1/job-outreach/analyze` | Extract job and application details from pasted advertisement text |
+| `POST` | `/api/v1/job-outreach/{id}/compose` | Generate a profile-grounded email and match a role resume |
+| `POST` | `/api/v1/job-outreach/{id}/send` | Send a reviewed or confidence-authorized email through the existing Gmail connection |
 
 Answer response:
 
@@ -59,6 +62,19 @@ Supabase JWTs are verified locally against the project's JWKS (ES256/RS256).
 Projects still on the legacy HS256 secret can set `SUPABASE_JWT_SECRET`;
 without it the token is checked with Supabase Auth. Profile reads use the
 user's own token, so row-level security applies.
+
+## Job Outreach email sending
+
+Job Outreach accepts a complete pasted job advertisement and does not require a job URL. The manual Analyze flow
+creates an editable draft and never sends it. Analyze and Send is authorized by the user's initial click, but sends
+only when the application email, instructions, generated email, and high-confidence role-resume match are all
+sufficiently clear. Ambiguous recipients, external application portals, generation failures, or uncertain resume
+matches stop for user review. Gmail OAuth credentials and email operations remain on the API; Gmail access is
+send-only.
+
+Configure `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, and
+`EMAIL_TOKEN_ENCRYPTION_KEY` from `.env.example` to enable sending. The local redirect URI is
+`http://localhost:3000/settings/email/callback`.
 
 ## LLM gateway
 
