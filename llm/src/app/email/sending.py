@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional, Union
 
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
@@ -32,10 +32,11 @@ async def send_gmail_email(
     connection: Dict[str, Any],
     access: str,
     *,
-    recipient: str,
+    recipient: Union[str, Iterable[str]],
     subject: str,
     body: str,
     resume_id: Optional[str],
+    cc: Optional[Union[str, Iterable[str]]] = None,
     draft_id: Optional[str] = None,
     lead_id: Optional[str] = None,
     job_outreach_id: Optional[str] = None,
@@ -57,7 +58,7 @@ async def send_gmail_email(
                 file_type=resume["file_type"],
                 content=content,
             )
-        raw = build_message(connection["email_address"], recipient, subject, body, attachment)
+        raw = build_message(connection["email_address"], recipient, subject, body, attachment, cc=cc)
         attempt = await rest.insert("email_send_attempts", {
             "draft_id": draft_id,
             "lead_id": lead_id,

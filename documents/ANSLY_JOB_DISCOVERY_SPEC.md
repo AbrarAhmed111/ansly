@@ -8,9 +8,14 @@ This specification is grounded in the actual repository state inspected during t
 
 Important verification note:
 - The current repository contains a strong AI job-application assistant architecture: Next.js web app, WXT browser extension, FastAPI LLM service, Supabase/PostgreSQL schema, and shared TypeScript contracts.
-- There is no concrete, live implementation of a separate Ansly Leads feature in the checked-in code at the time of this review.
+- Ansly Leads, including profile-grounded email drafting, role-based resume matching, and Gmail sending, is implemented in the checked-in code.
 - The repository also does not show a production-ready job-discovery or company-enrichment engine.
 - Therefore, this design reuses the verified existing architecture patterns and explicitly calls out the code-level gaps where the feature must be implemented from new code rather than extended from existing classes or tables.
+
+Job-source design constraint:
+- The initial design must not depend on paid search APIs, paid job feeds, or credentials from a third-party search provider.
+- Public ATS endpoints are company-board scoped. They are useful only after a board identifier is known; they do not provide global job search.
+- The source and access details below were checked against provider documentation linked in Section 9. Documentation does not itself grant a license to republish provider data, so terms and permitted use still require review before launch.
 
 This document distinguishes between:
 - implemented and verified repository behavior,
@@ -142,11 +147,10 @@ These confirm that the product is user-controlled, grounded, and does not auto-s
 
 At the time of inspection, the repository does not contain a concrete implementation of:
 - a Job Discovery feature,
-- a leads feature,
 - a user-facing employer-contact enrichment system,
 - a live email draft association model for jobs.
 
-Therefore, this specification introduces new backend/frontend data and services in a way that is consistent with the existing architecture, while clearly labeling those parts as new work.
+Ansly Leads and its email-drafting/sending flow do exist. Job Discovery-specific backend/frontend data, source adapters, matching, and employer research are new work and should integrate with the existing Leads and profile-grounding capabilities where appropriate.
 
 ---
 
@@ -170,7 +174,7 @@ The implementation should share:
 - the general dashboard shell,
 - LLM generation and grounding patterns,
 - common UI patterns for cards, forms, dialogs, and tables,
-- shared email-generation integration if the Leads generator is implemented in the same codebase.
+- the existing Leads email-writing, role/resume matching, draft, and Gmail-sending services, without reusing Leads records as job records.
 
 ### 3.3 Important boundary
 
@@ -178,7 +182,7 @@ Job Discovery must not replace Leads, nor should it silently change existing lea
 
 ### 3.4 Verified repository reality
 
-The repository currently shows a strong architecture for user profile retrieval, answer generation, and UI shell design, but not a concrete job-discovery engine or email-provisioning service. The specification therefore recommends the smallest viable extension pattern rather than a large “platform abstraction layer” that the repo does not yet justify.
+The repository includes a concrete Leads workflow, including email generation and sending, but not a Job Discovery engine or employer-research service. The specification therefore recommends the smallest viable extension pattern rather than a large “platform abstraction layer” that the repo does not yet justify.
 
 ---
 
@@ -190,11 +194,12 @@ The repository currently shows a strong architecture for user profile retrieval,
 - Normalize and deduplicate jobs from multiple providers.
 - Match jobs against the user’s actual profile and preferences.
 - Determine employer identity and official application route.
-- Use a supported public search provider to research employers and recruitment contacts without creating a custom web-search crawler.
+- Ground employer research in official ATS data and company-controlled career pages without requiring a paid search provider or building a general web crawler.
 - Surface contact routes with evidence and confidence.
 - Reuse the existing email-generation capability for application outreach.
 - Allow the user to save, revisit, and manage discovered jobs.
 - Keep all matching and generation grounded in verified user data.
+- Build and maintain a modest, verified directory of company career boards; do not imply that this directory covers every employer.
 
 ### 4.2 Non-goals for v1
 
@@ -204,7 +209,7 @@ The repository currently shows a strong architecture for user profile retrieval,
 - Guessing or inventing employer contact information.
 - Building a full ATS or job-board replacement.
 - Unbounded crawling of the internet.
-- Browser automation or scraping to bypass Google restrictions, CAPTCHAs, or anti-bot protections.
+- Browser automation or scraping to bypass provider access controls, CAPTCHAs, or anti-bot protections.
 - A full CRM or employer relationship tracker.
 - Replacing the Ansly Leads feature with job-search logic.
 
@@ -273,7 +278,7 @@ The repo already has:
 - `usedSources` patterns,
 - usage accounting.
 
-This is the right foundation for job matching and employer-contact reasoning, but with explicit validation and safe structured output.
+This is the right foundation for job matching, with explicit validation and safe structured output. Employer identity and contact routes should come from official-source evidence rather than LLM inference.
 
 ---
 
@@ -296,17 +301,17 @@ These need to be extended rather than duplicated:
 - API typing in [packages/types/src/api.ts](../packages/types/src/api.ts)
 - backend schemas and route registration
 - dashboard pages and navigation shell
-- any existing email-generation flow if Leads is implemented separately in a future branch
+- the existing Leads email-generation and sending services, with a Job Discovery context adapter and job-specific persistence rather than Leads-specific records
 
 ### 7.3 New components required
 
 These are genuinely new and not present in the repository:
+- company/ATS board directory and its verification workflow,
 - source adapters for job sources,
 - job normalization service,
 - job deduplication and uniqueness checks,
 - job relevance scoring service,
-- employer resolution and enrichment service,
-- contact-route discovery and validation service,
+- official-source employer and application-route resolver,
 - job detail UI,
 - saved-job workflows,
 - job discovery session and refresh process,
@@ -315,7 +320,7 @@ These are genuinely new and not present in the repository:
 
 ### 7.4 Important unresolved point
 
-The repo does not show an actual Leads email-generation implementation. The requirement says to reuse the existing Leads email-generation feature; if that feature is not yet implemented in this repository, the design must explicitly treat this as a dependency and integration contract, not as a currently available code path.
+The existing Leads generator is available and should be reused through its current profile-grounding, role/resume matching, and email-sending helpers. Job Discovery still needs its own orchestration, context mapping, and job-to-draft association; it should not create a second writer or bypass the existing send safeguards.
 
 ---
 
@@ -372,85 +377,64 @@ The feature must not assume unrestricted access to the public internet. Source s
 
 ### 9.1 Recommended strategy
 
-Prioritize sources in this order:
-1. official API or legitimate public feed from a partner or supported source,
-2. official company career page with a public jobs section,
-3. job search aggregator with a documented API,
-4. limited, user-authorized import or export flow,
-5. manual link submission or user-selected import for a compliant flow.
+Use sources in this order:
+1. official, publicly readable ATS job-board endpoints, once the company board identifier is known;
+2. an official RSS/Atom, JSON, or other public feed published by the employer;
+3. the employer's public career page, fetched only when its terms, robots instructions, and technical behavior permit the proposed access;
+4. user-authorized import (for example, a pasted job ad or an uploaded list) and manual board submission.
 
-This ordering is intentionally conservative.
+The feature must work without a paid search provider or paid job-data subscription. There is no global ATS endpoint: discovery is bounded by the maintained company/board directory and by boards users explicitly add. Search and filtering apply to the postings Ansly has legitimately fetched, not to the entire internet.
 
 ### 9.2 Source categories
 
-#### A. ATS platforms
-Examples include:
-- Greenhouse,
-- Lever,
-- Ashby,
-- SmartRecruiters,
-- Workday-based public career pages.
+#### A. Public ATS job-board interfaces
 
-These are legitimate when supported with API or public-page parsing. A generic scraper should not be used for all ATS implementations.
+The following documented read interfaces are suitable candidates for the first adapters. They are scoped to a known employer board and must not be presented as global search:
 
-#### B. Job boards with official APIs
-Examples include:
-- public search APIs that have documentation and legal terms,
-- licensed feeds,
-- partner APIs.
+| Provider | Documented public read shape | Discovery and data limits |
+| --- | --- | --- |
+| Greenhouse | [Job Board API](https://docs.greenhouse.io/job-board.html): `GET https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs`; `?content=true` includes job descriptions, departments, and offices. The board token is company-specific. | The docs state that only the application-submission `POST` requires Basic Auth. The documented list endpoint has no pagination parameter. Board tokens must come from a verified company career-board URL or curated directory entry. |
+| Lever | [Postings API](https://github.com/Lever/postings-api): `GET https://api.lever.co/v0/postings/{site}?skip={n}&limit={n}&mode=json`; an EU instance is also documented. | Returns published postings for a known company site and supports `skip`/`limit` pagination. Lever explicitly says the API does not provide full-text search over open jobs. The documented site name is company-specific. |
+| Ashby | [Job Postings API](https://developers.ashbyhq.com/docs/public-job-posting-api): `GET https://api.ashbyhq.com/posting-api/job-board/{JOB_BOARD_NAME}`. | Returns currently published postings for a known job-board name, including job and application URLs. The documentation explains how to identify the name from the company's hosted board. It does not document pagination or a global search endpoint. |
 
-These are preferred over ad hoc scraping.
+Use the provider's canonical application URL and listing URL as source facts. These endpoints are for discovery and listing data, not permission to submit applications or republish full descriptions without reviewing provider terms.
 
-#### C. Official company career pages
-Useful for the company identity and final application route. These are valuable for employer enrichment, but the implementation must restrict itself to public pages and safe extraction rules.
+#### B. Sources requiring credentials or partner access
 
-#### D. Search-based employer research
-This is the recommended mechanism for employer identification and contact discovery. Instead of building a custom internet-wide crawler, the system should use a supported search provider to research the employer associated with each job.
+Do not treat every ATS API as an unauthenticated public feed. SmartRecruiters' [Get job postings](https://developers.smartrecruiters.com/docs/get-job-postings.md) example uses an `X-SmartToken`; its [Job Board API](https://developers.smartrecruiters.com/docs/partners-job-board-api.md) documentation describes partner API-key authentication. It is not a no-credential MVP source. Add it only after Ansly has an explicitly authorized credential and the relevant commercial/data-use terms are reviewed. Apply the same gate to other APIs whose docs require credentials or partner approval.
 
-Recommended provider pattern:
-- Google Search through an officially supported API or licensed provider that returns Google-backed search results,
-- a provider abstraction so Ansly can swap vendors without rewriting the job research workflow,
-- strict quota tracking and caching,
-- no browser automation, no CAPTCHA bypass, no scraping of protected pages.
+#### C. Official company career pages and feeds
 
-This approach treats Google as the discovery engine and Ansly as the evaluator and contextualizer.
+Use official career pages as a way to identify a company's ATS board URL, as a fallback when a documented public feed is unavailable, or as the source for explicit application/contact instructions. Fetch only known, public pages and observe site terms, robots instructions, domain limits, and conservative request rates. Do not build a generic scraper for arbitrary sites or bypass access controls.
 
-#### E. User-authorized imports
-A user-uploaded list or a supported import flow may be used when the source cannot be integrated directly. This should require explicit user action and a clear consent boundary.
+An official page or feed can help verify a company's identity and route; it does not automatically make every page field reusable indefinitely. Keep source URLs and fetch timestamps, minimize stored content, and review the source's terms before production use.
 
-### 9.3 Google search integration and provider abstraction
+#### D. User-authorized imports and manual board nominations
 
-The system should not independently recreate a generic web search engine. Instead, it should query a supported search provider with targeted employer research prompts and then evaluate the results.
+Allow users to paste a job ad or submit an official career-board URL when Ansly does not yet support that employer. Clearly distinguish user-provided content from data fetched by an Ansly adapter. Validate URLs and use the explicit submission as consent to process that content, not as authorization to crawl unrelated pages.
 
-Required design constraints:
-- use an officially documented search API or an equivalent licensed provider; do not scrape the public Google search UI,
-- keep provider credentials in backend environment variables only,
-- treat all search snippets and result metadata as untrusted evidence,
-- allow fallback providers only if they meet the same compliance and licensing requirements,
-- keep a provider abstraction so the feature can switch vendors without rewriting the employer research workflow.
+#### E. No paid web-search dependency
 
-Recommended provider selection order:
-1. official Google-backed search API or a documented partner provider with compliant terms,
-2. a licensed search provider that returns Google Search results through a supported API contract,
-3. a limited, user-authorized import route when no compliant search API is available.
+Do not require Google Custom Search, a licensed search-results reseller, or another paid web-search API for employer discovery. Do not scrape public search result pages. Employer and application-route research should use ATS payloads, the verified company domain, official career pages/feeds, and user-provided sources. If no official source establishes a contact route, show that no verified route was found rather than guessing.
 
-This is intentionally narrower than a custom search crawler. Ansly should handle employer analysis and evidence validation, while the provider handles public web discovery.
+No third-party open-source job-board directory is a required dependency in v1. If a directory is considered later, review its data provenance, license, attribution obligations, update policy, and ATS/provider terms before importing it; an open-source code license does not by itself grant rights to the directory's data.
 
 ### 9.4 Source adapter architecture
 
 Each source should implement a common adapter contract:
 - `platform_id`
 - `name`
-- `is_supported()`
-- `discover_jobs(criteria)`
-- `fetch_job_details(job_ref)`
+- `discover_board(board_ref)`
+- `fetch_jobs(board_ref, cursor)`
+- `fetch_job_details(job_ref)` when the provider exposes a separate detail endpoint
 - `normalize(raw_job)`
-- `validate_source_permissions()`
+- `validate_board_ref(board_ref)`
+- `source_policy` / data-use review metadata
 - `extract_company_identity(raw_job)`
 - `extract_application_urls(raw_job)`
 - `handle_rate_limit()`
 
-This is needed so that future sources can be added without rewriting the matching engine or UI.
+The board directory, not the adapter, owns company-to-board discovery. Adapters only fetch a known, verified board. Provider limitations (including missing pagination, missing descriptions, or restricted CORS) must be explicit per adapter rather than hidden behind assumptions of a uniform global-search API.
 
 ---
 
@@ -482,7 +466,7 @@ Required fields:
 - preferred_skills[]
 - responsibilities[]
 - requirements[]
-- raw_payload (optional, kept as immutable source snapshot)
+- source_metadata (allowlisted fields; retain a full raw snapshot only when source terms and retention policy permit)
 
 ### 10.2 Deduplication logic
 
@@ -565,78 +549,41 @@ This is critical for avoiding false negatives.
 
 ### 12.1 Requirement
 
-After a job is found and matched, the system should identify the hiring employer and determine whether there is a legitimate, publicly available recruitment or application route.
+After a job is found and matched, identify the employer and official application route from the ATS response, the employer's own career pages, or explicit user-provided job content. Do not depend on paid search APIs or conduct internet-wide contact discovery.
 
 ### 12.2 What to distinguish
 
 The implementation must keep these separate:
-- the job board (e.g. LinkedIn or Indeed)
+- the ATS/provider,
 - the original listing page
 - the official company careers page
 - the employer itself
 - any recruitment agency or staffing company
-- any public general company contact route
+- any explicitly published recruitment email or other contact route
 
 ### 12.3 Workflow
 
 For each job:
-1. extract the company name and domain,
-2. resolve the employer website,
-3. check official career pages,
-4. perform targeted employer research through a supported search provider,
-5. evaluate result relevance against the identified employer and the specific job,
-6. inspect promising public pages only when permitted,
-7. validate whether an email looks like a recruitment or HR contact,
-8. store the evidence and source URL,
-9. keep the original job listing URL separately,
-10. surface the best available contact route without fabricating anything.
+1. take the company name, board identifier, job title, listing URL, and application URL from the normalized ATS result when available;
+2. verify that the board belongs to the company using the official career URL and the maintained board-directory record;
+3. if required fields are missing, inspect only the official company career page or source page associated with that record, subject to Sections 9.2 and 19.2;
+4. preserve the original listing and official application URLs separately;
+5. record the source URL and retrieval time for each employer, application, or contact claim;
+6. show missing or uncertain facts as unknown and let the user provide a source when needed.
 
-### 12.3.1 Employer search workflow
+The company/ATS directory is a bounded, maintained index, not a promise of complete employer coverage. Seed it from verified company career links and administrator-reviewed nominations; verify board keys against the provider's hosted board before enabling refresh. Do not infer a board key by trying arbitrary company names against provider APIs.
 
-The research workflow should be implemented in two stages.
+### 12.3.1 Contact route evidence
 
-Stage A: Search discovery
-- generate a small number of high-value search queries from the company name and job context,
-- query examples: `Company official website`, `Company careers email`, `Company HR contact`, `Company talent acquisition`, `Company recruitment page`, `Company careers page`,
-- record query text, provider, timestamp, result title, URL, snippet, and domain,
-- deduplicate repeated queries and reuse cached results for the same employer where appropriate.
-
-Stage B: Evidence verification
-- inspect promising public pages only when legally and technically permitted,
-- verify that the page belongs to the employer or is an official careers page,
-- extract recruiting emails, official application links, contact pages, or career pages,
-- attach source URLs and evidence snippets to each discovered contact or route,
-- keep unverified results labeled as such rather than treating a snippet alone as proof.
-
-Important: search snippets, page titles, and result domains are not sufficient evidence by themselves. Only explicit public sources that support the contact claim should be treated as validated.
-
-### 12.3.2 Query generation strategy
-
-The search query generator should be reusable and deterministic.
-
-Recommended behavior:
-- build queries from a small set of employer and role-specific keywords,
-- prioritize the employer name, domain, and recruitment-related terms,
-- avoid excessive query bursts,
-- keep the query set small and high-value,
-- re-use cached employer data across multiple jobs from the same company,
-- track provider rate limits and quotas.
-
-This keeps the system economical while still providing useful employer discovery evidence.
+Only retain a recruitment email or other contact route when it is explicitly present in an official listing, an official careers/contact page, or user-pasted job content. Store its `source_url`, evidence excerpt or field path, discovery method, verification state, and `last_checked_at`. Do not infer likely addresses such as `jobs@company.com` from a domain.
 
 ### 12.4 Contact priority hierarchy
 
 Priority order:
 1. dedicated recruitment or HR email,
 2. general company email,
-3. official careers page or application route,
+3. official application page or careers route,
 4. original listing URL.
-
-Examples of priority 1 items:
-- jobs@company.com
-- careers@company.com
-- recruiting@company.com
-- talent@company.com
 
 General company contact should be labeled separately as `general_company_contact`, not as recruitment-specific contact.
 
@@ -647,23 +594,23 @@ Every contact needs:
 - contact type,
 - source_url,
 - discovery_method,
-- evidence snippet or page reference,
+- evidence excerpt or source field path,
 - verification_status,
 - confidence,
 - last_checked_at,
-- associated_company_id.
+- associated_company_id or board_id.
 
-Important rule: a generic domain match is not proof that the email belongs to recruiting or HR. This is especially important for general company addresses and domain-based heuristics.
+An ATS-supplied application URL is an application route, not a verified email address. A domain match alone is not evidence that an address belongs to recruiting or HR.
 
 ### 12.6 Contact verification states
 
 A discovered employer contact should be classified as one of the following:
 - verified_public_contact: the email or URL appears on an accessible, relevant public page and is supported by the page text,
-- search_result_only: the provider returned a candidate email or URL, but the source page was not verified,
+- source_field_only: the ATS or user-pasted job content provided a route but it has not been independently checked against an official page,
 - unverified: insufficient evidence to trust the contact route,
 - invalid_or_rejected: the source is contradictory, irrelevant, or clearly not a recruitment pathway.
 
-This distinction prevents the application from claiming a contact is trustworthy when it only appears in a snippet or shares the same domain.
+This distinction prevents the application from treating an application form, third-party listing, or matching email domain as verified recruitment contact information.
 
 ---
 
@@ -673,17 +620,18 @@ This is a core requirement and must be treated as a first-class integration requ
 
 ### 13.1 What exists in the repo
 
-The repo currently shows a generalized AI answer-generation and user-knowledge retrieval flow, plus documentation for a future Leads email-generation feature. The actual codebase does not currently contain a working Leads draft editor. This means the Job Discovery implementation should integrate with the same user-knowledge and LLM-generation architecture, and maintain compatibility with any future Leads generator that is added later.
+The checked-in code includes the Leads email workflow in `llm/src/app/api/routes/lead_emails.py`, its grounded writer in `llm/src/app/leads/emails.py`, role detection and resume matching in `llm/src/app/leads/roles.py`, and shared Gmail sending in `llm/src/app/email/sending.py`. The workflow supports generated drafts, edits, resume selection, approval/version checks, and send-attempt claiming to prevent duplicate sends.
 
 ### 13.2 Reuse mandate
 
-The Job Discovery feature must not introduce a second independent email-generation system. It must reuse the existing platform capability for:
+The Job Discovery feature must not introduce a second independent email-generation system. It must reuse the existing capabilities for:
 - user knowledge retrieval,
 - email drafting logic,
 - validation,
-- storage/model conventions,
-- draft management if present,
-- copy/regenerate/edit flows.
+- role detection and resume matching,
+- Gmail connection and sending safeguards.
+
+Add a job-specific context adapter and job-to-draft persistence/association as needed. Do not create a Leads record merely to reuse the writer, and do not bypass the existing confirmation, authorization, or duplicate-send protections.
 
 ### 13.3 Job-specific context
 
@@ -703,7 +651,7 @@ The job draft should include:
 
 ### 13.4 Draft association
 
-A generated draft should be associated with the discovered job and, when relevant, with the employer contact route used. If the app later adds leads and job drafts as separate models, the association should remain explicit and not implicitly merge records.
+A generated draft should be associated with the discovered job and the specific application route used. Keep the job draft model separate from Leads drafts while sharing the writer, grounding, resume matching, and sender helpers.
 
 ### 13.5 Safety
 
@@ -837,20 +785,18 @@ These support user profile retrieval and AI grounding. Job Discovery must not cr
 
 ### 16.2 Proposed new tables
 
-The following are new and required for implementation:
+Keep the initial schema small and separate shared public-source data from user-owned search data. Shared source rows are populated by backend adapters and are not directly exposed to end-user database roles.
 
 #### `job_discovery_profiles`
-Purpose: user-configured saved search/filter profiles for jobs.
+Purpose: user-owned saved job criteria.
 Fields:
 - id
 - user_id
 - name
-- description
 - target_roles
 - keywords
 - excluded_keywords
 - technologies
-- industries
 - locations
 - remote_preferences
 - employment_types
@@ -859,27 +805,36 @@ Fields:
 - updated_at
 - active
 
-#### `job_sources`
-Purpose: registry for legally supported source providers.
+#### `job_boards`
+Purpose: shared, maintainable directory of verified employer career boards. One record identifies one employer's board on one ATS or official feed.
 Fields:
 - id
-- name
-- platform_type
-- is_active
-- api_enabled
-- auth_required
-- rate_limit_policy
-- created_at
+- company_name
+- company_domain
+- provider
+- board_key
+- official_careers_url
+- directory_source_url
+- verification_status
+- access_reviewed_at
+- is_enabled
+- last_checked_at
+- last_success_at
+- last_error_at
+- last_error_code
+- next_check_at
+- created_at / updated_at
 
-#### `jobs`
-Purpose: canonical job record.
+The directory is shared source metadata, not a user-owned search result. Seed it from verified official career links and administrator-reviewed nominations. Store the source and verification state for each board. Do not represent it as a complete company universe or allow unauthenticated writes.
+
+#### `job_postings`
+Purpose: shared, normalized cache of a provider posting, keyed to its verified board.
 Fields:
 - id
-- user_id (if user-saved or discovered for them only, or it can be a globally shared job with user_scope filtering applied)
-- source_id
+- board_id
 - external_job_id
 - canonical_url
-- source_url
+- listing_url
 - official_application_url
 - title
 - company_name
@@ -889,112 +844,25 @@ Fields:
 - employment_type
 - description
 - published_at
+- source_updated_at
 - first_seen_at
 - last_seen_at
 - last_verified_at
-- status
-- is_saved
-- raw_payload
+- listing_status
+- content_hash
+- source_metadata (allowlisted normalized fields only; avoid retaining full raw payloads by default)
 - created_at
 - updated_at
 
-#### `job_companies`
-Purpose: employer-level reference.
-Fields:
-- id
-- source_id
-- company_name
-- domain
-- official_website_url
-- careers_url
-- company_profile_text
-- created_at
-- updated_at
-
-#### `job_contacts`
-Purpose: employer/public-contact evidence.
-Fields:
-- id
-- job_id
-- company_id
-- contact_type
-- email
-- url
-- source_url
-- evidence_summary
-- verification_status
-- confidence
-- discovered_at
-- last_checked_at
-- created_at
-- updated_at
-
-#### `employer_research_runs`
-Purpose: tracks a run of employer research for a company or job.
-Fields:
-- id
-- user_id
-- job_id (nullable when company-level results are shared)
-- company_id
-- provider_name
-- status
-- queries_total
-- queries_executed
-- results_found
-- started_at
-- completed_at
-- summary_json
-- created_at
-
-#### `employer_search_queries`
-Purpose: stores the queries used to research a company.
-Fields:
-- id
-- research_run_id
-- company_id
-- query_text
-- created_at
-- result_count
-
-#### `employer_search_results`
-Purpose: stores provider search results and provenance for a company.
-Fields:
-- id
-- research_run_id
-- company_id
-- result_title
-- result_url
-- result_domain
-- result_snippet
-- provider_name
-- raw_result_json
-- created_at
-
-#### `employer_contact_findings`
-Purpose: stores a normalized employer contact route with evidence and confidence.
-Fields:
-- id
-- job_id
-- company_id
-- contact_type
-- email
-- url
-- source_url
-- evidence_summary
-- verification_status
-- confidence
-- is_primary
-- discovered_at
-- last_checked_at
-- created_at
-- updated_at
+Do not store complete provider payloads unless a source-specific data review justifies retention. A successful empty response is distinct from a timeout, 429, or provider error and must not expire cached postings.
 
 #### `job_matches`
-Purpose: job-to-user fit scoring and explanation.
+Purpose: user-owned job fit result; recompute when the posting or profile changes.
 Fields:
 - id
-- job_id
 - user_id
+- job_posting_id
+- profile_id
 - overall_score
 - match_category
 - matched_skills
@@ -1005,15 +873,14 @@ Fields:
 - created_at
 
 #### `job_discovery_runs`
-Purpose: a run/session for a discovery query or fetch.
+Purpose: user-owned discovery request and its progress/summary. Source health belongs on `job_boards`.
 Fields:
 - id
 - user_id
 - profile_id
-- source_id
+- status
 - started_at
 - completed_at
-- status
 - discovered_count
 - matched_count
 - duplicates_skipped
@@ -1021,27 +888,16 @@ Fields:
 - summary_json
 
 #### `saved_jobs`
-Purpose: user-saved opportunities.
+Purpose: user-owned association with a shared cached posting.
 Fields:
 - id
 - user_id
-- job_id
+- job_posting_id
 - saved_at
 - notes
 - status
 
-#### `job_drafts` or association tables for drafts
-Purpose: reuse or extend the existing draft model if the Leads email generator supports draft persistence.
-Fields:
-- id
-- user_id
-- job_id
-- draft_id (if reusing a generic draft model)
-- recipient_email
-- subject
-- body
-- created_at
-- updated_at
+Job application emails should use a job-specific draft or association compatible with the existing Leads writer and sender. Do not duplicate the writer or Gmail credentials/transport. Persist only the user-owned draft and source/job association needed by the existing draft lifecycle.
 
 ### 16.3 Relationships
 
@@ -1049,29 +905,30 @@ Recommended relationships:
 - one user has many discovery profiles,
 - one user has many discovery runs,
 - one user has many saved jobs,
-- one job belongs to one source,
-- one job has many job matches,
-- one job has many contacts,
-- one company has many jobs,
-- one company has many contacts,
-- one job may have one or more generated drafts.
+- one ATS board belongs to one company and has many cached job postings,
+- one user can have one match per profile/posting pair,
+- one user can save a shared job posting independently of other users,
+- one job posting may have one or more user-owned application drafts.
 
 ### 16.4 Indexing and constraints
 
 Recommended indexes:
-- `jobs`: by user_id, status, updated_at, source_id, canonical_url, company_domain, published_at
-- `job_contacts`: by job_id, company_id, email, verification_status
-- `job_matches`: by job_id and user_id
-- `saved_jobs`: by user_id, job_id
+- `job_boards`: by provider, company_domain, is_enabled, next_check_at
+- `job_postings`: by board_id, listing_status, last_seen_at, canonical_url, published_at
+- `job_matches`: by user_id, profile_id, and job_posting_id
+- `saved_jobs`: by user_id and job_posting_id
 - `job_discovery_profiles`: by user_id and active state
 
-Use a unique constraint on canonical job identity when available:
-- `(source_id, external_job_id)`
-- or `(canonical_url)` when the source provides a canonical page.
+Use a unique constraint on `(board_id, external_job_id)` and a suitable canonical-URL uniqueness rule when a provider lacks a stable ID. A user's saved-job row must be unique by user/posting, and a match row by user/profile/posting.
 
 ### 16.5 Row-level security
 
-All job-related tables must be user-scoped and protected by RLS. Jobs and company contact records should be protected to the user who saved or created them, unless shared-by-source data is intentionally designed to be shared. The initial v1 should keep all job and discovery data user-owned.
+Enable RLS on every table in the exposed `public` schema.
+
+- `job_discovery_profiles`, `job_discovery_runs`, `saved_jobs`, `job_matches`, and user-owned drafts use `user_id` ownership policies for `authenticated`, with `auth.uid() = user_id` in both `USING` and `WITH CHECK`.
+- `job_boards` and `job_postings` are shared backend-managed source metadata/cache. Revoke direct `anon`/`authenticated` table privileges, enable RLS without user policies, and do not expose them directly. The authenticated FastAPI API validates the user's request and returns only the needed normalized fields; backend service credentials remain server-side.
+- User-owned rows reference shared posting IDs, but that relationship must not allow one user to read another user's saves, matches, notes, profile criteria, or drafts.
+- Apply the same user ownership checks to any job-email draft association. Do not rely on `TO authenticated` without an ownership predicate.
 
 ---
 
@@ -1086,21 +943,17 @@ The backend should be implemented using the existing FastAPI route pattern and r
 - `PATCH /api/v1/jobs/discovery-profiles/{id}`
 - `DELETE /api/v1/jobs/discovery-profiles/{id}`
 - `POST /api/v1/jobs/discover`
+- `GET /api/v1/jobs/sources` (supported providers and freshness/status summary, without exposing internal credentials)
+- `GET /api/v1/jobs/saved`
 - `GET /api/v1/jobs`
 - `GET /api/v1/jobs/{id}`
 - `POST /api/v1/jobs/{id}/save`
 - `POST /api/v1/jobs/{id}/unsave`
 - `GET /api/v1/jobs/{id}/matches`
 - `POST /api/v1/jobs/{id}/generate-email`
-- `GET /api/v1/jobs/{id}/contacts`
-- `POST /api/v1/jobs/{id}/research-employer`
-- `GET /api/v1/jobs/{id}/research-employer`
 - `POST /api/v1/jobs/{id}/refresh`
-- `GET /api/v1/jobs/saved`
-- `GET /api/v1/companies/{company_id}/research`
-- `POST /api/v1/companies/{company_id}/research/refresh` 
 
-These endpoints should support both job-specific and company-level research runs. A company with multiple jobs should reuse cached employer research when the employer context is stable and the contact evidence remains valid.
+Company and application-route evidence should be derived from the verified board record and its official source data. Any user-facing refresh endpoint must operate only on a known board or posting and honor that adapter's request policy.
 
 ### 17.2 Request/response conventions
 
@@ -1128,7 +981,7 @@ Every endpoint must validate:
 
 ### 18.1 Why async processing is needed
 
-Job discovery, refresh, matching, and employer enrichment can require several network calls and AI operations. Doing these synchronously in a normal request would be poor UX and would complicate rate-limit handling.
+Discovery across multiple known boards, refresh, and profile matching can require several network calls and AI operations. Doing large runs synchronously in a normal request would be poor UX and would complicate rate-limit handling.
 
 ### 18.2 Recommended approach
 
@@ -1136,7 +989,7 @@ Implement discovery and refresh as background jobs, but keep the design simple a
 
 Recommended minimal pattern:
 - create a job discovery run record,
-- queue work per source or per run,
+- schedule bounded work per known board or run,
 - process records in batches,
 - update the job run status as each batch completes,
 - surface partial progress to the user.
@@ -1171,7 +1024,11 @@ This is a critical requirement. Do not implement:
 - crawler bypasses,
 - unauthorized profile harvesting,
 - cross-user data leakage,
-- personal email harvesting.
+- personal email harvesting,
+- paid-search-provider calls as an assumed source,
+- attempts to discover board tokens by probing arbitrary company names.
+
+Before enabling an adapter, record the official documentation URL, authentication requirements, supported fields, known pagination behavior, source terms/data-use review date, and conservative fetch policy. Treat missing provider rate-limit documentation as unknown; use internal per-board throttling, bounded concurrency, caching, timeouts, and backoff rather than assuming unlimited requests.
 
 ### 19.3 SSRF and URL safety
 
@@ -1191,7 +1048,7 @@ Any discovered contact route or email should be stored with provenance and confi
 
 ### 19.6 Data retention and deletion
 
-The feature must respect the same user-owned data model and deletion semantics as the rest of the app. Contact and job metadata should be deletable by the data owner and protected by RLS.
+User-owned profiles, matches, saves, notes, and drafts must follow the app's deletion semantics and RLS. Shared board metadata and cached public postings are backend-managed records, not user-owned rows; retain and refresh them only under the applicable source terms and documented retention policy. Do not store personal contact data without an explicit source and retention rationale.
 
 ---
 
@@ -1228,26 +1085,28 @@ The system should fail gracefully with an explicit user-facing explanation, and 
 
 Keep costs controlled by:
 - deterministic filtering before AI,
-- limiting source requests per run,
+- fetching only enabled, verified boards and limiting boards per user run,
 - bounding the number of jobs sent to AI per phase,
 - avoiding expensive enrichment for clearly irrelevant jobs,
-- caching normalized source data and employer-domain results when appropriate,
-- reusing employer search results across multiple jobs from the same company,
-- tracking provider quotas and search costs for Google-backed or licensed search providers,
+- caching normalized source data and company/board metadata,
+- tracking fetch timestamps and source health per board,
+- using conditional requests only when the provider documents support for them,
+- applying per-board request intervals, bounded concurrency, timeouts, and exponential backoff for 429/5xx/network failures,
 - supporting a user-defined source cap.
+
+The design has no required paid search, job-feed, or enrichment-provider cost. Expected operating costs are backend compute, database/storage, bandwidth, and LLM usage for selected relevant jobs. Provider access is not assumed to be unrestricted or licensed for republication; source-specific terms must be reviewed.
 
 ### 21.2 Token budget
 
 The LLM should be used for:
 - relevance scoring and explanation,
-- contact validation and classification,
 - drafting personalized application emails.
 
-It should not be used for simple filtering when deterministic logic is sufficient.
+Company identity, board validation, and official application URLs should come from source fields or deterministic validation, not LLM inference. It should not be used for simple filtering when deterministic logic is sufficient. Do not send complete job descriptions to an LLM until after inexpensive dedupe and filtering.
 
 ### 21.3 Scale expectations
 
-The initial implementation should assume modest, user-driven discovery runs rather than a large global crawl. This matches the current repository architecture and avoids introducing too much new infrastructure.
+The initial implementation should assume modest, user-driven refresh and discovery runs across a maintained, bounded directory rather than a global crawl. Use cached board results across users where source terms permit; keep user-specific profiles, scores, saves, and drafts isolated.
 
 ---
 
@@ -1257,6 +1116,9 @@ The initial implementation should assume modest, user-driven discovery runs rath
 
 Recommended unit test coverage:
 - source adapter normalization,
+- ATS fixture parsing for Greenhouse, Lever, and Ashby,
+- Lever pagination and board-key validation,
+- source-directory verification and provider-credential gating,
 - duplicate detection,
 - job scoring rules,
 - employer/contact classification,
@@ -1270,12 +1132,13 @@ Recommended unit test coverage:
 
 Recommended integration tests:
 - auth for job discovery endpoints,
-- RLS enforcement,
+- RLS enforcement for user-owned rows and denied direct access to shared source-cache tables,
 - adapter fetch + normalization,
+- source failure, 429/5xx, timeout, empty-board, and stale-cache behavior,
 - save/unsave job flows,
 - job detail retrieval,
 - match result generation,
-- contact-enrichment result persistence,
+- provenance for official application/contact routes,
 - application email generation via the shared email flow.
 
 ### 22.3 Frontend tests
@@ -1294,7 +1157,9 @@ Because this task integrates with the existing job-application assistant, the fo
 - existing Answer API still works,
 - existing dashboard routes still work,
 - existing browser extension still works,
-- email-generation flow remains compatible if the Leads feature later exists in the codebase.
+- Leads email generation, resume matching, and Gmail sending continue to work unchanged,
+- no job-source adapter requires a paid search API credential,
+- unsupported or credential-gated sources are not reported as publicly accessible.
 
 ---
 
@@ -1303,17 +1168,21 @@ Because this task integrates with the existing job-application assistant, the fo
 ### Phase 1 — foundation
 
 Includes:
-- database schema for jobs, companies, contacts, saved jobs, profile targets,
+- minimal RLS-separated schema for the shared board directory/posting cache and user-owned profiles, matches, saves, and drafts,
+- initial verified directory entries from official company career URLs,
 - new API route scaffolding,
-- source adapter contract,
+- source adapter contract and source-policy metadata,
 - basic normalization and dedupe,
-- UI skeleton for discovery list and details.
+- UI skeleton for discovery list and details,
+- first public adapters for Greenhouse, Lever, and Ashby after source terms review.
 
 Acceptance criteria:
 - user can create a discovery profile,
-- a job can be discovered and stored,
+- a verified board can be refreshed without a paid search API credential,
+- a job can be discovered from its official ATS board and stored in the shared cache,
 - duplicate jobs are prevented,
-- job detail loads.
+- job detail loads through an authenticated API,
+- the directory clearly indicates verified/disabled/stale board state.
 
 ### Phase 2 — matching and filtering
 
@@ -1331,22 +1200,23 @@ Acceptance criteria:
 ### Phase 3 — employer enrichment and contacts
 
 Includes:
-- company identification,
-- official application URL resolution,
-- public contact discovery,
-- provenance and confidence handling.
+- company identity and application route from ATS fields and official company sources,
+- contact routes only when explicitly published in source content,
+- source URLs, evidence, and confidence handling.
 
 Acceptance criteria:
-- a job can include an official application route and a contact route,
+- an official application route is shown when present, and a contact route is shown only when explicitly published in source content,
 - contact info is clearly labeled as recruitment vs general company contact,
-- no fabricated email appears.
+- absence of a verified contact is represented explicitly,
+- no fabricated email appears,
+- the feature never depends on a paid search endpoint or general-purpose web crawler.
 
 ### Phase 4 — email generation integration
 
 Includes:
 - job-to-email context builder,
 - reuse of the shared email-generation flow,
--ाजा association to the job,
+- draft association to the job,
 - draft display and editing.
 
 Acceptance criteria:
@@ -1359,13 +1229,15 @@ Acceptance criteria:
 Includes:
 - refresh logic,
 - expiry handling,
-- source health monitoring,
+- board-level source health monitoring and directory maintenance,
 - performance tuning,
 - cost review.
 
 Acceptance criteria:
 - stale jobs are labeled clearly,
-- source failures do not incorrectly mark all jobs as expired,
+- source failures do not incorrectly mark jobs expired,
+- a verified empty response is distinguished from request failure,
+- backoff and cache behavior prevent repeated failing requests,
 - discovery remains responsive.
 
 ---
@@ -1385,8 +1257,12 @@ Acceptance criteria:
 Priority: P0
 Description: Supported job sources can be queried and normalized.
 Acceptance criteria:
-- a supported adapter produces normalized job items,
-- unsupported sources fail with clear messaging,
+- Greenhouse, Lever, and Ashby adapters produce normalized records from verified company-board identifiers,
+- adapter fixtures cover provider-specific fields and pagination/board-scope behavior,
+- discovery is limited to enabled directory boards and never claims global ATS search,
+- unsupported or credential-gated sources fail with clear messaging,
+- no paid search API key is required,
+- source terms/access-review status and fetch timestamps are recorded before refresh is enabled,
 - job data is saved only after validation.
 
 ### JD-003: jobs are deduplicated
@@ -1409,9 +1285,11 @@ Acceptance criteria:
 Priority: P0
 Description: job discovery identifies the actual employer and the best public route.
 Acceptance criteria:
-- company identity is stored separately from the listing,
-- official application route is surfaced,
-- contacts are labeled by type and provenance.
+- company identity is associated with its verified ATS board,
+- official application route is surfaced from source fields or an official company page,
+- contact routes are included only when explicitly provided by an official or user-provided source,
+- routes and contacts are labeled by type and provenance,
+- no paid web-search API or general internet crawler is needed.
 
 ### JD-006: contact info is never fabricated
 Priority: P0
@@ -1442,7 +1320,8 @@ Priority: P1
 Description: jobs can be marked active, updated, stale, or expired.
 Acceptance criteria:
 - stale jobs are visible but labeled,
-- source failures do not destroy the existing record, 
+- provider errors, rate limits, and timeouts do not expire cached jobs,
+- a successful empty board response is distinguished from a failed fetch,
 - status changes are explicit.
 
 ---
@@ -1452,25 +1331,28 @@ Acceptance criteria:
 ### 25.1 Verified constraints in the repo
 
 - there is no current implementation of a concrete job discovery engine,
-- there is no verified Leads email-generation implementation in the checked-in code,
+- the Leads email-generation, role-based resume matching, and Gmail sending flow is implemented and should be reused,
 - there are no current job tables or discovery tables in the migration set,
 - the repo favors conservative, user-controlled AI workflows.
 
 ### 25.2 Risks
 
 - some source providers may not provide a compliant public feed,
-- employer-contact enrichment may be low-confidence for some companies,
+- public ATS endpoints are board-scoped, so directory coverage determines discovery coverage,
+- providers can change endpoints, fields, access policies, or terms,
+- employer contact routes may not be published or may be low-confidence,
 - job titles and descriptions are often noisy,
 - AI explanation can drift without structured validation,
-- scraping protected pages would be a compliance issue.
+- scraping protected pages would be a compliance issue,
+- a public endpoint does not by itself grant rights to persist or republish its data.
 
 ### 25.3 Open questions
 
 The following should be confirmed before coding:
-- which source or provider is officially approved first,
+- source-specific terms and data-use approval for each initial ATS adapter,
+- how initial company/board directory entries will be curated and who will review user nominations,
 - whether discovery is extension-driven, API-driven, or both,
-- whether the initial release supports a user-uploaded job list or only supported provider adapters,
-- whether the existing Leads email-generation feature is implemented elsewhere or is strictly a future requirement,
+- the maximum boards and refresh frequency for a user-initiated run,
 - whether the app should support a saved-jobs list or only a discovery results page plus a save action.
 
 ---
@@ -1479,22 +1361,27 @@ The following should be confirmed before coding:
 
 - [ ] Add Job Discovery route and nav item in the authenticated app shell.
 - [ ] Add job-discovery profile CRUD flows.
-- [ ] Define database schema for jobs, source, company, contact, match, and saved jobs.
-- [ ] Add source adapter contract and first supported source.
+- [ ] Define minimal RLS-separated tables for the shared board directory/postings cache and user-owned discovery data.
+- [ ] Establish a verified, maintainable company/ATS board directory with health and fetch timestamps.
+- [ ] Add source adapter contract and Greenhouse, Lever, and Ashby public-board adapters.
 - [ ] Add job normalization and duplicate detection.
 - [ ] Add AI matching and structured output validation.
-- [ ] Add employer identification and contact provenance.
+- [ ] Add official-source employer identification and contact provenance without paid web search.
 - [ ] Add official application route and original listing model.
 - [ ] Reuse the shared email-generation flow for job application drafts.
 - [ ] Add saved-job UX and lifecycle status handling.
 - [ ] Add background processing pattern for fetch and refresh runs.
-- [ ] Add RLS and user safety checks.
+- [ ] Add RLS, backend-only source-cache access, and user ownership checks.
+- [ ] Add adapter throttling, cache, backoff, and source-failure handling.
+- [ ] Review provider terms and source-data retention before enabling each adapter.
 - [ ] Add targeted testing and regression coverage.
 
 ---
 
 ## 27. Summary
 
-Ansly Job Discovery should be a grounded, user-controlled job search and employer research layer built on top of the existing Ansly architecture. It should reuse the current authenticated dashboard, profile and knowledge retrieval model, LLM gateway, and API patterns. It must not introduce a second user profile system, must not bypass source restrictions, must not fabricate contact information, and must reuse the shared email-generation capability rather than duplicate it. The implementation remains deliberately narrow at v1: discover, normalize, qualify, enrich, save, and prepare grounded application drafts without replacing the existing Ansly application-assistant behavior or introducing autonomous job-applying logic.
+Ansly Job Discovery should be a grounded, user-controlled discovery layer built on top of the existing Ansly architecture. It should reuse the authenticated dashboard, profile and knowledge retrieval model, LLM gateway, and implemented Leads email-generation, role/resume matching, and Gmail-sending capabilities. It must not introduce a paid search-provider dependency, imply global ATS coverage, bypass source restrictions, fabricate contact information, or duplicate the email-generation stack.
+
+The initial source strategy is a verified company/ATS board directory with public Greenhouse, Lever, and Ashby adapters, official company career-page fallbacks where permitted, and user-authorized/manual imports. Keep shared source metadata/cache separate from user-owned profiles, matches, saved jobs, and drafts, with explicit RLS and freshness/error tracking. The v1 remains narrow: discover, normalize, qualify, enrich from official evidence, save, and prepare grounded application drafts without autonomous job applying.
 
 This specification is designed to be implementation-ready for a coding agent in the current repository, while being explicit about which parts are verified and which parts are new work that must be added consistent with the existing architecture.

@@ -34,6 +34,7 @@ export default function JobOutreachPage() {
   const [jobText, setJobText] = useState('')
   const [result, setResult] = useState<JobOutreachResponse | null>(null)
   const [recipient, setRecipient] = useState('')
+  const [ccRecipient, setCcRecipient] = useState('')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [resumeId, setResumeId] = useState('')
@@ -51,6 +52,7 @@ export default function JobOutreachPage() {
       setJobText(saved.jobText)
       setResult(saved.result)
       setRecipient(saved.recipient)
+      setCcRecipient(saved.ccRecipient ?? '')
       setSubject(saved.subject)
       setBody(saved.body)
       setResumeId(saved.resumeId)
@@ -69,11 +71,12 @@ export default function JobOutreachPage() {
       jobText,
       result,
       recipient,
+      ccRecipient,
       subject,
       body,
       resumeId,
     })
-  }, [restored, result, jobText, recipient, subject, body, resumeId])
+  }, [restored, result, jobText, recipient, ccRecipient, subject, body, resumeId])
 
   useEffect(() => {
     if (result?.status !== 'sent') return
@@ -82,6 +85,8 @@ export default function JobOutreachPage() {
       setResult(null)
       setJobText('')
       setRecipient('')
+      setCcRecipient('')
+      setCcRecipient('')
       setSubject('')
       setBody('')
       setResumeId('')
@@ -101,6 +106,7 @@ export default function JobOutreachPage() {
   function show(next: JobOutreachResponse) {
     setResult(next)
     setRecipient(next.recipient_email ?? '')
+    setCcRecipient(next.cc_email ?? '')
     setSubject(next.subject)
     setBody(next.body)
     setResumeId(next.resume_id ?? '')
@@ -149,6 +155,7 @@ export default function JobOutreachPage() {
     try {
       show(await sendJobOutreach(result.id, {
         recipient_email: recipient.trim(),
+        cc_email: ccRecipient.trim() || undefined,
         subject,
         body,
         resume_id: resumeId || undefined,
@@ -191,7 +198,9 @@ export default function JobOutreachPage() {
       ['draft', 'needs_review', 'failed'].includes(result.status) &&
       result.error_code !== 'outcome_unknown' &&
       job?.application_method !== 'portal' &&
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.trim()) &&
+      recipient.split(/[,\s;]+/).filter(Boolean).every((address) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) &&
+      recipient.split(/[,\s;]+/).filter(Boolean).length > 0 &&
+      ccRecipient.split(/[,\s;]+/).filter(Boolean).every((address) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) &&
       subject.trim() &&
       body.trim() &&
       libraryItems.some((resume) => resume.id === resumeId) &&
@@ -343,12 +352,12 @@ export default function JobOutreachPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Recipient" htmlFor="outreach-recipient">
                   <Input
                     id="outreach-recipient"
                     className="input w-full"
-                    type="email"
+                    type="text"
                     value={recipient}
                     onChange={(event) => setRecipient(event.target.value)}
                     disabled={Boolean(busy) || job.application_method === 'portal'}
@@ -360,6 +369,22 @@ export default function JobOutreachPage() {
                   {job.application_emails.length > 0 && (
                     <p className="text-caption text-muted">
                       Addresses found in the advertisement: {job.application_emails.join(', ')}
+                    </p>
+                  )}
+                </Field>
+                <Field label="CC" htmlFor="outreach-cc">
+                  <Input
+                    id="outreach-cc"
+                    className="input w-full"
+                    type="text"
+                    value={ccRecipient}
+                    onChange={(event) => setCcRecipient(event.target.value)}
+                    disabled={Boolean(busy) || job.application_method === 'portal'}
+                    placeholder="Optional CC recipients"
+                  />
+                  {job.application_cc_emails?.length > 0 && (
+                    <p className="text-caption text-muted">
+                      CC addresses found: {job.application_cc_emails.join(', ')}
                     </p>
                   )}
                 </Field>

@@ -105,7 +105,17 @@ def test_message_has_one_recipient_and_the_file_unchanged():
     assert msg["To"] == "jobs@acme.test" and msg["Cc"] is None
     parts = list(msg.iter_attachments())
     assert parts[0].get_filename() == "Sam Backend.pdf" and parts[0].get_content() == pdf
-    for bad in ["a@b.test, c@d.test", "a@b.test\r\nBcc: x@y.test", "nope"]:
+    multiple = build_message(
+        "me@gmail.com",
+        "a@b.test, c@d.test",
+        "Multiple recipients",
+        "Hello,\n\nBody",
+        cc="manager@b.test; director@b.test",
+    )
+    multiple_msg = email.message_from_bytes(multiple, policy=policy.default)
+    assert multiple_msg["To"] == "a@b.test, c@d.test"
+    assert multiple_msg["Cc"] == "manager@b.test, director@b.test"
+    for bad in ["a@b.test\r\nBcc: x@y.test", "nope"]:
         with pytest.raises(InvalidMessageError):
             build_message("me@gmail.com", bad, "Hi", "Body")
     with pytest.raises(InvalidMessageError):

@@ -6,6 +6,7 @@ export interface JobOutreachDraftSnapshot {
   jobText: string
   result: JobOutreachResponse
   recipient: string
+  ccRecipient: string
   subject: string
   body: string
   resumeId: string
@@ -22,6 +23,9 @@ export function loadJobOutreachDraft(): JobOutreachDraftSnapshot | null {
       jobText: value.jobText,
       result: value.result as JobOutreachResponse,
       recipient: typeof value.recipient === 'string' ? value.recipient : value.result.recipient_email ?? '',
+      ccRecipient: typeof (value as Partial<JobOutreachDraftSnapshot>).ccRecipient === 'string'
+        ? (value as Partial<JobOutreachDraftSnapshot>).ccRecipient ?? ''
+        : value.result.cc_email ?? '',
       subject: typeof value.subject === 'string' ? value.subject : value.result.subject ?? '',
       body: typeof value.body === 'string' ? value.body : value.result.body ?? '',
       resumeId: typeof value.resumeId === 'string' ? value.resumeId : value.result.resume_id ?? '',

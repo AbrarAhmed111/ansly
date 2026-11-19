@@ -144,11 +144,152 @@ def test_recipient_and_subject_extraction_must_match_the_advertisement():
         ambiguous,
         POST + " Or email careers@acme.test.",
     )
-    assert parsed["recipient_email"] is None
-    assert parsed["recipient_ambiguous"] is True
+    assert parsed["recipient_email"] == "jobs@acme.test, careers@acme.test"
+    assert parsed["recipient_emails"] == ["jobs@acme.test", "careers@acme.test"]
+    assert parsed["recipient_ambiguous"] is False
 
     invented = dict(APPLICATION, selected_application_email="apply@acme.test")
     assert routes.parse_application_details(invented, POST)["recipient_email"] is None
+
+
+def test_multiple_primary_recipients_and_explicit_cc_are_separated():
+    text = (
+        "Send your resume to mzainab@hussainindustriesgroup.com, "
+        "careers@salesteq.com or hiring@salesteq.com."
+    )
+    parsed = routes.parse_application_details({
+        **APPLICATION,
+        "application_emails": [
+            "mzainab@hussainindustriesgroup.com",
+            "careers@salesteq.com",
+            "hiring@salesteq.com",
+        ],
+        "application_cc_emails": [],
+        "selected_application_email": None,
+        "recipient_confident": False,
+        "recipient_ambiguous": True,
+    }, text)
+    assert parsed["recipient_emails"] == [
+        "mzainab@hussainindustriesgroup.com",
+        "careers@salesteq.com",
+        "hiring@salesteq.com",
+    ]
+    assert parsed["recipient_email"] == (
+        "mzainab@hussainindustriesgroup.com, careers@salesteq.com, hiring@salesteq.com"
+    )
+    assert parsed["application_cc_emails"] == []
+    assert parsed["recipient_ambiguous"] is False
+
+
+def test_explicit_cc_is_not_treated_as_primary():
+    text = (
+        "Send your resume to mzainab@hussainindustriesgroup.com\n"
+        "CC:\n"
+        "ssaleem@hussainindustriesgroup.com\n"
+        "asalman@hussainindustriesgroup.com"
+    )
+    parsed = routes.parse_application_details({
+        **APPLICATION,
+        "application_emails": [
+            "mzainab@hussainindustriesgroup.com",
+            "ssaleem@hussainindustriesgroup.com",
+            "asalman@hussainindustriesgroup.com",
+        ],
+        "application_cc_emails": [
+            "ssaleem@hussainindustriesgroup.com",
+            "asalman@hussainindustriesgroup.com",
+        ],
+        "selected_application_email": "mzainab@hussainindustriesgroup.com",
+        "recipient_evidence": "Send your resume to mzainab@hussainindustriesgroup.com",
+    }, text)
+    assert parsed["recipient_email"] == "mzainab@hussainindustriesgroup.com"
+    assert parsed["recipient_emails"] == ["mzainab@hussainindustriesgroup.com"]
+    assert parsed["application_cc_emails"] == [
+        "ssaleem@hussainindustriesgroup.com",
+        "asalman@hussainindustriesgroup.com",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_send_places_multiple_primary_recipients_in_to_and_cc_recipients_in_cc(monkeypatch):
+    resume = _resume()
+    rest = _rest([resume])
+    storage = FakeStorage({resume["file_path"]: b"%PDF-1.7 resume"})
+    _use(rest, storage)
+    monkeypatch.setattr(routes, "detect_role", AsyncMock(return_value=ROLE))
+    monkeypatch.setattr(routes, "_extract_application", AsyncMock(return_value=routes.parse_application_details({
+        **APPLICATION,
+        "application_emails": ["mzainab@hussainindustriesgroup.com", "careers@salesteq.com"],
+        "application_cc_emails": ["ssaleem@hussainindustriesgroup.com"],
+        "selected_application_email": "mzainab@hussainindustriesgroup.com",
+    }, (
+        "Send your resume to mzainab@hussainindustriesgroup.com or careers@salesteq.com\n"
+        "CC: ssaleem@hussainindustriesgroup.com"
+    ))))
+    monkeypatch.setattr(routes, "match_resume", AsyncMock(return_value=MatchResult(
+        resume["id"], "medium", "Choose this resume manually.",
+    )))
+    monkeypatch.setattr(routes, "_compose", AsyncMock(return_value=EmailDraft(
+        subject="Senior Developer",
+        body="Hello Hiring Team,\n\nI am applying for this role. " + "Relevant evidence. " * 4,
+    )))
+    sent = []
+
+    async def fake_send(access, raw):
+        message = email.message_from_bytes(raw, policy=policy.default)
+        sent.append((message["To"], message["Cc"], message["Subject"]))
+        return "gmail-message-multi"
+
+    monkeypatch.setattr(routes, "access_for_sending", AsyncMock(return_value=(
+        {"email_address": "sam@gmail.com"}, "token",
+    )))
+    monkeypatch.setattr(gmail, "send", fake_send)
+
+    async with await _client() as client:
+        outreach_id, composed = await _analyze_and_compose(client, "analyze")
+        response = await client.post(
+            f"/api/v1/job-outreach/{outreach_id}/send",
+            json={
+                "recipient_email": "mzainab@hussainindustriesgroup.com, careers@salesteq.com",
+                "cc_email": "ssaleem@hussainindustriesgroup.com",
+                "subject": composed["subject"],
+                "body": composed["body"],
+                "resume_id": resume["id"],
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert sent == [(
+        "mzainab@hussainindustriesgroup.com, careers@salesteq.com",
+        "ssaleem@hussainindustriesgroup.com",
+        "Senior Developer",
+    )]
+
+
+@pytest.mark.parametrize("placeholder", [
+    "Your Name",
+    "[Your Name]",
+    "YOUR NAME",
+    "Applicant Name",
+    "Candidate Name",
+    "[Name]",
+    "Your Full Name",
+])
+def test_subject_placeholders_are_personalized(placeholder):
+    subject = f"Nodejs Developer - {placeholder}"
+    personalized = routes._personalize_subject(
+        subject,
+        {"profile": {"full_name": "Abrar Ahmed"}},
+    )
+    assert personalized == "Nodejs Developer - Abrar Ahmed"
+
+
+def test_subject_missing_profile_name_never_resolves_placeholder():
+    personalized = routes._personalize_subject(
+        "Nodejs Developer - Your Name",
+        {"profile": {"full_name": None}},
+    )
+    assert personalized == ""
 
 
 @pytest.mark.asyncio

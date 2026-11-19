@@ -22,6 +22,7 @@ class ComposeJobOutreachRequest(Strict):
 class SendJobOutreachRequest(Strict):
     automatic: bool = False
     recipient_email: Optional[str] = Field(default=None, max_length=320)
+    cc_email: Optional[str] = Field(default=None, max_length=1000)
     subject: Optional[str] = Field(default=None, max_length=200)
     body: Optional[str] = Field(default=None, max_length=10000)
     resume_id: Optional[UUID] = None
@@ -40,6 +41,7 @@ class JobOutreachResponse(BaseModel):
     status: Literal["analyzing", "analyzed", "draft", "needs_review", "sending", "sent", "failed"]
     job_info: Dict[str, Any] = Field(default_factory=dict)
     recipient_email: Optional[str] = None
+    cc_email: Optional[str] = None
     subject: str = ""
     body: str = ""
     resume_id: Optional[UUID] = None

@@ -24,6 +24,8 @@ const result: JobOutreachResponse = {
     application_method: 'email',
     application_method_evidence: 'Send to jobs@acme.test',
     application_emails: ['jobs@acme.test'],
+    application_cc_emails: [],
+    recipient_emails: ['jobs@acme.test'],
     recipient_email: 'jobs@acme.test',
     recipient_confident: true,
     recipient_ambiguous: false,
@@ -36,6 +38,7 @@ const result: JobOutreachResponse = {
     subject_uncertain: false,
   },
   recipient_email: 'jobs@acme.test',
+  cc_email: null,
   subject: 'Backend Engineer application',
   body: 'Hello Hiring Team.',
   resume_id: '22222222-2222-2222-2222-222222222222',
@@ -59,6 +62,7 @@ test('saves and restores an editable Job Outreach draft', () => {
     jobText: 'A complete backend job advertisement',
     result,
     recipient: 'edited@acme.test',
+    ccRecipient: 'manager@acme.test',
     subject: 'Edited subject',
     body: 'Edited application body',
     resumeId: '33333333-3333-3333-3333-333333333333',
@@ -66,6 +70,7 @@ test('saves and restores an editable Job Outreach draft', () => {
 
   expect(JSON.parse(window.localStorage.getItem(JOB_OUTREACH_STORAGE_KEY) ?? '{}')).toMatchObject({
     recipient: 'edited@acme.test',
+    ccRecipient: 'manager@acme.test',
     subject: 'Edited subject',
   })
   expect(loadJobOutreachDraft()).toMatchObject({
@@ -78,7 +83,7 @@ test('saves and restores an editable Job Outreach draft', () => {
 })
 
 test('clears the saved draft', () => {
-  saveJobOutreachDraft({ jobText: 'A job', result, recipient: '', subject: '', body: '', resumeId: '' })
+  saveJobOutreachDraft({ jobText: 'A job', result, recipient: '', ccRecipient: '', subject: '', body: '', resumeId: '' })
   clearJobOutreachDraft()
   expect(loadJobOutreachDraft()).toBeNull()
 })

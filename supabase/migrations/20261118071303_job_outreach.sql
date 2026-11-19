@@ -5,7 +5,9 @@ create table public.job_outreach_drafts (
   job_text text not null check (length(job_text) between 1 and 20000),
   job_info jsonb not null default '{}'::jsonb,
   recipient_email text check (recipient_email is null or
-    (length(recipient_email) <= 320 and recipient_email !~ '[[:cntrl:]]')),
+    (length(recipient_email) <= 1000 and recipient_email !~ '[[:cntrl:]]')),
+  cc_email text check (cc_email is null or
+    (length(cc_email) <= 1000 and cc_email !~ '[[:cntrl:]]')),
   subject text not null default '' check (length(subject) <= 200),
   body text not null default '' check (length(body) <= 10000),
   resume_id uuid,

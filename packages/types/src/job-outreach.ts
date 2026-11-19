@@ -11,7 +11,9 @@ export interface JobOutreachInfo {
   application_method: 'email' | 'portal' | 'other' | 'unclear'
   application_method_evidence: string
   application_emails: string[]
+  application_cc_emails: string[]
   recipient_email: string | null
+  recipient_emails: string[]
   recipient_confident: boolean
   recipient_ambiguous: boolean
   recipient_evidence: string
@@ -37,6 +39,7 @@ export interface JobOutreachResponse {
   status: JobOutreachStatus
   job_info: JobOutreachInfo
   recipient_email: string | null
+  cc_email: string | null
   subject: string
   body: string
   resume_id: string | null
@@ -56,6 +59,7 @@ export interface JobOutreachResponse {
 export interface SendJobOutreachRequest {
   automatic?: boolean
   recipient_email?: string
+  cc_email?: string
   subject?: string
   body?: string
   resume_id?: string
