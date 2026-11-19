@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.app.schemas.outreach_history import PreviousContact
+
 ResumeSelection = Literal["auto", "user", "none_by_user", "needs_selection"]
 DeliveryStatus = Literal["draft", "sending", "sent", "failed"]
 Confidence = Literal["high", "medium", "low", "none"]
@@ -48,6 +50,7 @@ class EmailDraftRecord(BaseModel):
     updated_at: Optional[str] = None
     # What blocks sending this draft right now (not counting the Gmail connection).
     issues: List[str] = Field(default_factory=list)
+    previous_contacts: List[PreviousContact] = Field(default_factory=list)
 
 
 class EmailDraftListResponse(BaseModel):
@@ -118,6 +121,7 @@ class SendPreviewItem(BaseModel):
     subject: str
     attachment_name: Optional[str] = None
     may_duplicate: bool = False
+    previous_contacts: List[PreviousContact] = Field(default_factory=list)
 
 
 class SendExcluded(BaseModel):
@@ -138,14 +142,16 @@ class SendRequest(Strict):
     confirm_token: str = Field(min_length=10, max_length=200_000)
     draft_ids: List[UUID] = Field(min_length=1, max_length=MAX_SEND_CHUNK)
     confirm_may_duplicate: bool = False
+    confirm_duplicate_draft_ids: List[UUID] = Field(default_factory=list, max_length=MAX_SEND_CHUNK)
 
 
 class SendResult(BaseModel):
     draft_id: UUID
     lead_id: Optional[UUID] = None
-    outcome: Literal["sent", "failed", "skipped", "not_attempted"]
+    outcome: Literal["sent", "failed", "needs_review", "skipped", "not_attempted"]
     code: Optional[str] = None
     message: Optional[str] = None
+    previous_contacts: List[PreviousContact] = Field(default_factory=list)
 
 
 class SendResponse(BaseModel):
@@ -188,6 +194,7 @@ class WriteAndSendResult(BaseModel):
     code: Optional[str] = None
     message: Optional[str] = None
     draft: Optional[EmailDraftRecord] = None
+    previous_contacts: List[PreviousContact] = Field(default_factory=list)
 
 
 class WriteAndSendResponse(BaseModel):

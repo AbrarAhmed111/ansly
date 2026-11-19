@@ -48,6 +48,8 @@ const result: JobOutreachResponse = {
   recommended_resume: null,
   resumes: [],
   review_reasons: [],
+  previous_contacts: [],
+  duplicate_confirmation_token: null,
   error_code: null,
   error_message: null,
   sent_at: null,

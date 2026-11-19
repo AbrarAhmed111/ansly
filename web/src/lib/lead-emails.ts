@@ -27,6 +27,9 @@ export const ERROR_LABEL: Record<string, string> = {
   provider_error: 'Gmail had a problem',
   storage_error: 'Couldn’t read the attachment',
   changed_since_confirmed: 'Changed after you confirmed',
+  duplicate_contact: 'Previously contacted for this role',
+  contact_send_in_progress: 'A matching email is already being sent',
+  history_unavailable: 'Couldn’t verify previous outreach history',
 }
 
 export type DraftState = 'needs_resume' | 'draft' | 'approved' | 'sending' | 'sent' | 'failed'
@@ -102,6 +105,7 @@ export async function generateDrafts(
 export interface SendSummary {
   sent: number
   failed: { draftId: string; code: string | null; message: string | null }[]
+  needsReview: string[]
   skipped: number
   notAttempted: number
   stopped: string | null
@@ -112,9 +116,10 @@ export async function sendConfirmed(
   confirmToken: string,
   draftIds: string[],
   confirmMayDuplicate: boolean,
+  confirmDuplicateDraftIds: string[],
   onProgress: (done: number, total: number) => void,
 ): Promise<SendSummary> {
-  const summary: SendSummary = { sent: 0, failed: [], skipped: 0, notAttempted: 0, stopped: null }
+  const summary: SendSummary = { sent: 0, failed: [], needsReview: [], skipped: 0, notAttempted: 0, stopped: null }
   let done = 0
   onProgress(0, draftIds.length)
   for (const chunk of chunks(draftIds, 10)) {
@@ -122,10 +127,12 @@ export async function sendConfirmed(
       summary.notAttempted += chunk.length
       continue
     }
-    const { results, stopped } = await sendEmailDrafts(confirmToken, chunk, confirmMayDuplicate)
+    const confirmedDuplicates = chunk.filter((id) => confirmDuplicateDraftIds.includes(id))
+    const { results, stopped } = await sendEmailDrafts(confirmToken, chunk, confirmMayDuplicate, confirmedDuplicates)
     for (const r of results) {
       if (r.outcome === 'sent') summary.sent++
       else if (r.outcome === 'failed') summary.failed.push({ draftId: r.draft_id, code: r.code, message: r.message })
+      else if (r.outcome === 'needs_review') summary.needsReview.push(r.draft_id)
       else if (r.outcome === 'skipped') summary.skipped++
       else summary.notAttempted++
     }

@@ -4,7 +4,8 @@ import type { JobOutreachResponse } from '@ansly/types'
 import { AlertCircle, Check, FileText, LoaderCircle, Mail, Send, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Field, Input, Select, Textarea } from '@/components/ui'
+import { Alert, Button, Card, Field, Input, Select, Textarea } from '@/components/ui'
+import { useConfirm } from '@/components/dialog'
 import { GmailStatus } from '@/components/email-connection'
 import { useRoleResumes } from '@/components/resume/role-resumes'
 import {
@@ -45,12 +46,17 @@ export default function JobOutreachPage() {
   const progressRef = useRef<HTMLDivElement>(null)
   const [restored, setRestored] = useState(false)
   const library = useRoleResumes()
+  const [confirm, confirmDialog] = useConfirm()
 
   useEffect(() => {
     const saved = loadJobOutreachDraft()
     if (saved) {
       setJobText(saved.jobText)
-      setResult(saved.result)
+      setResult({
+        ...saved.result,
+        previous_contacts: saved.result.previous_contacts ?? [],
+        duplicate_confirmation_token: saved.result.duplicate_confirmation_token ?? null,
+      })
       setRecipient(saved.recipient)
       setCcRecipient(saved.ccRecipient ?? '')
       setSubject(saved.subject)
@@ -104,7 +110,11 @@ export default function JobOutreachPage() {
   }, [busy])
 
   function show(next: JobOutreachResponse) {
-    setResult(next)
+    setResult({
+      ...next,
+      previous_contacts: next.previous_contacts ?? [],
+      duplicate_confirmation_token: next.duplicate_confirmation_token ?? null,
+    })
     setRecipient(next.recipient_email ?? '')
     setCcRecipient(next.cc_email ?? '')
     setSubject(next.subject)
@@ -150,6 +160,25 @@ export default function JobOutreachPage() {
 
   async function send() {
     if (!result) return
+    const hasPreviousContacts = result.previous_contacts.length > 0
+    if (hasPreviousContacts) {
+      const summary = result.previous_contacts.map((contact) =>
+        `${contact.recipient_email} · ${contact.role_title}${contact.company_name ? ` · ${contact.company_name}` : ''} · ${
+          contact.source === 'job_outreach' ? 'Job Outreach' : 'LinkedIn Leads'
+        }${contact.sent_at ? ` · ${new Date(contact.sent_at).toLocaleString()}` : ''}`,
+      ).join('\n')
+      const approved = await confirm({
+        title: "You've Already Contacted This Person",
+        description: `Review the previous outreach before sending again:\n${summary}`,
+        confirmLabel: 'Send Again',
+        tone: 'danger',
+      })
+      if (!approved) return
+      if (!result.duplicate_confirmation_token) {
+        setError('Sending again is unavailable because duplicate confirmation is not configured on the server.')
+        return
+      }
+    }
     setBusy('send')
     setError(null)
     try {
@@ -159,6 +188,9 @@ export default function JobOutreachPage() {
         subject,
         body,
         resume_id: resumeId || undefined,
+        ...(hasPreviousContacts
+          ? { duplicate_confirmation_token: result.duplicate_confirmation_token! }
+          : {}),
       }))
     } catch (reason) {
       setError(errorMessage(reason))
@@ -209,6 +241,7 @@ export default function JobOutreachPage() {
 
   return (
     <div className="animate-fade-up space-y-6 pb-24">
+      {confirmDialog}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-caption font-semibold uppercase tracking-wide text-accent">Job Outreach</p>
@@ -325,6 +358,22 @@ export default function JobOutreachPage() {
                     {result.review_reasons.map((reason) => <li key={reason}>{reason}</li>)}
                   </ul>
                 </div>
+              )}
+              {result.previous_contacts.length > 0 && (
+                <Alert tone="warning" title="Previously contacted">
+                  <p>Review the earlier outreach before sending another email for this role.</p>
+                  <ul className="mt-2 space-y-1">
+                    {result.previous_contacts.map((contact, index) => (
+                      <li key={`${contact.history_id ?? contact.recipient_email}-${index}`}>
+                        {contact.recipient_email} · {contact.role_title}
+                        {contact.company_name ? ` · ${contact.company_name}` : ''}
+                        {' · '}
+                        {contact.source === 'job_outreach' ? 'Job Outreach' : 'LinkedIn Leads'}
+                        {contact.sent_at ? ` · ${new Date(contact.sent_at).toLocaleString()}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </Alert>
               )}
               {result.error_message && result.error_code !== 'outcome_unknown' && (
                 <p className="text-body-sm text-danger">{result.error_message}</p>
@@ -454,7 +503,7 @@ export default function JobOutreachPage() {
                   disabled={!canSend}
                   onClick={() => void send()}
                 >
-                  Send Email
+                  {result.previous_contacts.length > 0 ? 'Send Again' : 'Send Email'}
                 </Button>
               </div>
             </Card>

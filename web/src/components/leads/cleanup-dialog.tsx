@@ -10,19 +10,25 @@ import { CLEANUP_CATEGORY_LABEL, type CleanupSummary } from '@/lib/lead-cleanup'
 
 export type CleanupState =
   | { step: 'idle' }
+  | { step: 'choose_scope' }
   | { step: 'running'; done: number; total: number; removed: number }
   | { step: 'done'; summary: CleanupSummary }
 
 type Choice = 'remove' | 'keep'
+export type CleanupScope = 'email' | 'link' | 'all'
 
 /** Progress, then what Ansly Cleanup removed and the leads it wants the user to decide on, one by one. */
 export function CleanupDialog({
   state,
   onClose,
+  onChooseScope,
+  scopeCounts,
   onRemove,
 }: {
   state: CleanupState
   onClose: () => void
+  onChooseScope: (scope: CleanupScope) => void
+  scopeCounts: Record<CleanupScope, number>
   /** Removes the leads the user chose (hidden from the list, kept stored); resolves when done. */
   onRemove: (results: CleanupResult[]) => Promise<void>
 }) {
@@ -49,13 +55,50 @@ export function CleanupDialog({
   }
 
   return (
-    <Dialog open={state.step !== 'idle'} onClose={() => state.step === 'done' && !removing && onClose()} labelledBy="cleanup-title" wide>
+    <Dialog
+      open={state.step !== 'idle'}
+      onClose={() => (state.step === 'done' || state.step === 'choose_scope') && !removing && onClose()}
+      labelledBy="cleanup-title"
+      wide
+    >
       <div className="flex items-center gap-2">
         <WandSparkles className="h-5 w-5 text-accent" aria-hidden />
         <h2 id="cleanup-title" className="text-title">
           Ansly Cleanup
         </h2>
       </div>
+
+      {state.step === 'choose_scope' && (
+        <div className="mt-4 space-y-3">
+          <p className="text-body-sm text-muted">Which leads should Ansly check against your profile?</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Button
+              variant="secondary"
+              disabled={!scopeCounts.email}
+              onClick={() => onChooseScope('email')}
+            >
+              Email leads ({scopeCounts.email})
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!scopeCounts.link}
+              onClick={() => onChooseScope('link')}
+            >
+              Link leads ({scopeCounts.link})
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!scopeCounts.all}
+              onClick={() => onChooseScope('all')}
+            >
+              All leads ({scopeCounts.all})
+            </Button>
+          </div>
+          <p className="text-caption text-subtle">
+            Contacted leads and emails already sent are excluded from every option.
+          </p>
+        </div>
+      )}
 
       {state.step === 'running' && (
         <div className="mt-4 space-y-3" role="status">

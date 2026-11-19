@@ -221,13 +221,13 @@ export function EmailReview({ leadIds }: { leadIds: string[] | null }) {
     }
   }
 
-  async function send(mayDuplicate: boolean) {
+  async function send(mayDuplicate: boolean, duplicateDraftIds: string[]) {
     if (sendState.step !== 'confirm' || !sendState.preview.confirm_token) return
     const { preview } = sendState
     const ids = preview.ready.map((r) => r.draft_id)
     setSendState({ step: 'sending', done: 0, total: ids.length })
     try {
-      const summary = await sendConfirmed(preview.confirm_token!, ids, mayDuplicate, (done, total) =>
+      const summary = await sendConfirmed(preview.confirm_token!, ids, mayDuplicate, duplicateDraftIds, (done, total) =>
         setSendState({ step: 'sending', done, total }),
       )
       setSendState({ step: 'done', summary })
@@ -381,7 +381,15 @@ export function EmailReview({ leadIds }: { leadIds: string[] | null }) {
         document.body,
       )}
 
-      <SendDialog state={sendState} onClose={() => setSendState({ step: 'idle' })} onSend={send} />
+      <SendDialog
+        state={sendState}
+        onClose={() => setSendState({ step: 'idle' })}
+        onReview={(draftId) => {
+          setSelectedId(draftId)
+          setSendState({ step: 'idle' })
+        }}
+        onSend={send}
+      />
     </div>
   )
 }
@@ -548,6 +556,24 @@ function DraftEditor({
           )}
         </div>
       ) : null}
+      {draft.previous_contacts.length > 0 && (
+        <div className="px-5 pt-4">
+          <Alert tone="warning" title="Previously contacted">
+            <p className="mb-2">Review the earlier outreach before sending another email for this role.</p>
+            <ul className="space-y-1">
+              {draft.previous_contacts.map((contact, index) => (
+                <li key={`${contact.history_id ?? contact.recipient_email}-${index}`}>
+                  {contact.recipient_email} · {contact.role_title}
+                  {contact.company_name ? ` · ${contact.company_name}` : ''}
+                  {' · '}
+                  {contact.source === 'job_outreach' ? 'Job Outreach' : 'LinkedIn Leads'}
+                  {contact.sent_at ? ` · ${new Date(contact.sent_at).toLocaleString()}` : ''}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        </div>
+      )}
 
       {/* Email header, laid out like a mail client */}
       <div className="mt-2 divide-y divide-border border-b border-border">
@@ -837,6 +863,7 @@ function ResumePicker({
 function SendDialog({
   state,
   onClose,
+  onReview,
   onSend,
 }: {
   state:
@@ -845,10 +872,15 @@ function SendDialog({
     | { step: 'sending'; done: number; total: number }
     | { step: 'done'; summary: SendSummary }
   onClose: () => void
-  onSend: (mayDuplicate: boolean) => void
+  onReview: (draftId: string) => void
+  onSend: (mayDuplicate: boolean, duplicateDraftIds: string[]) => void
 }) {
   const [mayDuplicateOk, setMayDuplicateOk] = useState(false)
-  useEffect(() => setMayDuplicateOk(false), [state.step])
+  const [sendAgainOk, setSendAgainOk] = useState(false)
+  useEffect(() => {
+    setMayDuplicateOk(false)
+    setSendAgainOk(false)
+  }, [state.step])
   const open = state.step !== 'idle'
 
   return (
@@ -875,6 +907,30 @@ function SendDialog({
                   {item.attachment_name ? `📎 ${item.attachment_name}` : 'No attachment'}
                   {item.may_duplicate && ' · may already have been sent'}
                 </p>
+                {item.previous_contacts.length > 0 && (
+                  <div className="mt-2 rounded-md bg-warning-soft/50 p-2 text-caption text-warning">
+                    <p className="font-medium">Previously contacted for this role:</p>
+                    <ul className="mt-1 space-y-1">
+                      {item.previous_contacts.map((contact, index) => (
+                        <li key={`${contact.history_id ?? contact.recipient_email}-${index}`}>
+                          {contact.recipient_email} · {contact.role_title}
+                          {contact.company_name ? ` · ${contact.company_name}` : ''}
+                          {' · '}
+                          {contact.source === 'job_outreach' ? 'Job Outreach' : 'LinkedIn Leads'}
+                          {contact.sent_at ? ` · ${new Date(contact.sent_at).toLocaleString()}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mt-1"
+                      onClick={() => onReview(item.draft_id)}
+                    >
+                      Review email
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -898,6 +954,17 @@ function SendDialog({
               I checked Gmail’s Sent folder; these weren’t sent. Send them again.
             </label>
           )}
+          {state.preview.ready.some((r) => r.previous_contacts.length > 0) && (
+            <label className="mt-3 flex items-start gap-2 text-body-sm">
+              <input
+                type="checkbox"
+                checked={sendAgainOk}
+                onChange={(e) => setSendAgainOk(e.target.checked)}
+                className="mt-1 h-4 w-4 accent-[rgb(var(--accent))]"
+              />
+              I reviewed the previous contact history and explicitly approve sending again.
+            </label>
+          )}
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="secondary" onClick={onClose}>
               Cancel
@@ -906,11 +973,17 @@ function SendDialog({
               icon={Send}
               disabled={
                 !state.preview.confirm_token ||
-                (state.preview.ready.some((r) => r.may_duplicate) && !mayDuplicateOk)
+                (state.preview.ready.some((r) => r.may_duplicate) && !mayDuplicateOk) ||
+                (state.preview.ready.some((r) => r.previous_contacts.length > 0) && !sendAgainOk)
               }
-              onClick={() => onSend(mayDuplicateOk)}
+              onClick={() => onSend(
+                mayDuplicateOk,
+                sendAgainOk
+                  ? state.preview.ready.filter((r) => r.previous_contacts.length > 0).map((r) => r.draft_id)
+                  : [],
+              )}
             >
-              Send {state.preview.ready.length}
+              {state.preview.ready.some((r) => r.previous_contacts.length > 0) ? 'Send Again' : `Send ${state.preview.ready.length}`}
             </Button>
           </div>
         </>
@@ -944,6 +1017,11 @@ function SendDialog({
                 </li>
               ))}
             </ul>
+          )}
+          {state.summary.needsReview.length > 0 && (
+            <Alert tone="warning" className="mt-3" title="Review required">
+              A recent outreach was detected before sending. Review the email and confirm again from the Send dialog.
+            </Alert>
           )}
           <p className="mt-3 text-body-sm text-muted">
             Sent leads are marked Contacted. Failed emails keep their text; use Retry failed when you’re ready.

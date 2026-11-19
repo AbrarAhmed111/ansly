@@ -86,7 +86,8 @@ class FakeRest:
         self.tables = copy.deepcopy(tables if tables is not None else SAMPLE_PROFILE)
         for name in ["profiles", "experiences", "projects", "skills", "education", "achievements",
                      "saved_answers", "usage_events", "profile_facts", "resumes", "job_contexts",
-                     "resume_tailorings", "candidate_evidence", "llm_calls", "job_outreach_drafts"]:
+                     "resume_tailorings", "candidate_evidence", "llm_calls", "job_outreach_drafts",
+                     "email_send_attempts", "outreach_contact_history", "lead_drafts", "leads"]:
             self.tables.setdefault(name, [])
         self.rate_limit_hits = 0
 

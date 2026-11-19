@@ -329,6 +329,10 @@ async def test_analyze_workflow_never_sends_until_the_user_sends_and_duplicate_s
     assert sent == ["jobs@acme.test"]
     attempts = rest.tables["email_send_attempts"]
     assert len(attempts) == 1 and attempts[0]["job_outreach_id"] == outreach_id
+    history = rest.tables["outreach_contact_history"]
+    assert len(history) == 1
+    assert history[0]["status"] == "sent" and history[0]["source"] == "job_outreach"
+    assert history[0]["normalized_email"] == "jobs@acme.test"
 
 
 @pytest.mark.asyncio
@@ -364,6 +368,58 @@ async def test_automated_workflow_sends_only_a_high_confidence_resume_match(monk
         assert sent_response.json()["status"] == repeated.json()["status"] == "sent"
 
     assert sent == [("jobs@acme.test", "Backend Engineer application.")]
+
+
+@pytest.mark.asyncio
+async def test_previous_linkedin_contact_pauses_job_outreach_until_explicit_send_again(monkeypatch):
+    resume = _resume()
+    rest = _rest([resume])
+    rest.tables["outreach_contact_history"].append({
+        "id": "previous-linkedin-contact",
+        "normalized_email": "jobs@acme.test",
+        "recipient_email": "jobs@acme.test",
+        "role_title": "Backend Developer",
+        "company_name": "Acme",
+        "source": "linkedin_leads",
+        "status": "sent",
+        "sent_at": "2026-02-03T10:00:00Z",
+    })
+    _use(rest)
+    _mock_analysis(monkeypatch, MatchResult(resume["id"], "high", "Backend resume."))
+    send = AsyncMock(return_value=SendOutcome(True, message_id="repeat-send"))
+    monkeypatch.setattr(routes, "send_gmail_email", send)
+    monkeypatch.setattr(
+        routes,
+        "access_for_sending",
+        AsyncMock(return_value=({"email_address": "sam@gmail.com"}, "token")),
+    )
+
+    async with await _client() as client:
+        outreach_id, composed = await _analyze_and_compose(client, "analyze_and_send")
+        assert composed["status"] == "needs_review"
+        assert composed["can_auto_send"] is False
+        assert composed["previous_contacts"][0]["source"] == "linkedin_leads"
+        assert composed["duplicate_confirmation_token"]
+
+        paused = await client.post(f"/api/v1/job-outreach/{outreach_id}/send", json={"automatic": True})
+        assert paused.status_code == 200
+        assert paused.json()["status"] == "needs_review"
+        send.assert_not_awaited()
+
+        repeated = await client.post(
+            f"/api/v1/job-outreach/{outreach_id}/send",
+            json={
+                "recipient_email": composed["recipient_email"],
+                "subject": composed["subject"],
+                "body": composed["body"],
+                "resume_id": resume["id"],
+                "duplicate_confirmation_token": composed["duplicate_confirmation_token"],
+            },
+        )
+
+    assert repeated.status_code == 200 and repeated.json()["status"] == "sent"
+    assert send.await_count == 1
+    assert send.await_args.kwargs["allow_duplicate"] is True
 
 
 @pytest.mark.asyncio

@@ -26,6 +26,11 @@ from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
 from src.app.email import crypto, gmail
 from src.app.email.mime import valid_email
+from src.app.email.outreach_history import (
+    OutreachCandidate,
+    find_previous_contacts,
+    normalize_email,
+)
 from src.app.email.sending import send_gmail_email
 from src.app.gateway import GatewayUnavailableError, LLMGateway
 from src.app.leads.emails import (
@@ -152,7 +157,7 @@ def send_issues(draft: Dict[str, Any]) -> List[str]:
 
 
 def _record(draft: Dict[str, Any], lead: Optional[Dict[str, Any]],
-            resume: Optional[Dict[str, Any]]) -> EmailDraftRecord:
+            resume: Optional[Dict[str, Any]], previous_contacts=None) -> EmailDraftRecord:
     return EmailDraftRecord(
         id=draft["id"], lead_id=draft["lead_id"], recipient_email=draft.get("recipient_email"),
         recipient_source=draft.get("recipient_source") or "post", post_email=_post_email(lead),
@@ -169,6 +174,7 @@ def _record(draft: Dict[str, Any], lead: Optional[Dict[str, Any]],
         delivery_status=draft["delivery_status"], sent_at=str(draft["sent_at"]) if draft.get("sent_at") else None,
         last_error_code=draft.get("last_error_code"), version=draft["version"],
         updated_at=str(draft.get("updated_at") or "") or None, issues=send_issues(draft),
+        previous_contacts=previous_contacts or [],
     )
 
 
@@ -182,7 +188,25 @@ async def _by_ids(rest: SupabaseRest, table: str, ids: Set[str]) -> Dict[str, Di
 async def _records(rest: SupabaseRest, drafts: List[Dict[str, Any]]) -> List[EmailDraftRecord]:
     leads = await _by_ids(rest, "leads", {str(d["lead_id"]) for d in drafts})
     resumes = await _by_ids(rest, "resumes", {str(d["resume_id"]) for d in drafts if d.get("resume_id")})
-    return [_record(d, leads.get(str(d["lead_id"])), resumes.get(str(d.get("resume_id")))) for d in drafts]
+    candidates = []
+    for draft in drafts:
+        lead = leads.get(str(draft["lead_id"])) or {}
+        role = draft.get("detected_role") or lead.get("detected_role") or {}
+        candidates.append(OutreachCandidate(
+            email=str(draft.get("recipient_email") or ""),
+            role_title=str(role.get("title") or lead.get("title") or ""),
+            company_name=role.get("company") or lead.get("company_name"),
+        ))
+    previous_by_email = await find_previous_contacts(rest, candidates)
+    return [
+        _record(
+            draft,
+            leads.get(str(draft["lead_id"])),
+            resumes.get(str(draft.get("resume_id"))),
+            previous_by_email.get(normalize_email(str(draft.get("recipient_email") or "")), []),
+        )
+        for draft in drafts
+    ]
 
 
 async def _expire_stale(rest: SupabaseRest, drafts: List[Dict[str, Any]]) -> None:
@@ -462,8 +486,14 @@ async def write_and_send(
             stopped = sent.code
         (record,) = await _records(rest, await rest.select("lead_drafts", {"id": f"eq.{row['id']}", "limit": "1"}))
         results.append(WriteAndSendResult(
-            lead_id=result.lead_id, outcome="sent" if sent.outcome == "sent" else "failed", code=sent.code,
-            message=sent.message, draft=record,
+            lead_id=result.lead_id,
+            outcome="sent" if sent.outcome == "sent" else (
+                "needs_review" if sent.outcome == "needs_review" else "failed"
+            ),
+            code=sent.code,
+            message=sent.message,
+            draft=record,
+            previous_contacts=sent.previous_contacts,
         ))
         await asyncio.sleep(0.3)
     order = {lead_id: i for i, lead_id in enumerate(lead_ids)}
@@ -724,10 +754,12 @@ async def send_preview(request: SendPreviewRequest, rest: SupabaseRest = Depends
         await _expire_stale(rest, drafts)
         connection = await get_connection(rest)
         resumes = await _by_ids(rest, "resumes", {str(d["resume_id"]) for d in drafts if d.get("resume_id")})
+        draft_records = await _records(rest, drafts) if drafts else []
     except SupabaseError as e:
         raise _upstream("Could not check the drafts.") from e
 
     ready: List[SendPreviewItem] = []
+    previous_by_draft = {str(record.id): record.previous_contacts for record in draft_records}
     excluded: List[SendExcluded] = []
     for draft in drafts:
         issues = send_issues(draft)
@@ -742,6 +774,7 @@ async def send_preview(request: SendPreviewRequest, rest: SupabaseRest = Depends
             draft_id=draft["id"], lead_id=draft["lead_id"], recipient_email=draft["recipient_email"],
             subject=draft["subject"], attachment_name=resume_file_name(resume) if resume else None,
             may_duplicate=draft.get("last_error_code") == "outcome_unknown",
+            previous_contacts=previous_by_draft.get(str(draft["id"]), []),
         ))
 
     connection_issue = None
@@ -779,6 +812,9 @@ async def send_drafts(
     ids = [str(i) for i in request.draft_ids]
     if not set(ids) <= set(confirmed):
         raise HTTPException(status.HTTP_409_CONFLICT, "These emails weren't in what you confirmed.")
+    duplicate_confirmed = {str(i) for i in request.confirm_duplicate_draft_ids}
+    if not duplicate_confirmed <= set(ids) or not duplicate_confirmed <= set(confirmed):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Duplicate confirmation must match the drafts you reviewed.")
 
     try:
         drafts = await _by_ids(rest, "lead_drafts", set(ids))
@@ -815,7 +851,10 @@ async def send_drafts(
         if issues:
             results.append(SendResult(draft_id=draft_id, lead_id=draft["lead_id"], outcome="skipped", code=issues[0]))
             continue
-        result = await _send_one(rest, storage, connection, access, draft)
+        result = await _send_one(
+            rest, storage, connection, access, draft,
+            allow_duplicate=draft_id in duplicate_confirmed,
+        )
         results.append(result)
         if result.code in ("rate_limited", "reauth_required"):
             stopped = result.code
@@ -824,8 +863,19 @@ async def send_drafts(
 
 
 async def _send_one(rest: SupabaseRest, storage: SupabaseStorage, connection: Dict[str, Any], access: str,
-                    draft: Dict[str, Any]) -> SendResult:
+                    draft: Dict[str, Any], *, allow_duplicate: bool = False) -> SendResult:
     draft_id, lead_id, version = str(draft["id"]), str(draft["lead_id"]), draft["version"]
+    try:
+        lead = (await _by_ids(rest, "leads", {lead_id})).get(lead_id) or {}
+    except SupabaseError as e:
+        logger.error(f"Could not load role details before sending draft {draft_id}: {e}")
+        return SendResult(
+            draft_id=draft_id,
+            lead_id=lead_id,
+            outcome="failed",
+            code="history_unavailable",
+            message="Could not verify previous outreach history.",
+        )
 
     # Claim: only one request can move this exact version to `sending`.
     claimed = await rest.update(
@@ -838,12 +888,32 @@ async def _send_one(rest: SupabaseRest, storage: SupabaseStorage, connection: Di
         return SendResult(draft_id=draft_id, lead_id=lead_id, outcome="skipped", code="already_sending_or_sent")
     version += 1
 
+    role = draft.get("detected_role") or lead.get("detected_role") or {}
     outcome = await send_gmail_email(
         rest, storage, connection, access,
         recipient=draft["recipient_email"], subject=draft["subject"], body=draft["body"],
         resume_id=str(draft["resume_id"]) if draft.get("resume_id") else None,
         draft_id=draft_id, lead_id=lead_id,
+        role_title=str(role.get("title") or lead.get("title") or ""),
+        company_name=role.get("company") or lead.get("company_name"),
+        outreach_source="linkedin_leads",
+        allow_duplicate=allow_duplicate,
     )
+    if outcome.code == "duplicate_contact":
+        await rest.update(
+            "lead_drafts",
+            {"id": f"eq.{draft_id}", "version": f"eq.{version}"},
+            {"delivery_status": "draft", "sending_started_at": None, "version": version + 1,
+             "approved_version": version + 1, "last_error_code": None},
+        )
+        return SendResult(
+            draft_id=draft_id,
+            lead_id=lead_id,
+            outcome="needs_review",
+            code=outcome.code,
+            message=outcome.message,
+            previous_contacts=outcome.previous_contacts or [],
+        )
     await _finish(rest, draft_id, version, ok=outcome.sent, code=outcome.code, message_id=outcome.message_id)
     if not outcome.sent:
         return SendResult(draft_id=draft_id, lead_id=lead_id, outcome="failed", code=outcome.code,

@@ -132,6 +132,15 @@ export interface DraftResume {
   file_size: number | null
 }
 
+export interface PreviousContact {
+  history_id: string | null
+  recipient_email: string
+  role_title: string
+  company_name: string | null
+  source: 'job_outreach' | 'linkedin_leads' | string
+  sent_at: string | null
+}
+
 export interface EmailDraft {
   id: string
   lead_id: string
@@ -156,6 +165,7 @@ export interface EmailDraft {
   updated_at: string | null
   /** What blocks sending right now (not counting the Gmail connection). */
   issues: string[]
+  previous_contacts: PreviousContact[]
 }
 
 export interface EmailDraftListResponse {
@@ -193,6 +203,7 @@ export interface SendPreviewItem {
   subject: string
   attachment_name: string | null
   may_duplicate: boolean
+  previous_contacts: PreviousContact[]
 }
 
 export interface SendPreviewResponse {
@@ -206,9 +217,10 @@ export interface SendPreviewResponse {
 export interface SendResult {
   draft_id: string
   lead_id: string | null
-  outcome: 'sent' | 'failed' | 'skipped' | 'not_attempted'
+  outcome: 'sent' | 'failed' | 'needs_review' | 'skipped' | 'not_attempted'
   code: string | null
   message: string | null
+  previous_contacts: PreviousContact[]
 }
 
 export interface SendResponse {
@@ -231,6 +243,7 @@ export interface WriteAndSendResult {
   code: string | null
   message: string | null
   draft: EmailDraft | null
+  previous_contacts: PreviousContact[]
 }
 
 export interface WriteAndSendResponse {

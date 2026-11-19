@@ -18,8 +18,15 @@ from src.app.core.rate_limit import check_rate_limit
 from src.app.core.token_budget import LEAD_ROLE
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
-from src.app.email import gmail
+from src.app.email import crypto, gmail
 from src.app.email.mime import normalize_addresses, valid_email
+from src.app.email.outreach_history import (
+    OutreachCandidate,
+    find_previous_contacts,
+    normalize_company,
+    normalize_email,
+    normalize_role,
+)
 from src.app.email.sending import send_gmail_email
 from src.app.gateway import GatewayUnavailableError, LLMGateway
 from src.app.leads.emails import InsufficientEvidenceError
@@ -33,6 +40,7 @@ from src.app.schemas.job_outreach import (
     JobOutreachResume,
     SendJobOutreachRequest,
 )
+from src.app.schemas.outreach_history import PreviousContact
 from src.app.schemas.resume import resume_file_name
 
 logger = logging.getLogger("JobOutreachAPI")
@@ -346,7 +354,11 @@ def _resume_option(row: Dict[str, Any]) -> JobOutreachResume:
     )
 
 
-def _response(row: Dict[str, Any], resumes: Optional[List[Dict[str, Any]]] = None) -> JobOutreachResponse:
+def _response(
+    row: Dict[str, Any],
+    resumes: Optional[List[Dict[str, Any]]] = None,
+    duplicate_confirmation_token: Optional[str] = None,
+) -> JobOutreachResponse:
     library = resumes or []
     by_id = {str(resume["id"]): resume for resume in library}
     selected = by_id.get(str(row.get("resume_id")))
@@ -371,6 +383,7 @@ def _response(row: Dict[str, Any], resumes: Optional[List[Dict[str, Any]]] = Non
         and not info.get("recipient_ambiguous")
         and info.get("instructions_confident") is True
         and not info.get("subject_uncertain")
+        and not info.get("previous_contacts")
         and bool(normalize_addresses(row.get("recipient_email")))
         and selected is not None
     )
@@ -389,12 +402,79 @@ def _response(row: Dict[str, Any], resumes: Optional[List[Dict[str, Any]]] = Non
         recommended_resume=_resume_option(selected) if selected else None,
         resumes=[_resume_option(resume) for resume in library],
         review_reasons=reasons,
+        previous_contacts=[PreviousContact.model_validate(item) for item in info.get("previous_contacts", [])],
+        duplicate_confirmation_token=duplicate_confirmation_token,
         error_code=row.get("error_code"),
         error_message=row.get("error_message"),
         sent_at=str(row["sent_at"]) if row.get("sent_at") else None,
         can_auto_send=auto_ok,
         can_send=can_send,
     )
+
+
+def _job_candidates(recipient: Any, cc: Any, info: Dict[str, Any]) -> List[OutreachCandidate]:
+    addresses = normalize_addresses(recipient) + normalize_addresses(cc)
+    role_title = str(info.get("title") or "")
+    company_name = info.get("company")
+    return [
+        OutreachCandidate(email=address, role_title=role_title, company_name=company_name)
+        for address in dict.fromkeys(addresses)
+    ]
+
+
+def _duplicate_token(
+    user_id: str,
+    outreach_id: str,
+    recipient: Any,
+    cc: Any,
+    info: Dict[str, Any],
+    previous_contacts: List[PreviousContact],
+) -> Optional[str]:
+    if not previous_contacts or not crypto.is_configured():
+        return None
+    try:
+        return crypto.sign({
+            "kind": "job_outreach_duplicate",
+            "user_id": user_id,
+            "outreach_id": outreach_id,
+            "recipients": sorted({
+                normalize_email(address)
+                for address in [*normalize_addresses(recipient), *normalize_addresses(cc)]
+            }),
+            "role": normalize_role(str(info.get("title") or "")),
+            "company": normalize_company(info.get("company")),
+            "history_ids": sorted({item.history_id for item in previous_contacts if item.history_id}),
+        }, 15 * 60)
+    except crypto.TokenCipherError:
+        return None
+
+
+def _valid_duplicate_token(
+    token: str,
+    user_id: str,
+    outreach_id: str,
+    recipient: Any,
+    cc: Any,
+    info: Dict[str, Any],
+    previous_contacts: List[PreviousContact],
+) -> bool:
+    try:
+        payload = crypto.verify(token)
+    except (ValueError, crypto.TokenCipherError):
+        return False
+    expected = {
+        "kind": "job_outreach_duplicate",
+        "user_id": user_id,
+        "outreach_id": outreach_id,
+        "recipients": sorted({
+            normalize_email(address)
+            for address in [*normalize_addresses(recipient), *normalize_addresses(cc)]
+        }),
+        "role": normalize_role(str(info.get("title") or "")),
+        "company": normalize_company(info.get("company")),
+        "history_ids": sorted({item.history_id for item in previous_contacts if item.history_id}),
+    }
+    return all(payload.get(key) == value for key, value in expected.items())
 
 
 async def _get_row(rest: SupabaseRest, outreach_id: UUID) -> Dict[str, Any]:
@@ -422,7 +502,16 @@ async def analyze_job_outreach(
             if existing[0]["job_text"] != text:
                 raise HTTPException(status.HTTP_409_CONFLICT, "Start a new outreach for different job text.")
             if existing[0]["status"] != "analyzing":
-                return _response(existing[0])
+                previous = [PreviousContact.model_validate(item) for item in (
+                    existing[0].get("job_info") or {}
+                ).get("previous_contacts", [])]
+                return _response(
+                    existing[0],
+                    duplicate_confirmation_token=_duplicate_token(
+                        str(user.id), str(request.id), existing[0].get("recipient_email"),
+                        existing[0].get("cc_email"), existing[0].get("job_info") or {}, previous,
+                    ),
+                )
             row = existing[0]
         else:
             await check_rate_limit(rest, get_settings().RATE_LIMIT_PER_MINUTE)
@@ -464,6 +553,19 @@ async def analyze_job_outreach(
 
     info = _job_info(role, application)
     try:
+        previous_by_email = await find_previous_contacts(
+            rest,
+            _job_candidates(
+                application.get("recipient_email"),
+                application.get("application_cc_emails"),
+                info,
+            ),
+        )
+        info["previous_contacts"] = [
+            item.model_dump()
+            for contacts in previous_by_email.values()
+            for item in contacts
+        ]
         values = {
             "job_info": info,
             "recipient_email": application["recipient_email"],
@@ -493,7 +595,14 @@ async def analyze_job_outreach(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not save the job analysis.") from e
     if not rows:
         raise HTTPException(status.HTTP_409_CONFLICT, "This Job Outreach request is already being analyzed.")
-    return _response(rows[0])
+    previous = [PreviousContact.model_validate(item) for item in info["previous_contacts"]]
+    return _response(
+        rows[0],
+        duplicate_confirmation_token=_duplicate_token(
+            str(user.id), str(request.id), rows[0].get("recipient_email"), rows[0].get("cc_email"),
+            info, previous,
+        ),
+    )
 
 
 @router.post("/{outreach_id}/compose", response_model=JobOutreachResponse,
@@ -531,6 +640,15 @@ async def compose_job_outreach(
             post_char_limit=MAX_JOB_TEXT_CHARS,
         )
         info = dict(row["job_info"])
+        previous_by_email = await find_previous_contacts(
+            rest,
+            _job_candidates(row.get("recipient_email"), row.get("cc_email"), info),
+        )
+        info["previous_contacts"] = [
+            item.model_dump()
+            for contacts in previous_by_email.values()
+            for item in contacts
+        ]
         if info.get("requested_subject"):
             email.subject = info["requested_subject"]
         email.subject = _personalize_subject(email.subject, profile_data)
@@ -579,18 +697,32 @@ async def compose_job_outreach(
                 and not info.get("subject_uncertain")
                 and bool(normalize_addresses(row.get("recipient_email")))
                 and match.auto_attach
+                and not info["previous_contacts"]
             )
             values["status"] = "draft" if auto_ok else "needs_review"
+            values["auto_send_authorized"] = auto_ok
         else:
             values["status"] = "draft"
         info["review_reasons"] = _review_reasons({**row, **values, "job_info": info})
+        if info["previous_contacts"]:
+            info["review_reasons"].append(
+                "This recipient was previously contacted for an equivalent role. Review before sending again."
+            )
         values["job_info"] = info
         updated = await rest.update(
             "job_outreach_drafts", {"id": f"eq.{outreach_id}", "status": "eq.analyzed"}, values,
         )
         if not updated:
             return _response(await _get_row(rest, outreach_id), library)
-        return _response(updated[0], library)
+        previous = [PreviousContact.model_validate(item) for item in info["previous_contacts"]]
+        return _response(
+            updated[0],
+            library,
+            _duplicate_token(
+                str(user.id), str(outreach_id), updated[0].get("recipient_email"), updated[0].get("cc_email"),
+                info, previous,
+            ),
+        )
     except InsufficientEvidenceError as e:
         values = {
             "status": "needs_review",
@@ -628,6 +760,7 @@ def _address_tokens(value: Any) -> List[str]:
 async def send_job_outreach(
     outreach_id: UUID,
     request: SendJobOutreachRequest,
+    user: AuthUser = Depends(get_current_user),
     rest: SupabaseRest = Depends(get_rest),
     storage: SupabaseStorage = Depends(get_storage),
 ) -> JobOutreachResponse:
@@ -666,17 +799,34 @@ async def send_job_outreach(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not load your role resume library.") from e
 
     if request.automatic:
-        response = _response(row, library)
+        known_previous = [
+            PreviousContact.model_validate(item)
+            for item in info.get("previous_contacts", [])
+        ]
+        response = _response(
+            row,
+            library,
+            _duplicate_token(
+                str(user.id),
+                str(outreach_id),
+                row.get("recipient_email"),
+                row.get("cc_email") or info.get("application_cc_emails"),
+                info,
+                known_previous,
+            ),
+        )
         if not response.can_auto_send:
             return response
         recipient, subject, body, resume_id = (
             row["recipient_email"], row["subject"], row["body"], row["resume_id"],
         )
-        cc = row.get("cc_email")
+        cc = row.get("cc_email") or info.get("application_cc_emails")
         selection = "auto"
     else:
         recipient = request.recipient_email if request.recipient_email is not None else row.get("recipient_email")
-        cc = request.cc_email if request.cc_email is not None else row.get("cc_email")
+        cc = request.cc_email if request.cc_email is not None else (
+            row.get("cc_email") or info.get("application_cc_emails")
+        )
         subject = request.subject if request.subject is not None else row.get("subject")
         body = request.body if request.body is not None else row.get("body")
         resume_id = str(request.resume_id) if request.resume_id else None
@@ -705,6 +855,56 @@ async def send_job_outreach(
         )
     if not resume_id:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a resume from your Roles Resume library.")
+
+    try:
+        previous_by_email = await find_previous_contacts(
+            rest,
+            _job_candidates(recipient, cc_recipients, info),
+        )
+    except SupabaseError as e:
+        logger.error(f"Could not check previous Job Outreach contacts: {e}")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not check previous outreach history.") from e
+    previous_contacts = [
+        item
+        for contacts in previous_by_email.values()
+        for item in contacts
+    ]
+    info = {**info, "previous_contacts": [item.model_dump() for item in previous_contacts]}
+    duplicate_confirmed = bool(
+        previous_contacts
+        and not request.automatic
+        and request.duplicate_confirmation_token
+        and _valid_duplicate_token(
+            request.duplicate_confirmation_token,
+            str(user.id),
+            str(outreach_id),
+            recipient,
+            cc_recipients,
+            info,
+            previous_contacts,
+        )
+    )
+    if previous_contacts and not duplicate_confirmed:
+        values = {
+            "status": "needs_review",
+            "auto_send_authorized": False,
+            "job_info": {**info, "review_reasons": [
+                "A recipient was previously contacted for this role. Review the earlier outreach before sending again.",
+            ]},
+            "error_code": "duplicate_contact",
+            "error_message": "Review the previous outreach before sending another email.",
+        }
+        updated = await rest.update(
+            "job_outreach_drafts",
+            {"id": f"eq.{outreach_id}", "status": "in.(draft,needs_review,failed)"},
+            values,
+        )
+        latest = updated[0] if updated else await _get_row(rest, outreach_id)
+        return _response(
+            latest,
+            library,
+            _duplicate_token(str(user.id), str(outreach_id), recipient, cc_recipients, info, previous_contacts),
+        )
 
     try:
         selected_resume = next((resume for resume in library if str(resume["id"]) == str(resume_id)), None)
@@ -764,7 +964,29 @@ async def send_job_outreach(
         recipient=recipient, subject=subject, body=body, resume_id=resume_id,
         cc=cc_recipients,
         job_outreach_id=str(outreach_id),
+        role_title=str(info.get("title") or ""),
+        company_name=info.get("company"),
+        outreach_source="job_outreach",
+        allow_duplicate=duplicate_confirmed,
     )
+    if outcome.code == "duplicate_contact":
+        current_previous = outcome.previous_contacts or []
+        latest_info = {**info, "previous_contacts": [item.model_dump() for item in current_previous]}
+        await rest.update("job_outreach_drafts", {
+            "id": f"eq.{outreach_id}", "status": "eq.sending",
+        }, {
+            "status": "needs_review",
+            "auto_send_authorized": False,
+            "job_info": latest_info,
+            "error_code": "duplicate_contact",
+            "error_message": outcome.message,
+        })
+        latest = await _get_row(rest, outreach_id)
+        return _response(
+            latest,
+            library,
+            _duplicate_token(str(user.id), str(outreach_id), recipient, cc_recipients, info, current_previous),
+        )
     now = datetime.now(timezone.utc).isoformat()
     status_value = "sent" if outcome.sent else "failed"
     error_message = outcome.message

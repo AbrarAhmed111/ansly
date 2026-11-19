@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Sheet, useConfirm } from '@/components/dialog'
 import { LeadProfileJsonImport } from '@/components/lead-profile-json-import'
-import { CleanupDialog, type CleanupState } from '@/components/leads/cleanup-dialog'
+import { CleanupDialog, type CleanupScope, type CleanupState } from '@/components/leads/cleanup-dialog'
 import { LeadCard } from '@/components/leads/lead-card'
 import { ProfileCard, type SaveState } from '@/components/leads/profile-card'
 import { ProfileEditor } from '@/components/leads/profile-editor'
@@ -267,18 +267,44 @@ export default function LeadsPage() {
     setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([leadId]) => !gone.has(leadId))))
   }
 
-  /** Ansly Cleanup over every lead: clear non-matches are removed, unsure ones wait for the user's call. */
+  const cleanupEligibleLeads = useMemo(
+    () => leads.filter((lead) => lead.status === 'new' && drafts[lead.id]?.delivery_status !== 'sent'),
+    [leads, drafts],
+  )
+  const cleanupScopeCounts = useMemo(
+    () => ({
+      email: cleanupEligibleLeads.filter((lead) => leadTier(lead) === 'email').length,
+      link: cleanupEligibleLeads.filter((lead) => leadTier(lead) === 'link').length,
+      all: cleanupEligibleLeads.length,
+    }),
+    [cleanupEligibleLeads],
+  )
+
+  /** Clear non-matches are removed; uncertain leads wait for the user's decision. */
   const startCleanup = async () => {
-    // Only leads not emailed yet: contacted leads, and leads whose email went out, keep their history.
-    const ids = leads.filter((lead) => lead.status === 'new' && drafts[lead.id]?.delivery_status !== 'sent').map((l) => l.id)
-    if (!ids.length) {
+    if (!cleanupEligibleLeads.length) {
       toast('Every lead has been contacted. Nothing to clean up.')
       return
     }
+    setCleanup({ step: 'choose_scope' })
+  }
+
+  const chooseCleanupScope = async (scope: CleanupScope) => {
+    const scopedLeads = cleanupEligibleLeads.filter((lead) => scope === 'all' || leadTier(lead) === scope)
+    const ids = scopedLeads.map((lead) => lead.id)
+    setCleanup({ step: 'idle' })
+    if (!ids.length) {
+      toast(`There are no eligible ${scope === 'email' ? 'email' : 'link'} leads to clean up.`)
+      return
+    }
+    const label = scope === 'email' ? 'email' : scope === 'link' ? 'link' : 'all'
+    const scopedDescription = scope === 'all' ? 'these leads' : `these ${label} leads`
     const ok = await confirm({
-      title: `Clean up ${ids.length} lead${ids.length === 1 ? '' : 's'} not contacted yet?`,
+      title: scope === 'all'
+        ? `Clean up all ${ids.length} eligible leads?`
+        : `Clean up ${ids.length} eligible ${label} lead${ids.length === 1 ? '' : 's'}?`,
       description:
-        'Ansly checks each lead you haven’t emailed against your active profile and skills. Posts from job seekers and roles that use only your excluded keywords are removed from your list (Ansly keeps a copy, so the same post isn’t collected again). Leads Ansly isn’t sure about are listed for you to keep or remove. Contacted leads are left alone.',
+        `Ansly checks ${scopedDescription} against your active profile and skills. Clear non-matches are removed from your list (Ansly keeps a copy, so the same post isn’t collected again). Leads Ansly isn’t sure about are listed for you to keep or remove. Contacted leads are left alone.`,
       confirmLabel: 'Run cleanup',
       tone: 'neutral',
     })
@@ -743,7 +769,13 @@ export default function LeadsPage() {
         />
       </Sheet>
 
-      <CleanupDialog state={cleanup} onClose={() => setCleanup({ step: 'idle' })} onRemove={removeReviewed} />
+      <CleanupDialog
+        state={cleanup}
+        scopeCounts={cleanupScopeCounts}
+        onChooseScope={(scope) => void chooseCleanupScope(scope)}
+        onClose={() => setCleanup({ step: 'idle' })}
+        onRemove={removeReviewed}
+      />
       {confirmElement}
     </div>
   )

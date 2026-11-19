@@ -34,6 +34,15 @@ export interface JobOutreachResume {
   file_type: 'pdf' | 'docx'
 }
 
+export interface JobOutreachPreviousContact {
+  history_id: string | null
+  recipient_email: string
+  role_title: string
+  company_name: string | null
+  source: 'job_outreach' | 'linkedin_leads' | string
+  sent_at: string | null
+}
+
 export interface JobOutreachResponse {
   id: string
   status: JobOutreachStatus
@@ -49,6 +58,8 @@ export interface JobOutreachResponse {
   recommended_resume: JobOutreachResume | null
   resumes: JobOutreachResume[]
   review_reasons: string[]
+  previous_contacts: JobOutreachPreviousContact[]
+  duplicate_confirmation_token: string | null
   error_code: string | null
   error_message: string | null
   sent_at: string | null
@@ -58,6 +69,7 @@ export interface JobOutreachResponse {
 
 export interface SendJobOutreachRequest {
   automatic?: boolean
+  duplicate_confirmation_token?: string
   recipient_email?: string
   cc_email?: string
   subject?: string

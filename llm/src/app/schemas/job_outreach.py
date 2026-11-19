@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.app.schemas.outreach_history import PreviousContact
+
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -21,7 +23,8 @@ class ComposeJobOutreachRequest(Strict):
 
 class SendJobOutreachRequest(Strict):
     automatic: bool = False
-    recipient_email: Optional[str] = Field(default=None, max_length=320)
+    duplicate_confirmation_token: Optional[str] = Field(default=None, max_length=200_000)
+    recipient_email: Optional[str] = Field(default=None, max_length=1000)
     cc_email: Optional[str] = Field(default=None, max_length=1000)
     subject: Optional[str] = Field(default=None, max_length=200)
     body: Optional[str] = Field(default=None, max_length=10000)
@@ -51,6 +54,8 @@ class JobOutreachResponse(BaseModel):
     recommended_resume: Optional[JobOutreachResume] = None
     resumes: List[JobOutreachResume] = Field(default_factory=list)
     review_reasons: List[str] = Field(default_factory=list)
+    previous_contacts: List[PreviousContact] = Field(default_factory=list)
+    duplicate_confirmation_token: Optional[str] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     sent_at: Optional[str] = None

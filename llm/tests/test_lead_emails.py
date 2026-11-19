@@ -284,8 +284,107 @@ async def test_send_requires_approval_and_confirmation_and_marks_only_sent_leads
     assert status == {ids[0]: "contacted", ids[1]: "new", ids[2]: "new"}
     attempts = {a["recipient_email"]: a["status"] for a in rest.tables["email_send_attempts"]}
     assert attempts == {"jobs@acme.test": "sent", "bad@acme.test": "failed"}
+    history = {row["normalized_email"]: row["status"] for row in rest.tables["outreach_contact_history"]}
+    assert history == {"jobs@acme.test": "sent", "bad@acme.test": "failed"}
     by_lead = {d["lead_id"]: d for d in rest.tables["lead_drafts"]}
     assert by_lead[ids[0]]["delivery_status"] == "sent" and by_lead[ids[1]]["delivery_status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_cross_feature_duplicate_is_paused_until_explicit_send_again(monkeypatch):
+    lead = _lead(company_name="Acme")
+    resume = {
+        "id": str(uuid4()),
+        "user_id": USER_ID,
+        "name": "Backend.pdf",
+        "role_label": "Backend Engineer",
+        "file_path": f"{USER_ID}/library/a/backend.pdf",
+        "file_type": "pdf",
+        "archived_at": None,
+        "parse_status": "parsed",
+        "parsed_content": None,
+        "updated_at": "1",
+    }
+    rest = _rest([lead], [resume])
+    rest.tables["outreach_contact_history"].append({
+        "id": "previous-job-outreach",
+        "normalized_email": "jobs@acme.test",
+        "recipient_email": "jobs@acme.test",
+        "role_title": "Backend Developer",
+        "company_name": "Acme",
+        "source": "job_outreach",
+        "status": "sent",
+        "sent_at": "2026-02-03T10:00:00Z",
+    })
+    storage = FakeStorage({resume["file_path"]: b"%PDF-1.7 backend resume"})
+    _use(rest, storage)
+    _mock_ai(monkeypatch, MatchResult(resume["id"], "high", "Backend resume."))
+    rest.tables["email_connections"].append({
+        "id": "connection",
+        "user_id": USER_ID,
+        "provider": "gmail",
+        "email_address": "sam@gmail.com",
+        "status": "connected",
+    })
+    sent = []
+
+    async def fake_send(access, raw):
+        sent.append(email.message_from_bytes(raw, policy=policy.default)["To"])
+        return "gmail-repeat"
+
+    monkeypatch.setattr(
+        routes,
+        "access_for_sending",
+        AsyncMock(return_value=({"email_address": "sam@gmail.com"}, "access")),
+    )
+    monkeypatch.setattr(routes.gmail, "send", fake_send)
+
+    async with await _client() as client:
+        generation_preview = (await client.post(
+            "/api/v1/leads/email-drafts/preview",
+            json={"lead_ids": [lead["id"]]},
+        )).json()
+        generated = await client.post("/api/v1/leads/email-drafts/write-and-send", json={
+            "preview_token": generation_preview["preview_token"],
+            "lead_ids": [lead["id"]],
+            "confirm_send": True,
+        })
+        assert generated.status_code == 200
+        generated_result = generated.json()["results"][0]
+        assert generated_result["outcome"] == "needs_review"
+        assert generated_result["previous_contacts"][0]["source"] == "job_outreach"
+        draft = generated_result["draft"]
+        assert draft["previous_contacts"][0]["source"] == "job_outreach"
+        assert sent == []
+
+        preview = (await client.post(
+            "/api/v1/leads/email-drafts/send-preview",
+            json={"draft_ids": [draft["id"]]},
+        )).json()
+        assert preview["ready"][0]["previous_contacts"][0]["source"] == "job_outreach"
+
+        paused = (await client.post("/api/v1/leads/email-drafts/send", json={
+            "confirm_token": preview["confirm_token"],
+            "draft_ids": [draft["id"]],
+        })).json()
+        assert paused["results"][0]["outcome"] == "needs_review"
+        assert paused["results"][0]["previous_contacts"][0]["source"] == "job_outreach"
+        assert sent == []
+
+        refreshed = (await client.post(
+            "/api/v1/leads/email-drafts/send-preview",
+            json={"draft_ids": [draft["id"]]},
+        )).json()
+        repeated = await client.post("/api/v1/leads/email-drafts/send", json={
+            "confirm_token": refreshed["confirm_token"],
+            "draft_ids": [draft["id"]],
+            "confirm_duplicate_draft_ids": [draft["id"]],
+        })
+
+    assert repeated.status_code == 200
+    assert repeated.json()["results"][0]["outcome"] == "sent"
+    assert sent == ["jobs@acme.test"]
+    assert sum(row["status"] == "sent" for row in rest.tables["outreach_contact_history"]) == 2
 
 
 @pytest.mark.asyncio

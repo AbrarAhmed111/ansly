@@ -233,11 +233,17 @@ export const regenerateEmailDraft = (
 export const previewSend = (req: { draft_ids?: string[]; all_ready?: boolean; retry?: boolean }) =>
   call<SendPreviewResponse>('/api/v1/leads/email-drafts/send-preview', req)
 
-export const sendEmailDrafts = (confirmToken: string, draftIds: string[], confirmMayDuplicate = false) =>
+export const sendEmailDrafts = (
+  confirmToken: string,
+  draftIds: string[],
+  confirmMayDuplicate = false,
+  confirmDuplicateDraftIds: string[] = [],
+) =>
   call<SendResponse>('/api/v1/leads/email-drafts/send', {
     confirm_token: confirmToken,
     draft_ids: draftIds,
     confirm_may_duplicate: confirmMayDuplicate,
+    confirm_duplicate_draft_ids: confirmDuplicateDraftIds,
   })
 
 // Email connection (Gmail, send-only)
