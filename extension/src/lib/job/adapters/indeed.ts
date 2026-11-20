@@ -20,6 +20,32 @@ const COMPANY = [
 const LOCATION = ['[data-testid="inlineHeader-companyLocation"]', '[data-testid="job-location"]', '.jobsearch-JobInfoHeader-subtitle > div:last-child']
 const DESCRIPTION = '#jobDescriptionText, .jobsearch-jobDescriptionText'
 
+const activeJob = (doc: Document): HTMLElement | null => {
+  const candidates = [
+    '[data-jk][aria-current="true"]',
+    '[data-jk][aria-selected="true"]',
+    '[data-jk].jcs-JobTitle-selected',
+    '[data-jk].jcs-JobTitle--selected',
+    '[data-jk].is-selected',
+  ]
+  for (const selector of candidates) {
+    const el = doc.querySelector<HTMLElement>(selector)
+    if (el) return el
+  }
+  return doc.querySelector<HTMLElement>('.jobsearch-ResultsList [data-jk][class*="selected" i]')
+}
+
+const activeJobTitle = (doc: Document): string => {
+  const active = activeJob(doc)
+  if (active) {
+    const title = active.querySelector<HTMLElement>('h2, [class*="jobTitle" i]')
+      ?? (active.matches('h2, [class*="jobTitle" i]') ? active : null)
+    const text = title ? cleanText(visibleText(title)) : cleanText(visibleText(active))
+    if (text) return text
+  }
+  return ''
+}
+
 const first = (doc: Document, selectors: string[]) => {
   for (const selector of selectors) {
     const el = doc.querySelector<HTMLElement>(selector)
@@ -44,7 +70,7 @@ export function indeedJobUrl(url: URL): string {
 export function fromIndeed(doc: Document, url: URL, withDescription: boolean): DetectedJob | null {
   if (!isIndeedJob(url)) return null
   // Indeed appends " - job post" to the visible title for screen readers.
-  const title = first(doc, TITLE).replace(/\s*-\s*job post$/i, '')
+  const title = (activeJobTitle(doc) || first(doc, TITLE)).replace(/\s*-\s*job post$/i, '')
   if (!title) return null
   return {
     title,

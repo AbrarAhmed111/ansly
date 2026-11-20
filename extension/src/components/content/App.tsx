@@ -18,6 +18,7 @@ import { Panel, type Row, type RowStatus } from './Panel'
 import { Popover, type PopoverTarget } from './Popover'
 import { LeadsCard, pagePosts, usePostSearch } from './LeadsCard'
 import { TailorCard } from './TailorCard'
+import { ApplyCard } from './ApplyCard'
 import { LogoMark } from '@/components/brand'
 
 const JOB_CHECK_MS = 1500
@@ -40,7 +41,12 @@ function useJobPage(active: boolean, debug = false): { key: string; job: Detecte
     const check = (fromMutation = false) => {
       // A hidden tab can wait: the check runs again when it is shown.
       if (document.hidden) return
-      const next = `${window.location.href}|${document.title}`
+      const jobSnapshot = peekJob(document)
+      const descriptionText =
+        document.querySelector<HTMLElement>('#jobDescriptionText, .jobsearch-jobDescriptionText')
+          ?.innerText?.replace(/\s+/g, ' ').trim().slice(0, 500) ?? ''
+      const next =
+        `${window.location.href}|${document.title}|${jobSnapshot?.title ?? ''}|${jobSnapshot?.company ?? ''}|${descriptionText}`
       if (next !== signature) {
         signature = next
         attempts = 0
@@ -227,8 +233,9 @@ export function App({ host, initialSettings, subscribe }: {
   const allRef = useRef(all)
   allRef.current = all
   const lastContextTarget = useRef<Element | null>(null)
-  const jobPage = useJobPage(enabled && settings.offerTailoring, settings.detectionDebug)
+  const jobPage = useJobPage(enabled, settings.detectionDebug)
   const [dismissedJobs, setDismissedJobs] = useState<Set<string>>(new Set())
+  const [dismissedApplyJobs, setDismissedApplyJobs] = useState<Set<string>>(new Set())
   const trackedJobs = useRef(new Set<string>())
   // Per job: open the offer card by itself (first visit, full description on the page) or start as the pill.
   const [autoOpen, setAutoOpen] = useState<Record<string, boolean>>({})
@@ -501,7 +508,20 @@ export function App({ host, initialSettings, subscribe }: {
         </div>
       )}
 
-      {jobPage && !dismissedJobs.has(jobPage.key) && jobPage.key in autoOpen && (
+      {jobPage && !dismissedApplyJobs.has(jobPage.key) && (
+        <div hidden={panelOpen}>
+          <ApplyCard
+            key={`apply-${jobPage.key}`}
+            job={jobPage.job}
+            extract={() => extractJob(document)}
+            mode={settings.applicationAgentMode}
+            stacked={detected.length > 0}
+            onDismiss={() => setDismissedApplyJobs((s) => new Set(s).add(jobPage.key))}
+          />
+        </div>
+      )}
+
+      {jobPage && settings.offerTailoring && !dismissedJobs.has(jobPage.key) && jobPage.key in autoOpen && (
         // Hidden (not unmounted) while the fill-all panel is open, so a running tailoring keeps its progress.
         <div hidden={panelOpen}>
           <TailorCard

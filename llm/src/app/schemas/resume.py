@@ -244,3 +244,20 @@ class ResumeDownloadResponse(CamelModel):
 
 class ResumeListResponse(CamelModel):
     items: List[ResumeRecord]
+
+
+class MatchRoleResumeRequest(CamelModel):
+    title: str = Field(min_length=1, max_length=300)
+    company: Optional[str] = Field(default=None, max_length=300)
+    role_family: Optional[str] = Field(default=None, max_length=100)
+    seniority: Optional[str] = Field(default=None, max_length=100)
+    technologies: List[str] = Field(default_factory=list, max_length=100)
+    responsibilities: List[str] = Field(default_factory=list, max_length=100)
+    requirements: str = Field(default="", max_length=20000)
+
+
+class MatchRoleResumeResponse(CamelModel):
+    resume_id: Optional[str] = None
+    confidence: Literal["high", "medium", "low", "none"]
+    reason: str
+    gaps: List[str] = Field(default_factory=list)

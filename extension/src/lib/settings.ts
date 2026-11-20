@@ -1,4 +1,4 @@
-import type { AnswerLength, AnswerTone } from '@ansly/types'
+import type { AnswerLength, AnswerTone, ApplicationAgentMode } from '@ansly/types'
 import { storage } from 'wxt/utils/storage'
 
 export type Theme = 'system' | 'light' | 'dark'
@@ -22,6 +22,8 @@ export interface Settings {
   detectionDebug: boolean
   /** Show the "Tailor resume" pill on job posting pages (enabled sites only). */
   offerTailoring: boolean
+  /** Normal asks on uncertainty; aggressive makes the best supported decision without inventing facts. */
+  applicationAgentMode: ApplicationAgentMode
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
   overwriteFilled: false,
   detectionDebug: false,
   offerTailoring: true,
+  applicationAgentMode: 'normal',
 }
 
 export const settingsItem = storage.defineItem<Settings>('sync:settings', {

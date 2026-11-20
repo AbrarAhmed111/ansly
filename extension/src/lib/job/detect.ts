@@ -34,6 +34,9 @@ function detect(doc: Document, url: URL, withDescription: boolean): DetectedJob 
     fromLinkedIn(doc, url, withDescription) ??
     fromIndeed(doc, url, withDescription) ??
     (isWorkAtAStartupJob(url) ? fromWorkAtAStartup(doc, withDescription) : null)
+  // Indeed and LinkedIn split-view pages can retain stale JSON-LD in the document.
+  // A live platform adapter is more authoritative than cached structured data.
+  if (siteJob && (siteJob.source === 'indeed' || siteJob.source === 'linkedin')) return siteJob
   const ld = fromJsonLd(doc, withDescription)
   if (ld) {
     // JSON-LD can be stale in single-page apps; a site adapter wins if it names a different job.

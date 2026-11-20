@@ -27,6 +27,7 @@ from src.app.core.rate_limit import check_rate_limit
 from src.app.db.rest import SupabaseError, SupabaseRest
 from src.app.db.storage import SupabaseStorage
 from src.app.gateway import GatewayUnavailableError, LLMGateway
+from src.app.leads.roles import match_resume
 from src.app.resume.parsing.discrepancies import find_discrepancies
 from src.app.resume.parsing.extract import NOT_WORD, ResumeReadError, resume_text
 from src.app.resume.parsing.structure import parse_resume
@@ -34,6 +35,8 @@ from src.app.resume.pipeline import fetch_profile_rows
 from src.app.schemas.resume import (
     CreateResumeRequest,
     MasterResumeResponse,
+    MatchRoleResumeRequest,
+    MatchRoleResumeResponse,
     ReplaceResumeRequest,
     ReplaceResumeResponse,
     ResumeDownloadResponse,
@@ -168,6 +171,46 @@ async def list_resumes(library: bool = False, rest: SupabaseRest = Depends(get_r
               if library else {"role_label": "is.null", "order": "version.desc", "limit": "50"})
     rows = await rest.select("resumes", params)
     return ResumeListResponse(items=[ResumeRecord.from_row(r) for r in rows])
+
+
+@router.post("/match", response_model=MatchRoleResumeResponse, response_model_by_alias=True,
+             summary="Match a job role to the user's existing Roles Resume Library")
+async def match_role_resume(
+    request: MatchRoleResumeRequest,
+    rest: SupabaseRest = Depends(get_rest),
+    gateway: LLMGateway = Depends(get_gateway),
+) -> MatchRoleResumeResponse:
+    try:
+        library = await rest.select("resumes", {
+            "role_label": "not.is.null",
+            "archived_at": "is.null",
+            "order": "updated_at.desc",
+            "limit": "100",
+        })
+    except SupabaseError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Could not load your Roles Resume Library.",
+        ) from exc
+    role = {
+        "title": request.title,
+        "company": request.company,
+        "role_family": request.role_family,
+        "seniority": request.seniority,
+        "technologies": request.technologies,
+        "responsibilities": request.responsibilities,
+    }
+    try:
+        match = await match_resume(gateway, role, request.requirements, library)
+    except GatewayUnavailableError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "Resume matching is unavailable right now. Please try again.") from exc
+    return MatchRoleResumeResponse(
+        resume_id=match.resume_id,
+        confidence=match.confidence,
+        reason=match.reason,
+        gaps=match.gaps,
+    )
 
 
 @router.get("/master", response_model=MasterResumeResponse, response_model_by_alias=True,

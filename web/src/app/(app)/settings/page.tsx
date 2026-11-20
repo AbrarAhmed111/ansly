@@ -1,5 +1,6 @@
 'use client'
 
+import type { ApplicationAgentMode } from '@ansly/types'
 import { clsx } from 'clsx'
 import { CircleHelp, Download, FileJson, FileText, LogOut, Palette, Upload, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
@@ -37,6 +38,7 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false)
   const [includeResumeContents, setIncludeResumeContents] = useState(false)
   const [pageLimit, setPageLimit] = useState<'1' | '2' | '3' | null>(null)
+  const [applicationAgentMode, setApplicationAgentMode] = useState<ApplicationAgentMode>('normal')
   const [dragging, setDragging] = useState(false)
   const [importHelpOpen, setImportHelpOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -50,9 +52,12 @@ export default function SettingsPage() {
       })
     void createClient()
       .from('profiles')
-      .select('resume_page_limit')
+      .select('resume_page_limit, application_agent_mode')
       .maybeSingle()
-      .then(({ data }) => setPageLimit(data?.resume_page_limit ? (String(data.resume_page_limit) as '1' | '2' | '3') : '2'))
+      .then(({ data }) => {
+        setPageLimit(data?.resume_page_limit ? (String(data.resume_page_limit) as '1' | '2' | '3') : '2')
+        setApplicationAgentMode(data?.application_agent_mode === 'aggressive' ? 'aggressive' : 'normal')
+      })
   }, [])
 
   async function onPageLimit(value: '1' | '2' | '3') {
@@ -64,6 +69,20 @@ export default function SettingsPage() {
       setPageLimit(previous)
       toast.error(err.message)
     } else toast.success('Page limit saved')
+  }
+
+  async function onApplicationAgentMode(value: ApplicationAgentMode) {
+    if (!userId) return
+    const previous = applicationAgentMode
+    setApplicationAgentMode(value)
+    const { error: err } = await createClient()
+      .from('profiles')
+      .update({ application_agent_mode: value })
+      .eq('id', userId)
+    if (err) {
+      setApplicationAgentMode(previous)
+      toast.error(err.message)
+    } else toast.success('Application agent behavior saved')
   }
 
   async function onExport() {
@@ -164,6 +183,34 @@ export default function SettingsPage() {
         </Card>
 
         <EnabledSites />
+
+        <Card>
+          <CardHeader
+            icon={CircleHelp}
+            title="Application Agent Behavior"
+            description="Choose how independently Ansly handles uncertain application decisions."
+            actions={
+              <SegmentedControl
+                label="Application agent mode"
+                options={[
+                  { value: 'normal', label: 'Normal Mode' },
+                  { value: 'aggressive', label: 'Aggressive Mode' },
+                ]}
+                value={applicationAgentMode}
+                onChange={onApplicationAgentMode}
+              />
+            }
+            className="flex-wrap"
+          />
+          <div className="mt-4 grid gap-3 text-body-sm text-muted sm:grid-cols-2">
+            <p>
+              <span className="font-medium text-fg">Normal Mode:</span> Ask for help when resume selection or application answers are uncertain.
+            </p>
+            <p>
+              <span className="font-medium text-fg">Aggressive Mode:</span> Make the best supported decisions and minimize interruptions. Never fabricate facts or bypass safeguards.
+            </p>
+          </div>
+        </Card>
 
         <EmailConnectionCard />
 

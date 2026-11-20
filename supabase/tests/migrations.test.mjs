@@ -482,6 +482,94 @@ test('profiles keep free-form additional context, up to 6000 characters', async 
   )
 })
 
+test('profiles persist Apply Agent behavior mode', async () => {
+  await asUser(ALICE, async (tx) => {
+    const { rows } = await tx.query(
+      `update public.profiles set application_agent_mode = 'aggressive' where id = $1
+       returning application_agent_mode`,
+      [ALICE],
+    )
+    assert.deepEqual(rows, [{ application_agent_mode: 'aggressive' }])
+  })
+  await assert.rejects(
+    asUser(ALICE, (tx) =>
+      tx.query(`update public.profiles set application_agent_mode = 'unknown' where id = $1`, [ALICE]),
+    ),
+    /check constraint/,
+  )
+})
+
+test('application runs, events and checkpoints are owner-isolated and append-only', async () => {
+  let runId
+  await asUser(ALICE, async (tx) => {
+    const inserted = await tx.query(
+      `insert into public.application_runs (
+        job_key, title, company, job_url, platform, route, behavior_mode, status, authorization_data
+      ) values (
+        'linkedin:senior-engineer:company-x', 'Senior Engineer', 'Company X',
+        'https://www.linkedin.com/jobs/view/123', 'linkedin', 'website',
+        'normal', 'awaiting_authorization', '{"route":"website"}'::jsonb
+      ) returning id`,
+    )
+    runId = inserted.rows[0].id
+    await tx.query(
+      `insert into public.application_run_events (run_id, type, activity, status)
+       values ($1, 'activity', 'Analyzing job description', 'completed')`,
+      [runId],
+    )
+    await tx.query(
+      `insert into public.application_run_checkpoints (run_id, name, status, page_fingerprint)
+       values ($1, 'job_detected', 'completed', 'page-123')`,
+      [runId],
+    )
+  })
+
+  await asUser(BOB, async (tx) => {
+    assert.equal((await tx.query('select * from public.application_runs')).rows.length, 0)
+    assert.equal((await tx.query('select * from public.application_run_events')).rows.length, 0)
+    assert.equal((await tx.query('select * from public.application_run_checkpoints')).rows.length, 0)
+  })
+
+  await asUser(ALICE, async (tx) => {
+    await tx.query(
+      `update public.application_runs set status = 'authorized' where id = $1`,
+      [runId],
+    )
+    await tx.query(
+      `update public.application_run_checkpoints set status = 'completed' where run_id = $1`,
+      [runId],
+    )
+  })
+
+  await assert.rejects(
+    asUser(ALICE, (tx) =>
+      tx.query(
+        `insert into public.application_runs (
+          job_key, title, platform, route, behavior_mode, status
+        ) values (
+          'linkedin:senior-engineer:company-x', 'Second run', 'linkedin',
+          'website', 'normal', 'detected'
+        )`,
+      ),
+    ),
+    /duplicate key/,
+  )
+
+  await asUser(ALICE, async (tx) => {
+    await tx.query(`update public.application_runs set status = 'submitted' where id = $1`, [runId])
+  })
+  await asUser(ALICE, async (tx) => {
+    await tx.query(
+      `insert into public.application_runs (
+        job_key, title, platform, route, behavior_mode, status
+      ) values (
+        'linkedin:senior-engineer:company-x', 'Retest after completed run',
+        'linkedin', 'website', 'normal', 'detected'
+      )`,
+    )
+  })
+})
+
 test('dashboard_summary aggregates the caller’s own data only', async () => {
   const CAROL = '00000000-0000-0000-0000-00000000000c'
   await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, 'carol@example.com', '{"full_name": "Carol"}')`, [CAROL])

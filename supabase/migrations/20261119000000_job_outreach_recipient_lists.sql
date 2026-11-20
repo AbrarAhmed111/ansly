@@ -19,6 +19,9 @@ alter table public.job_outreach_drafts
   );
 
 alter table public.job_outreach_drafts
+  drop constraint if exists job_outreach_drafts_cc_email_check;
+
+alter table public.job_outreach_drafts
   add constraint job_outreach_drafts_cc_email_check
   check (
     cc_email is null

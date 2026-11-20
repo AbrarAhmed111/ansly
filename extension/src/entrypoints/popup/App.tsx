@@ -1,4 +1,4 @@
-import type { AnswerLength, AnswerTone } from '@ansly/types'
+import type { AnswerLength, AnswerTone, ApplicationAgentMode } from '@ansly/types'
 import { useEffect, useState } from 'react'
 import { collectInBatches, leadsPath, type CollectionProgress, type CollectionResult } from '@/lib/leads/collect'
 import { isLinkedInPostSearchUrl, type LinkedInPostPreview } from '@/lib/leads/linkedin-posts'
@@ -343,6 +343,16 @@ export default function App() {
 
           <h3 className="overline">Answers</h3>
           <section className="settings">
+            <label className="row">
+              <span>Application agent behavior</span>
+              <select
+                value={settings.applicationAgentMode}
+                onChange={(e) => void patch({ applicationAgentMode: e.target.value as ApplicationAgentMode })}
+              >
+                <option value="normal">Normal Mode</option>
+                <option value="aggressive">Aggressive Mode</option>
+              </select>
+            </label>
             <label className="row">
               <span>Default length</span>
               <select value={settings.defaultLength} onChange={(e) => void patch({ defaultLength: e.target.value as AnswerLength })}>

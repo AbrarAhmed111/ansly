@@ -236,8 +236,13 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 1
 
 /* Resume tailoring (v1.2): a small pill on job pages that expands into a card. */
 .tailor-pill-wrap { position: fixed; z-index: 2147483646; right: 20px; bottom: 20px; display: inline-flex; align-items: center; gap: 4px; }
-.tailor-pill-wrap.stacked, .tailor-card.stacked { bottom: 64px; }
+.tailor-pill-wrap.stacked, .tailor-card.stacked { bottom: 108px; }
 .tailor-pill-wrap .pill { position: static; }
+.apply-pill-wrap { position: fixed; z-index: 2147483646; right: 20px; bottom: 20px; display: inline-flex; align-items: center; }
+.apply-pill-wrap.stacked { bottom: 64px; }
+.apply-pill-wrap .pill { position: static; }
+.apply-pill { height: 38px; }
+.apply-card { bottom: 16px; }
 .pill-dismiss {
   display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 999px; border: 1px solid rgb(var(--a-border)); cursor: pointer;
   background: rgb(var(--a-surface)); color: rgb(var(--a-muted)); font-size: 10px; line-height: 1; box-shadow: var(--a-shadow);

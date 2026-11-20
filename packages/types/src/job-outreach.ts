@@ -76,3 +76,12 @@ export interface SendJobOutreachRequest {
   body?: string
   resume_id?: string
 }
+
+export interface AnalyzeJobOutreachRequest {
+  id: string
+  job_text: string
+}
+
+export interface ComposeJobOutreachRequest {
+  mode: 'analyze' | 'analyze_and_send'
+}

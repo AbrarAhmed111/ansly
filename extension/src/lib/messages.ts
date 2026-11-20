@@ -33,6 +33,19 @@ import type {
   UpdateMemoryRequest,
   SavedAnswer,
   TrackEventRequest,
+  AnalyzeJobOutreachRequest,
+  ComposeJobOutreachRequest,
+  JobOutreachResponse,
+  SendJobOutreachRequest,
+  MatchRoleResumeRequest,
+  MatchRoleResumeResponse,
+  ResumeListResponse,
+  ResumeDownloadResponse,
+  ApplicationRun,
+  StartApplicationRequest,
+  AuthorizeApplicationRequest,
+  ApplicationStatusRequest,
+  ApplicationOutcomeRequest,
 } from '@ansly/types'
 import type { ProfileSummary } from './profile-summary'
 import type { LinkedInPostPreview } from './leads/linkedin-posts'
@@ -100,6 +113,16 @@ export interface RequestMap {
   downloadTailoring: { payload: { id: string }; response: null }
   /** Qualifies and saves LinkedIn posts the user loaded; the server returns the actual counts. */
   collectLinkedInLeads: { payload: CollectLinkedInPostsRequest; response: CollectLinkedInPostsResponse }
+  analyzeJobOutreach: { payload: AnalyzeJobOutreachRequest; response: JobOutreachResponse }
+  composeJobOutreach: { payload: { id: string; request: ComposeJobOutreachRequest }; response: JobOutreachResponse }
+  sendJobOutreach: { payload: { id: string; request: SendJobOutreachRequest }; response: JobOutreachResponse }
+  matchRoleResume: { payload: MatchRoleResumeRequest; response: MatchRoleResumeResponse }
+  getRoleResumes: { payload: null; response: ResumeListResponse }
+  downloadRoleResume: { payload: { id: string }; response: ResumeDownloadResponse }
+  startApplication: { payload: StartApplicationRequest; response: ApplicationRun }
+  authorizeApplication: { payload: { id: string; request: AuthorizeApplicationRequest }; response: ApplicationRun }
+  setApplicationStatus: { payload: { id: string; request: ApplicationStatusRequest }; response: ApplicationRun }
+  completeApplication: { payload: { id: string; request: ApplicationOutcomeRequest }; response: ApplicationRun }
 }
 
 export type RequestType = keyof RequestMap

@@ -155,6 +155,22 @@ const handlers: Handlers = {
     return ok(null)
   },
   collectLinkedInLeads: (payload) => apiRequest(deps, 'POST', '/api/v1/leads/collect', payload),
+  analyzeJobOutreach: (payload) => apiRequest(deps, 'POST', '/api/v1/job-outreach/analyze', payload),
+  composeJobOutreach: ({ id, request }) =>
+    apiRequest(deps, 'POST', `/api/v1/job-outreach/${encodeURIComponent(id)}/compose`, request),
+  sendJobOutreach: ({ id, request }) =>
+    apiRequest(deps, 'POST', `/api/v1/job-outreach/${encodeURIComponent(id)}/send`, request),
+  matchRoleResume: (payload) => apiRequest(deps, 'POST', '/api/v1/resumes/match', payload),
+  getRoleResumes: () => apiRequest(deps, 'GET', '/api/v1/resumes?library=true'),
+  downloadRoleResume: ({ id }) =>
+    apiRequest(deps, 'GET', `/api/v1/resumes/${encodeURIComponent(id)}/download`),
+  startApplication: (payload) => apiRequest(deps, 'POST', '/api/v1/applications/start', payload),
+  authorizeApplication: ({ id, request }) =>
+    apiRequest(deps, 'POST', `/api/v1/applications/${encodeURIComponent(id)}/authorize`, request),
+  setApplicationStatus: ({ id, request }) =>
+    apiRequest(deps, 'POST', `/api/v1/applications/${encodeURIComponent(id)}/status`, request),
+  completeApplication: ({ id, request }) =>
+    apiRequest(deps, 'POST', `/api/v1/applications/${encodeURIComponent(id)}/outcome`, request),
   async enableSite({ domain }) {
     if (!(await enabledSites()).includes(domain)) {
       return { ok: false, error: { code: 'bad_request', message: `Ansly doesn't have access to ${domain}.` } }

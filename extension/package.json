@@ -9,6 +9,7 @@
     "dev:edge": "wxt -b edge",
     "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
+    "build:local": "node ../scripts/build-extension-local.mjs",
     "build:edge": "wxt build -b edge",
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",

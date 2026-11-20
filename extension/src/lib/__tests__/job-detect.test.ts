@@ -182,6 +182,29 @@ describe('extractJob', () => {
     expect(extracted.ok && extracted.job.description).not.toContain('support customers')
   })
 
+  it('prefers the live Indeed split-view DOM over stale JSON-LD', () => {
+    const doc = load({
+      html: `<title>Backend Developer</title>
+        <script type="application/ld+json">${JSON.stringify({
+          '@type': 'JobPosting',
+          title: 'Old First Job',
+          hiringOrganization: { name: 'First Company' },
+          description: `Responsibilities: ${'Maintain legacy services. '.repeat(8)}`,
+        })}</script>
+        <h1 data-testid="jobsearch-JobInfoHeader-title">Backend Developer</h1>
+        <div data-testid="inlineHeader-companyName">Fabrikam</div>
+        <div id="jobDescriptionText"><h2>Responsibilities</h2><p>${'Build APIs and services. '.repeat(8)}</p></div>`,
+    })
+    expect(peekJob(doc, 'https://uk.indeed.com/jobs?q=developer&vjk=new-job')).toMatchObject({
+      title: 'Backend Developer',
+      company: 'Fabrikam',
+      source: 'indeed',
+    })
+    const extracted = extractJob(doc, 'https://uk.indeed.com/jobs?q=developer&vjk=new-job')
+    expect(extracted.ok && extracted.job.description).toContain('Build APIs and services.')
+    expect(extracted.ok && extracted.job.description).not.toContain('legacy services')
+  })
+
   it('refuses a description that is too short, keeping what it found for the paste fallback', () => {
     const result = extractJob(load(SHORT_POSTING), SHORT_POSTING.url)
     expect(result).toMatchObject({ ok: false, reason: 'too_short', partial: { title: 'Engineer', company: 'Example' } })

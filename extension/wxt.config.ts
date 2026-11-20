@@ -53,7 +53,7 @@ export default defineConfig({
     description: 'Prepare truthful job application answers grounded in your profile.',
     // activeTab + scripting: one-time "Scan this page" without a permanent permission.
     // contextMenus: right-click → "Answer with Ansly" on any field.
-    permissions: ['storage', 'activeTab', 'scripting', 'contextMenus'],
+    permissions: ['storage', 'activeTab', 'scripting', 'contextMenus', 'notifications'],
     // The background calls the Ansly API and Supabase; nothing else.
     host_permissions: [
       ...new Set([originPattern(apiUrl), 'http://localhost/*', 'http://127.0.0.1/*', 'https://*.supabase.co/*']),

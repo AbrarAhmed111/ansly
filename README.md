@@ -202,8 +202,13 @@ You do not need to publish the extension to use it yourself.
 Chrome:
 
 ```sh
-pnpm --filter @ansly/extension build
+pnpm --filter @ansly/extension build:local
 ```
+
+`build:local` embeds `http://localhost:3000` and `http://localhost:8000` in the
+unpacked extension. Use this build while running the web app and LLM API
+locally. The web extension bridge will not be detected on `localhost` by a build
+that embeds the production `WXT_WEB_URL`.
 
 Open `chrome://extensions`, enable Developer mode, choose Load unpacked, and select:
 

@@ -21,9 +21,20 @@ async function detail(response: Response): Promise<string | null> {
   try {
     const body = await response.json()
     if (typeof body?.detail === 'string') return body.detail
-    if (Array.isArray(body?.detail)) return body.detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join('; ')
+    if (Array.isArray(body?.detail)) return body.detail.map((d: { msg?: string; loc?: string[] }) =>
+      d.loc?.length ? `${d.loc.join('.')}: ${d.msg ?? 'Invalid value'}` : d.msg ?? 'Invalid value',
+    ).filter(Boolean).join('; ')
+    if (body?.detail && typeof body.detail === 'object') {
+      return JSON.stringify(body.detail)
+    }
+    if (typeof body?.message === 'string') return body.message
   } catch {
-    // Not JSON.
+    try {
+      const text = await response.text()
+      return text.trim() || null
+    } catch {
+      return null
+    }
   }
   return null
 }

@@ -197,3 +197,24 @@ export interface UpdateResumeRequest {
 export interface ResumeListResponse {
   items: ResumeRecord[]
 }
+
+export interface ResumeDownloadResponse {
+  url: string
+}
+
+export interface MatchRoleResumeRequest {
+  title: string
+  company?: string | null
+  roleFamily?: string | null
+  seniority?: string | null
+  technologies?: string[]
+  responsibilities?: string[]
+  requirements?: string
+}
+
+export interface MatchRoleResumeResponse {
+  resumeId: string | null
+  confidence: 'high' | 'medium' | 'low' | 'none'
+  reason: string
+  gaps: string[]
+}

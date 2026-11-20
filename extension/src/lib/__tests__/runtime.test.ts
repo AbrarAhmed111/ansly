@@ -123,6 +123,8 @@ describe('settings', () => {
     const s = await updateSettings({ useJobDescription: true })
     expect(s.useJobDescription).toBe(true)
     expect(await getSettings()).toEqual({ ...DEFAULT_SETTINGS, useJobDescription: true })
+    const aggressive = await updateSettings({ applicationAgentMode: 'aggressive' })
+    expect(aggressive.applicationAgentMode).toBe('aggressive')
   })
 
   it('migrates V1 settings once: drops disabledSites and shows the notice', async () => {

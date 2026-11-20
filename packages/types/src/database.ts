@@ -37,6 +37,8 @@ export interface Profile {
   preferred_work_mode: WorkMode | null
   /** Page limit for tailored resumes (1–3, default 2). */
   resume_page_limit: number
+  /** How independently the Apply Agent makes supported application decisions. */
+  application_agent_mode: 'normal' | 'aggressive'
   /** Object path of the profile picture in the private `avatars` bucket ({user_id}/...), or null. */
   avatar_path: string | null
   created_at: string
