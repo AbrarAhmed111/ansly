@@ -49,6 +49,7 @@ import type {
 } from '@ansly/types'
 import type { ProfileSummary } from './profile-summary'
 import type { LinkedInPostPreview } from './leads/linkedin-posts'
+import type { Settings } from './settings'
 
 export type ErrorCode =
   | 'not_connected'
@@ -74,6 +75,8 @@ export interface ConnectionState {
 }
 
 export interface RequestMap {
+  getSettings: { payload: null; response: Settings }
+  firstTailorOffer: { payload: { key: string }; response: boolean }
   generate: { payload: GenerateAnswerRequest; response: AnswerResponse }
   /** Saved-answer match, else generation, in one API request. */
   resolve: { payload: GenerateAnswerRequest; response: ResolveAnswerResponse }
@@ -136,6 +139,7 @@ export interface Request<K extends RequestType = RequestType> {
 /** Messages from the background to a tab's content script. */
 export type TabMessage =
   | { ansly: true; type: 'shortcut' }
+  | { ansly: true; type: 'settingsChanged'; settings: Settings }
   /** Right-click → "Answer with Ansly" on any editable field, detected or not. */
   | { ansly: true; type: 'contextAnswer' }
   /** Explicit popup action; reads only posts already loaded in a LinkedIn content-search page. */

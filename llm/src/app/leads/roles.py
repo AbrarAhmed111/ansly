@@ -122,7 +122,8 @@ def _words(text: str) -> set:
 
 def prescore(role: Dict[str, Any], summary: Dict[str, Any]) -> float:
     """Cheap overlap score used for ordering; never decisive on its own."""
-    role_words = _words(role.get("title", "") + " " + role.get("role_family", "").replace("_", " "))
+    role_family = role.get("role_family") or ""
+    role_words = _words(role.get("title", "") + " " + role_family.replace("_", " "))
     label_words = _words(f"{summary.get('label') or ''} {summary.get('note') or ''} {summary.get('headline') or ''}")
     techs = {_norm(t) for t in role.get("technologies") or []}
     skills = {_norm(s) for s in summary.get("skills") or []}

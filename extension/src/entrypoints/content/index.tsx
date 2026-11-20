@@ -3,7 +3,8 @@ import { App } from '@/components/content/App'
 import { CONTENT_CSS } from '@/components/content/styles'
 import { peekJob } from '@/lib/job/detect'
 import { isLinkedInPostSearchUrl } from '@/lib/leads/linkedin-posts'
-import { getSettings, settingsItem, type Settings } from '@/lib/settings'
+import { send, type TabMessage } from '@/lib/messages'
+import type { Settings } from '@/lib/settings'
 
 const WEB_ORIGIN = (import.meta.env.WXT_WEB_URL || 'http://localhost:3000').replace(/\/+$/, '')
 
@@ -56,11 +57,18 @@ export default defineContentScript({
     shadow.appendChild(mount)
     document.documentElement.appendChild(host)
 
-    const subscribe = (onChange: (s: Settings) => void) =>
-      settingsItem.watch(async () => onChange(await getSettings()))
+    const subscribe = (onChange: (s: Settings) => void) => {
+      const listener = (message: TabMessage) => {
+        if (message.type === 'settingsChanged') onChange(message.settings)
+      }
+      browser.runtime.onMessage.addListener(listener)
+      return () => browser.runtime.onMessage.removeListener(listener)
+    }
 
+    const settings = await send('getSettings', null)
+    if (!settings.ok) throw new Error(`Could not load Ansly settings: ${settings.error.message}`)
     const root = createRoot(mount)
-    root.render(<App host={host} initialSettings={await getSettings()} subscribe={subscribe} />)
+    root.render(<App host={host} initialSettings={settings.data} subscribe={subscribe} />)
 
     ctx.onInvalidated(() => {
       root.unmount()

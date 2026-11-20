@@ -13,7 +13,7 @@ import {
 import { fetchProfileSummary } from '@/lib/profile-summary'
 import { fetchProfileValues } from '@/lib/profile-values'
 import { getValidSession, isValidSession, sessionItem } from '@/lib/session'
-import { getSettings, migrateFromV1, sitesNoticeItem } from '@/lib/settings'
+import { firstTailorOffer, getSettings, migrateFromV1, settingsItem, sitesNoticeItem } from '@/lib/settings'
 import {
   enabledSites,
   injectIntoOpenTabs,
@@ -91,6 +91,8 @@ async function sendToTab(tabId: number, message: TabMessage, frameId?: number): 
 type Handlers = { [K in RequestType]: (payload: RequestMap[K]['payload']) => Promise<Result<RequestMap[K]['response']>> }
 
 const handlers: Handlers = {
+  getSettings: async () => ok(await getSettings()),
+  firstTailorOffer: async ({ key }) => ok(await firstTailorOffer(key)),
   generate: (payload) => apiRequest(deps, 'POST', '/api/v1/answers/generate', payload),
   async resolve(payload) {
     const resolved = await apiRequest<ResolveAnswerResponse>(deps, 'POST', '/api/v1/answers/resolve', payload)
@@ -182,6 +184,20 @@ const handlers: Handlers = {
 }
 
 export default defineBackground(() => {
+  settingsItem.watch(async () => {
+    const settings = await getSettings()
+    const tabs = await browser.tabs.query({})
+    await Promise.all(
+      tabs.map((tab) =>
+        tab.id == null
+          ? undefined
+          : browser.tabs
+              .sendMessage(tab.id, { ansly: true, type: 'settingsChanged', settings })
+              .catch(() => undefined),
+      ),
+    )
+  })
+
   browser.runtime.onMessage.addListener((message: unknown, sender) => {
     if (!isRequest(message)) return undefined
     // Only our own extension pages and content scripts can talk to the background.

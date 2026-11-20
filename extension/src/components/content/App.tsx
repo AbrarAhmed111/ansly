@@ -13,7 +13,7 @@ import { JOB_DESCRIPTION_CONTENT_SELECTORS } from '@/lib/job/dom'
 import { isLinkedInPostSearchUrl } from '@/lib/leads/linkedin-posts'
 import { detectLimits } from '@/lib/limits'
 import { send, type TabMessage } from '@/lib/messages'
-import { firstTailorOffer, type Settings } from '@/lib/settings'
+import type { Settings } from '@/lib/settings'
 import { Panel, type Row, type RowStatus } from './Panel'
 import { Popover, type PopoverTarget } from './Popover'
 import { LeadsCard, pagePosts, usePostSearch } from './LeadsCard'
@@ -245,9 +245,9 @@ export function App({ host, initialSettings, subscribe }: {
   useEffect(() => {
     if (!jobPage || jobPage.key in autoOpen) return
     const key = jobPage.key
-    // Read locally only (nothing is sent): offer when the page has a description tailoring can use.
+    // Keep only the job key in extension storage; never send job text to the API here.
     const usable = extractJob(document).ok
-    void (usable ? firstTailorOffer(key) : Promise.resolve(false)).then(
+    void (usable ? send('firstTailorOffer', { key }).then((result) => result.ok && result.data) : Promise.resolve(false)).then(
       (first) => setAutoOpen((m) => ({ ...m, [key]: first })),
       () => setAutoOpen((m) => ({ ...m, [key]: false })),
     )

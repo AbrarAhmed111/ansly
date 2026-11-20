@@ -547,6 +547,15 @@ def test_clear_role_matches_attach_without_asking_the_ai():
     assert pick("Backend Engineer", "backend", ["Go"]) is None
 
 
+def test_resume_prescore_accepts_missing_optional_role_family():
+    from src.app.leads.roles import prescore
+
+    role = {"title": "Product Designer", "role_family": None, "technologies": []}
+    summary = {"label": "Backend Engineer", "note": None, "headline": None, "skills": [], "parsed": True}
+
+    assert prescore(role, summary) == 0
+
+
 @pytest.mark.asyncio
 async def test_rematch_attaches_confident_resumes_and_approve_ready_never_sends(monkeypatch):
     resume = {"id": str(uuid4()), "user_id": USER_ID, "name": "FS.pdf", "role_label": "Full Stack Engineer",

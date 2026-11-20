@@ -34,6 +34,7 @@ function detect(doc: Document, url: URL, withDescription: boolean): DetectedJob 
     fromLinkedIn(doc, url, withDescription) ??
     fromIndeed(doc, url, withDescription) ??
     (isWorkAtAStartupJob(url) ? fromWorkAtAStartup(doc, withDescription) : null)
+  if (ADAPTER_SITES.test(url.hostname) && !isLinkedInJob(url) && !isIndeedJob(url)) return null
   // Indeed and LinkedIn split-view pages can retain stale JSON-LD in the document.
   // A live platform adapter is more authoritative than cached structured data.
   if (siteJob && (siteJob.source === 'indeed' || siteJob.source === 'linkedin')) return siteJob
@@ -63,7 +64,6 @@ function detect(doc: Document, url: URL, withDescription: boolean): DetectedJob 
   if (ADAPTER_SITES.test(url.hostname)) {
     // The boards change their markup often. On an actual job URL (never the feed or search list alone),
     // fall back to the page title and the board's description containers.
-    if (!isLinkedInJob(url) && !isIndeedJob(url)) return null
     return fromGeneric(doc, withDescription, BOARD_DESCRIPTIONS)
   }
   return fromGeneric(doc, withDescription)

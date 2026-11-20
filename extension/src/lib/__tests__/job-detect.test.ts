@@ -42,6 +42,17 @@ describe('peekJob', () => {
   it('ignores pages that are not job postings', () => {
     expect(peekJob(load(BLOG_POST), BLOG_POST.url)).toBeNull()
     expect(peekJob(load(LINKEDIN_VIEW), 'https://www.linkedin.com/feed/')).toBeNull()
+    const salesNavigator = load({
+      html: `<title>Welcome, Abrar</title>
+        <script type="application/ld+json">${JSON.stringify({
+          '@type': 'JobPosting',
+          title: 'Welcome, Abrar',
+          hiringOrganization: { name: 'Mammoth-AI' },
+          description: 'Unrelated job posting content.',
+        })}</script>
+        <h1>Welcome, Abrar</h1>`,
+    })
+    expect(peekJob(salesNavigator, 'https://www.linkedin.com/sales/lead/ACoAA-example,name,token?msgType=inmail')).toBeNull()
   })
 })
 
