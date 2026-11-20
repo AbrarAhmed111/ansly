@@ -220,7 +220,9 @@ Microsoft Edge:
 
 ```sh
 pnpm --filter @ansly/extension dev:edge
+pnpm --filter @ansly/extension build:edge
 ```
+
 
 Open `edge://extensions`, enable Developer mode, choose Load unpacked, and select:
 

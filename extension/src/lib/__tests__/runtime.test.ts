@@ -74,10 +74,22 @@ describe('apiRequest', () => {
     [429, { detail: 'Daily limit reached' }, 'rate_limited', 'Daily limit reached'],
     [503, { detail: 'busy' }, 'unavailable', 'busy'],
     [422, { detail: [{ msg: 'question too short' }] }, 'bad_request', 'question too short'],
-    [500, 'oops', 'server', 'Something went wrong (HTTP 500). Please try again.'],
+    [500, 'oops', 'server', 'oops'],
   ])('maps HTTP %i to %s', async (status, body, code, message) => {
     const result = await apiRequest(deps(vi.fn(async () => json(status, body))), 'GET', '/x')
     expect(result).toEqual({ ok: false, error: { code, message } })
+  })
+
+  it('preserves a plain-text server error response', async () => {
+    const fetchImpl = vi.fn(async () => new Response('Internal Server Error', {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' },
+    }))
+    const result = await apiRequest(deps(fetchImpl), 'POST', '/api/v1/resumes/match')
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'server', message: 'Internal Server Error' },
+    })
   })
 
   it('maps network failures', async () => {

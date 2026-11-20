@@ -17,23 +17,36 @@ export interface ApiDeps {
 
 const fail = (code: ErrorCode, message: string): { ok: false; error: ApiFailure } => ({ ok: false, error: { code, message } })
 
+function errorMessage(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return typeof body === 'string' ? body : null
+  const record = body as Record<string, unknown>
+  if (typeof record.detail === 'string') return record.detail
+  if (Array.isArray(record.detail)) {
+    return record.detail.map((item: unknown) => {
+      if (!item || typeof item !== 'object') return ''
+      const detail = item as { msg?: unknown; loc?: unknown }
+      const message = typeof detail.msg === 'string' ? detail.msg : 'Invalid value'
+      const location = Array.isArray(detail.loc) && detail.loc.every((part) => typeof part === 'string')
+        ? detail.loc.join('.')
+        : ''
+      return location ? `${location}: ${message}` : message
+    }).filter(Boolean).join('; ')
+  }
+  if (record.detail && typeof record.detail === 'object') return JSON.stringify(record.detail)
+  return typeof record.message === 'string' ? record.message : null
+}
+
 async function detail(response: Response): Promise<string | null> {
+  const text = (await response.text()).trim()
+  if (!text) return null
+
   try {
-    const body = await response.json()
-    if (typeof body?.detail === 'string') return body.detail
-    if (Array.isArray(body?.detail)) return body.detail.map((d: { msg?: string; loc?: string[] }) =>
-      d.loc?.length ? `${d.loc.join('.')}: ${d.msg ?? 'Invalid value'}` : d.msg ?? 'Invalid value',
-    ).filter(Boolean).join('; ')
-    if (body?.detail && typeof body.detail === 'object') {
-      return JSON.stringify(body.detail)
-    }
-    if (typeof body?.message === 'string') return body.message
+    const parsed: unknown = JSON.parse(text)
+    const message = errorMessage(parsed)
+    if (message) return message.slice(0, 500)
   } catch {
-    try {
-      const text = await response.text()
-      return text.trim() || null
-    } catch {
-      return null
+    if (response.headers.get('content-type')?.includes('text/plain') && !text.startsWith('<')) {
+      return text.slice(0, 500)
     }
   }
   return null

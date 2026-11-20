@@ -123,7 +123,7 @@ export function ApplyCard({
       requirements: extracted.job.description,
     })
     if (!match.ok) {
-      setState({ step: 'error', detail: match.error.message })
+      setState({ step: 'error', detail: `Resume matching failed (/api/v1/resumes/match): ${match.error.message}` })
       completeRun('failed', { reason: 'resume_match_failed' })
       return
     }
@@ -190,7 +190,10 @@ export function ApplyCard({
         check_saved: true,
       })
       if (!result.ok) {
-        setState({ step: 'error', detail: result.error.message })
+        setState({
+          step: 'error',
+          detail: `Application answer generation failed (/api/v1/answers/generate-batch): ${result.error.message}`,
+        })
         completeRun('failed', { reason: 'answer_generation_failed' })
         return
       }
@@ -283,7 +286,10 @@ export function ApplyCard({
         request: { mode: 'analyze_and_send' },
       })
       if (!composed.ok) {
-        setState({ step: 'error', detail: composed.error.message })
+        setState({
+          step: 'error',
+          detail: `Email preparation failed (/api/v1/job-outreach/${analysis.data.id}/compose): ${composed.error.message}`,
+        })
         completeRun('failed', { reason: 'outreach_compose_failed' })
         return
       }
