@@ -513,6 +513,7 @@ export function App({ host, initialSettings, subscribe }: {
           <ApplyCard
             key={`apply-${jobPage.key}`}
             job={jobPage.job}
+            jobKey={jobPage.key}
             extract={() => extractJob(document)}
             mode={settings.applicationAgentMode}
             stacked={detected.length > 0}

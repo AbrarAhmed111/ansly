@@ -37,12 +37,14 @@ function submitButtons(doc: Document): HTMLButtonElement[] {
 
 export function ApplyCard({
   job,
+  jobKey,
   extract,
   mode,
   stacked,
   onDismiss,
 }: {
   job: DetectedJob
+  jobKey: string
   extract: () => ExtractResult
   mode: ApplicationAgentMode
   stacked: boolean
@@ -52,6 +54,11 @@ export function ApplyCard({
   const mounted = useRef(true)
   const runId = useRef<string | null>(null)
   useEffect(() => () => void (mounted.current = false), [])
+
+  useEffect(() => {
+    runId.current = null
+    setState({ step: 'pill' })
+  }, [jobKey])
 
   const platform = useCallback(() => {
     const host = window.location.hostname
@@ -231,7 +238,7 @@ export function ApplyCard({
     }
 
     runId.current = crypto.randomUUID()
-    await send('startApplication', {
+    const runStarted = await send('startApplication', {
       id: runId.current,
       jobKey: crypto.randomUUID(),
       title: extracted.job.title,
@@ -241,13 +248,15 @@ export function ApplyCard({
       route: 'website',
       behaviorMode: mode,
     })
-    await send('authorizeApplication', {
-      id: runId.current,
-      request: {
-        route: 'email_then_website',
-        websiteSubmissionAllowed: true,
-      },
-    })
+    if (runStarted.ok) {
+      await send('authorizeApplication', {
+        id: runId.current,
+        request: {
+          route: 'email_then_website',
+          websiteSubmissionAllowed: true,
+        },
+      })
+    }
 
     const captcha = detectCaptcha(document)
     if (captcha) return pause(captcha)
@@ -256,8 +265,8 @@ export function ApplyCard({
     const id = crypto.randomUUID()
     const analysis = await send('analyzeJobOutreach', { id, job_text: extracted.job.description })
     if (!analysis.ok) {
-      setState({ step: 'error', detail: analysis.error.message })
-      completeRun('failed', { reason: 'job_analysis_failed' })
+      setState({ step: 'running', route: 'website', activity: 'Direct email unavailable; continuing with website application' })
+      await fillWebsite()
       return
     }
 
