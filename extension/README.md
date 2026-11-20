@@ -85,6 +85,18 @@ reviewing the preview. To test a conversational prompt, enable job descriptions
 if you want role details included, open an application with a “Start a
 conversation” field, generate a draft, and review/edit it before filling.
 
+The Apply Agent may choose a verified employer-email route instead of the
+website route. On the Indeed website route, it can advance application steps when it finds one
+unambiguous, enabled **Apply**, **Continue**, **Next**, or **Save & Continue**
+control. It fills detected fields and writes a grounded answer into an explicit
+cover-letter text field; it does not create a cover-letter file. A matched
+resume is uploaded when a supported file input appears. Ambiguous controls,
+unsupported upload steps, CAPTCHA, login challenges, and missing required facts
+pause for you. The Agent never clicks a final submit control automatically:
+review the page, then click **Submit application** in the Ansly card to submit.
+The separate **Fill all** action remains limited to filling the current page
+and never navigates or submits.
+
 ## Privacy
 
 - Ansly runs only on sites you enabled (or the page you scanned).

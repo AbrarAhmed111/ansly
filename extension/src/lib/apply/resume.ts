@@ -1,23 +1,29 @@
+import { allRoots } from '../detection/scan'
+
 export function findResumeInputs(doc: Document): HTMLInputElement[] {
-  return [...doc.querySelectorAll<HTMLInputElement>('input[type="file"]')].filter((input) => {
-    const accept = (input.accept ?? '').toLowerCase()
-    return accept === '' || accept.includes('pdf') || accept.includes('doc') || accept.includes('word')
-  })
+  return allRoots(doc)
+    .flatMap((root) => [...root.querySelectorAll<HTMLInputElement>('input[type="file"]')])
+    .filter((input) => {
+      const accept = (input.accept ?? '').toLowerCase()
+      return accept === '' || accept.includes('pdf') || accept.includes('doc') || accept.includes('word')
+    })
 }
 
 export function attachedResumeNames(doc: Document): string[] {
   const names = new Set<string>()
-  doc.querySelectorAll<HTMLInputElement>('input[type="file"]').forEach((input) => {
-    for (const file of Array.from(input.files ?? [])) names.add(file.name)
-  })
-  doc.querySelectorAll<HTMLElement>('a[href], [data-file-name], [title]').forEach((element) => {
-    const text =
-      element.getAttribute('data-file-name') ??
-      element.getAttribute('title') ??
-      element.textContent?.trim() ??
-      ''
-    if (/\.pdf\b|\.docx?\b/i.test(text)) names.add(text.trim())
-  })
+  for (const root of allRoots(doc)) {
+    root.querySelectorAll<HTMLInputElement>('input[type="file"]').forEach((input) => {
+      for (const file of Array.from(input.files ?? [])) names.add(file.name)
+    })
+    root.querySelectorAll<HTMLElement>('a[href], [data-file-name], [title]').forEach((element) => {
+      const text =
+        element.getAttribute('data-file-name') ??
+        element.getAttribute('title') ??
+        element.textContent?.trim() ??
+        ''
+      if (/\.pdf\b|\.docx?\b/i.test(text)) names.add(text.trim())
+    })
+  }
   return [...names]
 }
 

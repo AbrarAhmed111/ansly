@@ -2,10 +2,13 @@ import type { ApplicationAgentMode } from '@ansly/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type DetectedJob, type ExtractResult } from '@/lib/job/detect'
 import { send } from '@/lib/messages'
-import { scanAll, type TrackedField } from '@/lib/detection/scan'
+import { allRoots, scanAll, type TrackedField } from '@/lib/detection/scan'
+import { isHidden } from '@/lib/detection/classify'
 import { fillAnswer, fieldContext } from './Panel'
 import { detectCaptcha, detectLoginOrSession, type Intervention } from '@/lib/apply/interventions'
+import { clickAndWaitForIndeedStep, findIndeedNextAction } from '@/lib/apply/navigation'
 import { attachedResumeNames, findResumeInputs, uploadResumeToInput } from '@/lib/apply/resume'
+import { hasValue } from '@/lib/fill'
 import { Brand, Icon, LogoMark } from '@/components/brand'
 
 type State =
@@ -16,22 +19,41 @@ type State =
   | { step: 'done'; route: 'email' | 'website'; detail: string }
   | { step: 'error'; detail: string }
 
+type SelectedResume = { id: string; name: string; fileName: string }
+
+const MAX_INDEED_STEPS = 10
+
 const MATERIAL_FIELD =
   /\b(work authorization|authorized to work|visa|sponsorship|require sponsorship|criminal|felony|conviction|date of birth|gender|race|ethnicity|disability|veteran|social security|salary history)\b/i
 
 function successEvidence(doc: Document): string | null {
-  const text = `${doc.title} ${doc.body?.innerText ?? ''}`.toLowerCase()
+  const pageText = allRoots(doc)
+    .map((root) => (root instanceof Document ? root.body?.innerText : root.textContent) ?? '')
+    .join(' ')
+  const text = `${doc.title} ${pageText}`.toLowerCase()
   if (/application (submitted|received)|successfully submitted|thank you for (your )?(applying|application)|we received your application|confirmation number/.test(text)) {
     return text.slice(0, 2000)
   }
   return null
 }
 
-function submitButtons(doc: Document): HTMLButtonElement[] {
-  return [...doc.querySelectorAll<HTMLButtonElement>('button, [role="button"], input[type="submit"]')]
+function submitButtons(doc: Document): HTMLElement[] {
+  return allRoots(doc)
+    .flatMap((root) => [...root.querySelectorAll<HTMLElement>('button, [role="button"], input[type="submit"]')])
     .filter((element) => {
-      const text = `${element.textContent ?? ''} ${element.getAttribute('aria-label') ?? ''}`.trim().toLowerCase()
-      return /^(submit|submit application|send application|apply now|finish|send)$/.test(text)
+      const labels = [
+        element.getAttribute('aria-label') ?? '',
+        element instanceof HTMLInputElement ? element.value : '',
+        element.innerText ?? element.textContent ?? '',
+      ].map((text) => text.replace(/\s+/g, ' ').trim().toLowerCase())
+      return (
+        !isHidden(element) &&
+        !(element instanceof HTMLButtonElement && element.disabled) &&
+        !(element instanceof HTMLInputElement && element.disabled) &&
+        labels.some((text) =>
+          /^(submit|submit application|submit your application|send application|finish|finish application|complete application)$/.test(text),
+        )
+      )
     })
 }
 
@@ -53,10 +75,14 @@ export function ApplyCard({
   const [state, setState] = useState<State>({ step: 'pill' })
   const mounted = useRef(true)
   const runId = useRef<string | null>(null)
+  const selectedResume = useRef<SelectedResume | null | undefined>(undefined)
+  const applicationStarted = useRef(false)
   useEffect(() => () => void (mounted.current = false), [])
 
   useEffect(() => {
     runId.current = null
+    selectedResume.current = undefined
+    applicationStarted.current = false
     setState({ step: 'pill' })
   }, [jobKey])
 
@@ -100,7 +126,16 @@ export function ApplyCard({
     })
   }, [])
 
-  const fillWebsite = useCallback(async () => {
+  const fillWebsite = useCallback(async function fillWebsiteStep(stepIndex = 0): Promise<void> {
+    if (stepIndex >= MAX_INDEED_STEPS) {
+      pause({
+        kind: 'unknown_required_field',
+        title: 'Application has more steps',
+        detail: 'Ansly stopped after several Indeed steps. Review the current page and press Resume to continue.',
+      })
+      return
+    }
+
     setState({ step: 'running', route: 'website', activity: 'Inspecting application fields' })
 
     const captcha = detectCaptcha(document)
@@ -115,65 +150,102 @@ export function ApplyCard({
       return
     }
 
-    const match = await send('matchRoleResume', {
-      title: extracted.job.title,
-      company: extracted.job.company,
-      technologies: [],
-      responsibilities: [],
-      requirements: extracted.job.description,
-    })
-    if (!match.ok) {
-      setState({ step: 'error', detail: `Resume matching failed (/api/v1/resumes/match): ${match.error.message}` })
-      completeRun('failed', { reason: 'resume_match_failed' })
-      return
+    if (selectedResume.current === undefined) {
+      const match = await send('matchRoleResume', {
+        title: extracted.job.title,
+        company: extracted.job.company,
+        technologies: [],
+        responsibilities: [],
+        requirements: extracted.job.description,
+      })
+      if (!match.ok) {
+        setState({ step: 'error', detail: `Resume matching failed (/api/v1/resumes/match): ${match.error.message}` })
+        completeRun('failed', { reason: 'resume_match_failed' })
+        return
+      }
+
+      if (match.data.resumeId && (match.data.confidence === 'high' || mode === 'aggressive')) {
+        const library = await send('getRoleResumes', null)
+        if (!library.ok) {
+          pause({
+            kind: 'unsupported_upload',
+            title: 'Resume library unavailable',
+            detail: `Ansly could not load the matched resume: ${library.error.message}`,
+          })
+          return
+        }
+        const resume = library.data.items.find((item) => item.id === match.data.resumeId)
+        if (!resume) {
+          pause({
+            kind: 'unsupported_upload',
+            title: 'Matched resume unavailable',
+            detail: 'The matched resume is no longer in your Roles Resume Library. Choose the resume manually, then press Resume.',
+          })
+          return
+        }
+        selectedResume.current = {
+          id: resume.id,
+          name: resume.name,
+          fileName: resume.fileName ?? resume.name,
+        }
+      } else {
+        selectedResume.current = null
+      }
     }
 
-    if (match.data.resumeId && (match.data.confidence === 'high' || mode === 'aggressive')) {
-      const attached = attachedResumeNames(document)
-      const library = await send('getRoleResumes', null)
-      const selected = library.ok
-        ? library.data.items.find((resume) => resume.id === match.data.resumeId)
-        : null
-      if (!attached.length && selected) {
-        setState({ step: 'running', route: 'website', activity: `Uploading ${selected.name}` })
-        const download = await send('downloadRoleResume', { id: selected.id })
-        if (download.ok) {
-          const input = findResumeInputs(document)[0]
-          if (input) {
-            const name = selected.fileName ?? selected.name
-            const ok = await uploadResumeToInput(input, download.data.url, name)
-            if (!ok) {
+    const attached = attachedResumeNames(document)
+    const selection = selectedResume.current
+    if (selection) {
+      const alreadyAttached = attached.some((name) => name.toLowerCase() === selection.fileName.toLowerCase())
+      if (!alreadyAttached && attached.length) {
+        pause({
+          kind: 'unsupported_upload',
+          title: 'Another resume is already attached',
+          detail: `The page already has ${attached.join(', ')} attached. Replace it with ${selection.fileName} manually, then press Resume.`,
+        })
+        return
+      }
+      if (!alreadyAttached) {
+        const input = findResumeInputs(document)[0]
+        if (input) {
+          setState({ step: 'running', route: 'website', activity: `Uploading ${selection.name}` })
+          const download = await send('downloadRoleResume', { id: selection.id })
+          if (!download.ok) {
+            pause({
+              kind: 'unsupported_upload',
+              title: 'Resume download failed',
+              detail: `Ansly could not retrieve ${selection.fileName}: ${download.error.message}. Upload it manually, then press Resume.`,
+            })
+            return
+          }
+          try {
+            const uploaded = await uploadResumeToInput(input, download.data.url, selection.fileName)
+            if (!uploaded) {
               pause({
                 kind: 'unsupported_upload',
                 title: 'Resume upload could not be verified',
-                detail: 'Choose the selected resume from your existing Roles Resume Library using the page upload control.',
+                detail: 'Choose the selected resume from your existing Roles Resume Library using the page upload control, then press Resume.',
               })
               return
             }
-          } else {
+          } catch (error) {
             pause({
               kind: 'unsupported_upload',
-              title: 'Resume upload not found',
-              detail: 'Ansly could not find a supported resume file control on this step.',
+              title: 'Resume upload failed',
+              detail: `Ansly could not attach ${selection.fileName}: ${error instanceof Error ? error.message : String(error)}. Upload it manually, then press Resume.`,
             })
             return
           }
         }
       }
-    } else if (match.data.confidence === 'low' || match.data.confidence === 'none') {
-      pause({
-        kind: 'unknown_required_field',
-        title: 'Choose a resume',
-        detail: 'The role-resume match was insufficiently confident. Choose a resume from your existing Roles Resume Library.',
-      })
-      return
     }
 
     setState({ step: 'running', route: 'website', activity: 'Answering application fields' })
     const fields: TrackedField[] = scanAll(document).filter((field) =>
       field.kind !== 'ignored' &&
       field.control !== null &&
-      !field.question.text.match(MATERIAL_FIELD),
+      !field.question.text.match(MATERIAL_FIELD) &&
+      !hasValue(field.controls),
     )
 
     if (!fields.length) {
@@ -200,12 +272,13 @@ export function ApplyCard({
 
       for (const field of fields) {
         const answer = result.data.results.find((item) => item.id === field.id)
-        if (!answer || answer.status === 'insufficient_information' || answer.error) {
-          if (field.required) {
+        const isCoverLetter = /\bcover letter\b/i.test(field.question.text)
+        if (!answer || answer.status === 'insufficient_information' || answer.error || !answer.answer?.trim()) {
+          if (field.required || isCoverLetter) {
             pause({
               kind: 'unknown_required_field',
-              title: 'An answer is missing',
-              detail: `The required field "${field.question.text || 'Unknown question'}" could not be verified from your profile.`,
+              title: isCoverLetter ? 'Cover letter needs review' : 'An answer is missing',
+              detail: `The field "${field.question.text || 'Unknown question'}" could not be filled with a grounded answer. Enter it manually, then press Resume.`,
             })
             return
           }
@@ -219,7 +292,21 @@ export function ApplyCard({
           })
           return
         }
-        if (answer.answer) await fillAnswer(field, answer.answer)
+        if (answer.answer) {
+          setState({
+            step: 'running',
+            route: 'website',
+            activity: isCoverLetter ? 'Writing cover letter' : 'Filling application fields',
+          })
+          if (!(await fillAnswer(field, answer.answer))) {
+            pause({
+              kind: 'unknown_required_field',
+              title: 'Could not fill an application field',
+              detail: `Ansly generated an answer for "${field.question.text}" but could not verify it on the page. Enter it manually, then press Resume.`,
+            })
+            return
+          }
+        }
       }
     }
 
@@ -230,8 +317,42 @@ export function ApplyCard({
       return
     }
 
+    if (platform() === 'indeed') {
+      const action = findIndeedNextAction(document, !applicationStarted.current)
+      if (action) {
+        applicationStarted.current = true
+        setState({ step: 'running', route: 'website', activity: 'Continuing to the next Indeed step' })
+        if (!(await clickAndWaitForIndeedStep(action, document))) {
+          pause({
+            kind: 'unknown_required_field',
+            title: 'Indeed did not advance',
+            detail: 'The page did not show a new step after clicking its Continue control. Check for validation messages, then press Resume.',
+          })
+          return
+        }
+        return fillWebsiteStep(stepIndex + 1)
+      }
+    }
+
+    if (selection && !attachedResumeNames(document).some((name) => name.toLowerCase() === selection.fileName.toLowerCase())) {
+      pause({
+        kind: 'unsupported_upload',
+        title: 'Resume upload not found',
+        detail: 'Ansly reached a page without a supported resume input. Upload the matched resume manually, then press Resume.',
+      })
+      return
+    }
+    if (!selection && !attachedResumeNames(document).length) {
+      pause({
+        kind: 'unknown_required_field',
+        title: 'Choose a resume',
+        detail: 'Ansly reached the review step without a confidently matched or attached resume. Attach your chosen resume manually, then press Resume.',
+      })
+      return
+    }
+
     setState({ step: 'running', route: 'website', activity: 'Reviewing application and looking for final submit' })
-  }, [extract, mode, pause, completeRun])
+  }, [extract, mode, pause, completeRun, platform])
 
   const start = useCallback(async () => {
     const extracted = extract()
@@ -241,6 +362,8 @@ export function ApplyCard({
     }
 
     runId.current = crypto.randomUUID()
+    selectedResume.current = undefined
+    applicationStarted.current = false
     const runStarted = await send('startApplication', {
       id: runId.current,
       jobKey: crypto.randomUUID(),
